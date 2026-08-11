@@ -26,13 +26,20 @@
     bannerCount: document.getElementById("banner-count"),
     viewSearch: document.getElementById("view-search"),
     viewProblem: document.getElementById("view-problem"),
+    viewMaps: document.getElementById("view-maps"),
+    viewMap: document.getElementById("view-map"),
     viewGlossary: document.getElementById("view-glossary"),
     viewReferences: document.getElementById("view-references"),
     navLinks: document.querySelectorAll(".site-nav a"),
   };
 
   const EMPTY_BETA_TOKEN = "∅";
-  const VIEWS = { "/": els.viewSearch, "/glossary": els.viewGlossary, "/references": els.viewReferences };
+  const VIEWS = {
+    "/": els.viewSearch,
+    "/maps": els.viewMaps,
+    "/glossary": els.viewGlossary,
+    "/references": els.viewReferences,
+  };
 
   fetch("data/problems.json")
     .then((r) => r.json())
@@ -64,18 +71,25 @@
     const path = currentPath();
     Object.values(VIEWS).forEach((v) => (v.hidden = true));
     els.viewProblem.hidden = true;
+    els.viewMap.hidden = true;
 
     let matched = null;
-    let problemMatch = /^\/problem\/(.+)$/.exec(path);
+    const problemMatch = /^\/problem\/(.+)$/.exec(path);
+    const mapMatch = /^\/map\/(.+)$/.exec(path);
 
     if (problemMatch) {
       renderProblemPage(decodeURIComponent(problemMatch[1]));
       els.viewProblem.hidden = false;
       matched = null; // no top-level nav item highlighted
+    } else if (mapMatch) {
+      renderMap(decodeURIComponent(mapMatch[1]));
+      els.viewMap.hidden = false;
+      matched = "/maps";
     } else if (VIEWS[path]) {
       VIEWS[path].hidden = false;
       if (path === "/glossary") renderGlossary();
       if (path === "/references") renderReferences();
+      if (path === "/maps") renderMapsIndex();
       matched = path;
     } else {
       els.viewSearch.hidden = false;
@@ -98,6 +112,12 @@
   }
   function problemById(id) {
     return DATA.problems.find((p) => p.id === id);
+  }
+  function classicalClassById(id) {
+    return DATA.classicalClasses.find((c) => c.id === id);
+  }
+  function mapById(id) {
+    return DATA.maps.find((m) => m.id === id);
   }
   function refText(key) {
     const r = DATA.references[key];
@@ -401,12 +421,20 @@
         "</div>"
       : '<p style="color:var(--muted)">No related problems recorded.</p>';
 
+    const cc = classicalClassById(p.classicalClass);
+    const ccBadge = cc
+      ? '<span class="class-pill" style="background:' +
+        (cc.fill ? cc.color : "transparent") +
+        ";border:2px solid " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
+        '">' + cc.label + "</span> "
+      : "";
+
     els.viewProblem.innerHTML =
       '<div class="wiki-page">' +
       '<a class="wiki-back" href="#/">&larr; Back to search</a>' +
       "<h2>" + p.notation + "</h2>" +
       '<p class="wiki-alphabetagamma">' + p.name + "</p>" +
-      '<div class="wiki-status"><b>Classical (unparameterized) status</b>' + escapeHtml(p.classicalStatus) + "</div>" +
+      '<div class="wiki-status"><b>Classical (unparameterized) status</b>' + ccBadge + escapeHtml(p.classicalStatus) + "</div>" +
       '<div class="wiki-section wiki-overview"><h3>Overview</h3><p>' + escapeHtml(p.overview || "") + "</p></div>" +
       '<div class="wiki-section"><h3>Parameterized results</h3>' + resultsHtml + "</div>" +
       '<div class="wiki-section"><h3>Related problems</h3>' + relatedHtml + "</div>" +
@@ -436,6 +464,118 @@
             "</p></div>"
         )
         .join("") +
+      "</div>";
+  }
+
+  // ---------- problem maps (generalization poset diagrams) ----------
+
+  function renderMapsIndex() {
+    els.viewMaps.innerHTML =
+      '<h2 class="page-title">Problem maps</h2><div class="map-list">' +
+      DATA.maps
+        .map(
+          (m) =>
+            '<a class="map-card" href="#/map/' + encodeURIComponent(m.id) + '">' +
+            "<h3>" + escapeHtml(m.title) + "</h3><p>" + escapeHtml(m.description || "") + "</p></a>"
+        )
+        .join("") +
+      "</div>";
+  }
+
+  const MAP_COL_W = 210, MAP_ROW_H = 130, MAP_COL_STAGGER = 60;
+  const MAP_NODE_W = 190, MAP_NODE_H = 56, MAP_MARGIN = 50;
+
+  function mapNodeCenter(node) {
+    const left = MAP_MARGIN + (node.col - 1) * MAP_COL_W;
+    const top = MAP_MARGIN + node.row * MAP_ROW_H + (node.col - 1) * MAP_COL_STAGGER;
+    return { left, top, cx: left + MAP_NODE_W / 2, cy: top + MAP_NODE_H / 2 };
+  }
+
+  function renderMap(id) {
+    const map = mapById(id);
+    if (!map) {
+      els.viewMap.innerHTML =
+        '<div class="map-page"><a class="wiki-back" href="#/maps">&larr; Back to problem maps</a><p>Unknown map: ' +
+        escapeHtml(id) + "</p></div>";
+      return;
+    }
+
+    const positions = {};
+    let maxCol = 0, maxRow = 0;
+    map.nodes.forEach((n) => {
+      positions[n.problemId] = mapNodeCenter(n);
+      maxCol = Math.max(maxCol, n.col);
+      maxRow = Math.max(maxRow, n.row);
+    });
+    const width = MAP_MARGIN * 2 + (maxCol - 1) * MAP_COL_W + MAP_NODE_W;
+    const height = MAP_MARGIN * 2 + maxRow * MAP_ROW_H + (maxCol - 1) * MAP_COL_STAGGER + MAP_NODE_H;
+
+    const axisColors = { stages: "#868e96", weight: "#1971c2", flexibility: "#ae3ec9", parallel: "#0c8599" };
+
+    const linesSvg = map.edges
+      .map((e) => {
+        const a = positions[e.from], b = positions[e.to];
+        if (!a || !b) return "";
+        const color = axisColors[e.axis] || "#868e96";
+        return (
+          '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
+          '" stroke="' + color + '" stroke-width="2" />'
+        );
+      })
+      .join("");
+
+    const nodesHtml = map.nodes
+      .map((n) => {
+        const p = problemById(n.problemId);
+        if (!p) return "";
+        const pos = positions[n.problemId];
+        const cc = classicalClassById(p.classicalClass);
+        const bg = cc && cc.fill ? cc.color : "transparent";
+        const border = cc ? cc.color : "#868e96";
+        return (
+          '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" title="' +
+          escapeHtml(p.classicalStatus) + '" href="#/problem/' + encodeURIComponent(p.id) +
+          '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + MAP_NODE_W +
+          "px;height:" + MAP_NODE_H + "px;background:" + bg + ";border-color:" + border + '">' +
+          escapeHtml(p.notation) + "</a>"
+        );
+      })
+      .join("");
+
+    const axisLabelsHtml = (map.axisLabels || [])
+      .map((a) => {
+        const left = MAP_MARGIN + (a.col - 1) * MAP_COL_W;
+        const top = MAP_MARGIN + a.row * MAP_ROW_H + (a.col - 1) * MAP_COL_STAGGER;
+        return '<div class="map-axis-label" style="left:' + left + "px;top:" + top + 'px">' + escapeHtml(a.text) + "</div>";
+      })
+      .join("");
+
+    const legendHtml = Object.keys(axisColors)
+      .map(
+        (axis) =>
+          '<div class="legend-item"><span class="legend-swatch" style="background:' +
+          axisColors[axis] + '"></span><span>' + axis + " axis</span></div>"
+      )
+      .join("");
+
+    const classLegendHtml = DATA.classicalClasses
+      .map(
+        (c) =>
+          '<div class="legend-item"><span class="legend-swatch" style="background:' +
+          (c.fill ? c.color : "transparent") + ";border:2px solid " + c.color +
+          '"></span><span>' + c.label + "</span></div>"
+      )
+      .join("");
+
+    els.viewMap.innerHTML =
+      '<div class="map-page">' +
+      '<a class="wiki-back" href="#/maps">&larr; Back to problem maps</a>' +
+      '<div class="map-page-header"><h2>' + escapeHtml(map.title) + "</h2><p>" + escapeHtml(map.description || "") + "</p></div>" +
+      '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + "px;height:" + height + 'px">' +
+      '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + linesSvg + "</svg>" +
+      axisLabelsHtml + nodesHtml +
+      "</div></div>" +
+      '<div class="map-legend">' + classLegendHtml + legendHtml + "</div>" +
       "</div>";
   }
 

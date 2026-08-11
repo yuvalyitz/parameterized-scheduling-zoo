@@ -3,6 +3,13 @@
     "title": "The Parameterized Scheduling Zoo",
     "note": "Seed dataset for prototyping the site. Entries marked \"confidence\": \"verified\" reflect well-known landmark results; entries marked \"illustrative\" are plausible placeholders standing in for real results and should be checked against the literature before being trusted. Classical α|β|γ notation follows Graham, Lawler, Lenstra & Rinnooy Kan (1979)."
   },
+  "classicalClasses": [
+    { "id": "P",                 "label": "P",                              "color": "#2f9e44", "fill": true,  "order": 0, "description": "Polynomial-time solvable." },
+    { "id": "weakly-NP-hard",    "label": "weakly NP-hard",                 "color": "#f08c00", "fill": true,  "order": 1, "description": "NP-hard, and a pseudo-polynomial-time algorithm is known." },
+    { "id": "NP-hard-unresolved","label": "NP-hard (weak/strong open)",     "color": "#f08c00", "fill": false, "order": 2, "description": "Known NP-hard, but whether it is strongly NP-hard or admits a pseudo-polynomial algorithm is open." },
+    { "id": "strongly-NP-hard",  "label": "strongly NP-hard",               "color": "#c92a2a", "fill": true,  "order": 3, "description": "NP-hard even when all numeric input is given in unary; no pseudo-polynomial algorithm unless P=NP." },
+    { "id": "open",              "label": "open",                          "color": "#868e96", "fill": true,  "order": 4, "description": "Not even known to be NP-hard; complexity status unsettled." }
+  ],
   "complexityClasses": [
     { "id": "P",           "label": "P",                 "color": "#2f9e44", "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
     { "id": "FPT",         "label": "FPT",               "color": "#1971c2", "order": 1, "description": "Fixed-parameter tractable: solvable in f(k)·poly(n) time." },
@@ -43,7 +50,8 @@
     "Karp72": { "text": "R. M. Karp. Reducibility among combinatorial problems. Complexity of Computer Computations, 1972." },
     "GS76":   { "text": "T. Gonzalez & S. Sahni. Open shop scheduling to minimize finish time. Journal of the ACM, 1976." },
     "folklore": { "text": "Folklore / standard technique — no single canonical citation." },
-    "tbd": { "text": "Not yet sourced in this seed dataset." }
+    "tbd": { "text": "Not yet sourced in this seed dataset." },
+    "user-diagram": { "text": "Classification as given directly by the site author's own diagram; original paper/citation not yet attached." }
   },
   "problems": [
     {
@@ -51,6 +59,7 @@
       "notation": "1||Cmax",
       "alpha": "1", "beta": [], "gamma": "Cmax",
       "name": "Single machine, makespan",
+      "classicalClass": "P",
       "classicalStatus": "Trivially polynomial (schedule all jobs back to back in any order).",
       "overview": "The base case of the base case: with one machine and no constraints, makespan is fixed the moment job processing times are fixed, independent of the schedule chosen. It sits at the root of the zoo mostly as a sanity check for the interface, and as the natural starting point when adding constraints such as release dates or precedence.",
       "related": ["P--Cmax", "1-rj-sumCj"],
@@ -61,6 +70,7 @@
       "notation": "P||Cmax",
       "alpha": "P", "beta": [], "gamma": "Cmax",
       "name": "Identical parallel machines, makespan",
+      "classicalClass": "weakly-NP-hard",
       "classicalStatus": "NP-hard (weakly) — partition reduction.",
       "overview": "The classic multiprocessor scheduling problem: given jobs with processing times and m identical machines, minimize the time the last job finishes. NP-hard already for m=2 (it encodes Partition), but its pseudo-polynomial dynamic program is the textbook example of how a numeric parameter (p_max) or a structural one (m, #p) can turn intractability into fixed-parameter tractability.",
       "related": ["1--Cmax", "Q--Cmax", "R--Cmax", "P-prec-Cmax"],
@@ -84,6 +94,7 @@
       "notation": "R||Cmax",
       "alpha": "R", "beta": [], "gamma": "Cmax",
       "name": "Unrelated machines, makespan",
+      "classicalClass": "strongly-NP-hard",
       "classicalStatus": "NP-hard (strongly); 2-approximable.",
       "overview": "Each job may take a different amount of time on each machine. Lenstra, Shmoys & Tardos gave the classic 2-approximation and showed exact solution is strongly NP-hard; the parameterized picture asks which structural restrictions (few machines, few distinct processing times) restore tractability.",
       "related": ["P--Cmax", "Q--Cmax"],
@@ -104,6 +115,7 @@
       "notation": "Q||Cmax",
       "alpha": "Q", "beta": [], "gamma": "Cmax",
       "name": "Uniform machines, makespan",
+      "classicalClass": "weakly-NP-hard",
       "classicalStatus": "NP-hard (weakly).",
       "overview": "Machines run at different but job-independent speeds. It sits between P||Cmax and R||Cmax in generality, and the parameterized results largely mirror P||Cmax with an added parameter for machine-speed diversity.",
       "related": ["P--Cmax", "R--Cmax"],
@@ -121,6 +133,7 @@
       "notation": "P|prec|Cmax",
       "alpha": "P", "beta": ["prec"], "gamma": "Cmax",
       "name": "Identical machines with precedence constraints, makespan",
+      "classicalClass": "strongly-NP-hard",
       "classicalStatus": "NP-hard for general m; already hard for m=2 with arbitrary processing times.",
       "overview": "Adding precedence constraints to identical-machine scheduling is a textbook example of a problem that gets harder, not easier, to parameterize: while P||Cmax is FPT in the number of machines m, adding precedence pushes that same parameterization to W[2]-hard. It is the canonical illustration that structural parameters interact with side constraints in ways that raw problem size doesn't.",
       "related": ["P--Cmax"],
@@ -141,6 +154,7 @@
       "notation": "1|rj|ΣCj",
       "alpha": "1", "beta": ["rj"], "gamma": "ΣCj",
       "name": "Single machine, release dates, total completion time",
+      "classicalClass": "strongly-NP-hard",
       "classicalStatus": "NP-hard (strongly).",
       "overview": "Minimizing total completion time is trivial without release dates (shortest processing time first), but adding release dates makes even the single-machine case strongly NP-hard. The natural parameters here count distinct release-date or processing-time values rather than machines, since there is only one machine.",
       "related": ["1--Cmax"],
@@ -158,6 +172,7 @@
       "notation": "1||ΣwjUj",
       "alpha": "1", "beta": [], "gamma": "ΣwjUj",
       "name": "Single machine, weighted number of tardy jobs",
+      "classicalClass": "weakly-NP-hard",
       "classicalStatus": "NP-hard (weakly) — knapsack-style reduction.",
       "overview": "Deciding which jobs to let be late (rather than by how much) turns this into a knapsack-flavored problem: the on-time jobs must fit before their due dates, and among feasible on-time sets we maximize completed weight. Distinct-value parameters (#w, #p) are the natural knobs since they bound the number of interchangeable job classes.",
       "related": ["1--Cmax"],
@@ -175,10 +190,145 @@
       "notation": "O2||Cmax",
       "alpha": "O", "beta": [], "gamma": "Cmax",
       "name": "Two-machine open shop, makespan",
+      "classicalClass": "P",
       "classicalStatus": "Polynomial.",
       "overview": "Open-shop scheduling with two machines is one of the few multi-operation shop-scheduling problems solvable exactly in polynomial time, via a simple list-scheduling argument. It's included mainly as a green, parameter-independent baseline for contrast against the harder shop-scheduling variants.",
       "related": ["P--Cmax"],
       "results": []
+    },
+    {
+      "id": "F3--sumWjZj",
+      "notation": "F3||ΣwjZj",
+      "alpha": "F3", "beta": [], "gamma": "ΣwjZj",
+      "name": "3-stage flow shop, weighted number of non-JIT jobs",
+      "classicalClass": "strongly-NP-hard",
+      "classicalStatus": "Strongly NP-hard.",
+      "overview": "Zj = 1 if job j does not complete exactly on its due date (a just-in-time / JIT objective), 0 otherwise; ΣwjZj is the weighted count of jobs that miss their exact due date. With three sequential stages and general weights this is strongly NP-hard — the top of this generalization family.",
+      "related": ["F3--sumZj", "F2--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "F3--sumZj",
+      "notation": "F3||ΣZj",
+      "alpha": "F3", "beta": [], "gamma": "ΣZj",
+      "name": "3-stage flow shop, number of non-JIT jobs",
+      "classicalClass": "strongly-NP-hard",
+      "classicalStatus": "Strongly NP-hard.",
+      "overview": "The unweighted (wj=1) special case of F3||ΣwjZj. Still strongly NP-hard — unlike the 2-stage case, dropping weights does not restore polynomial-time solvability once a third stage is added.",
+      "related": ["F3--sumWjZj", "F2--sumZj"],
+      "results": []
+    },
+    {
+      "id": "F1m--sumWjZj",
+      "notation": "F(1,m)||ΣwjZj",
+      "alpha": "F(1,m)", "beta": [], "gamma": "ΣwjZj",
+      "name": "Flexible flow shop (1 machine, then m parallel machines), weighted number of non-JIT jobs",
+      "classicalClass": "NP-hard-unresolved",
+      "classicalStatus": "NP-hard; strong/weak status and pseudo-polynomial solvability open.",
+      "overview": "A 2-stage flexible flow shop: every job first passes through a single machine, then through one of m identical parallel machines. Generalizes P||ΣwjZj (by adding stage 1) and specializes into F(1,c)||ΣwjZj when the second-stage machine count is bounded by a constant c.",
+      "related": ["F1c--sumWjZj", "P--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "F1c--sumWjZj",
+      "notation": "F(1,c)||ΣwjZj",
+      "alpha": "F(1,c)", "beta": [], "gamma": "ΣwjZj",
+      "name": "Flexible flow shop (1 machine, then c parallel machines, c constant), weighted number of non-JIT jobs",
+      "classicalClass": "weakly-NP-hard",
+      "classicalStatus": "Weakly NP-hard; pseudo-polynomial algorithm known.",
+      "overview": "Same 2-stage flexible flow shop as F(1,m)||ΣwjZj, but with the second-stage machine count fixed to a constant c rather than left arbitrary. Bounding the machine count resolves the open weak/strong question of F(1,m): here a pseudo-polynomial algorithm is known. Setting c=1 degenerates to the plain 2-stage flow shop F2||ΣwjZj.",
+      "related": ["F1m--sumWjZj", "F2--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "F2--sumWjZj",
+      "notation": "F2||ΣwjZj",
+      "alpha": "F2", "beta": [], "gamma": "ΣwjZj",
+      "name": "2-stage flow shop, weighted number of non-JIT jobs",
+      "classicalClass": "weakly-NP-hard",
+      "classicalStatus": "Weakly NP-hard; pseudo-polynomial algorithm known.",
+      "overview": "The c=1 special case of F(1,c)||ΣwjZj, and the 2-stage special case of F3||ΣwjZj. Dropping weights (Zj unweighted) restores polynomial solvability; dropping a stage (down to 1 machine) also restores polynomial solvability.",
+      "related": ["F3--sumWjZj", "F1c--sumWjZj", "F2--sumZj", "1--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "F2--sumZj",
+      "notation": "F2||ΣZj",
+      "alpha": "F2", "beta": [], "gamma": "ΣZj",
+      "name": "2-stage flow shop, number of non-JIT jobs",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial.",
+      "overview": "The unweighted special case of F2||ΣwjZj. Unlike the 3-stage case, dropping weights here does restore polynomial-time solvability — the weight axis and the stage-count axis interact rather than acting independently.",
+      "related": ["F2--sumWjZj", "F3--sumZj", "1--sumZj"],
+      "results": []
+    },
+    {
+      "id": "P--sumWjZj",
+      "notation": "P||ΣwjZj",
+      "alpha": "P", "beta": [], "gamma": "ΣwjZj",
+      "name": "Identical parallel machines, weighted number of non-JIT jobs",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial.",
+      "overview": "The parallel-machines axis: this is the 1||ΣwjZj problem generalized by allowing m identical machines instead of one, and itself the special case of F(1,m)||ΣwjZj where stage-1 processing times are all zero.",
+      "related": ["1--sumWjZj", "F1m--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "1--sumWjZj",
+      "notation": "1||ΣwjZj",
+      "alpha": "1", "beta": [], "gamma": "ΣwjZj",
+      "name": "Single machine, weighted number of non-JIT jobs",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial.",
+      "overview": "The base case of this family: a single machine, general weights. Polynomial, and the common ancestor that both the parallel-machines axis (→P||ΣwjZj) and the flow-shop axis (→F2||ΣwjZj→F3||ΣwjZj) generalize from.",
+      "related": ["1--sumZj", "P--sumWjZj", "F2--sumWjZj"],
+      "results": []
+    },
+    {
+      "id": "1--sumZj",
+      "notation": "1||ΣZj",
+      "alpha": "1", "beta": [], "gamma": "ΣZj",
+      "name": "Single machine, number of non-JIT jobs",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial.",
+      "overview": "The simplest problem in the family: one machine, unit weights. Polynomial, as are all of its direct generalizations along a single axis (adding machines or an extra unweighted flow-shop stage) — it only takes a combination of axes to reach NP-hardness.",
+      "related": ["1--sumWjZj", "F2--sumZj"],
+      "results": []
+    }
+  ],
+  "maps": [
+    {
+      "id": "jit-flowshop",
+      "title": "JIT Flow Shop",
+      "description": "Weighted number of just-in-time-violating jobs, across three independent generalization axes: number of flow-shop stages, flexibility (parallel machines at a stage), and weighted vs. unweighted.",
+      "axisLabels": [
+        { "text": "Flexible",   "col": 1, "row": 0.6 },
+        { "text": "Unweighted", "col": 4, "row": -0.35 }
+      ],
+      "nodes": [
+        { "problemId": "F3--sumWjZj",  "col": 3, "row": 0 },
+        { "problemId": "F3--sumZj",    "col": 4, "row": 0 },
+        { "problemId": "F1m--sumWjZj", "col": 1, "row": 1 },
+        { "problemId": "F1c--sumWjZj", "col": 2, "row": 1 },
+        { "problemId": "F2--sumWjZj",  "col": 3, "row": 1 },
+        { "problemId": "F2--sumZj",    "col": 4, "row": 1 },
+        { "problemId": "P--sumWjZj",   "col": 1, "row": 2 },
+        { "problemId": "1--sumWjZj",   "col": 3, "row": 2 },
+        { "problemId": "1--sumZj",     "col": 4, "row": 2 }
+      ],
+      "edges": [
+        { "from": "F3--sumWjZj",  "to": "F2--sumWjZj",  "axis": "stages" },
+        { "from": "F2--sumWjZj",  "to": "1--sumWjZj",   "axis": "stages" },
+        { "from": "F3--sumZj",    "to": "F2--sumZj",    "axis": "stages" },
+        { "from": "F2--sumZj",    "to": "1--sumZj",     "axis": "stages" },
+        { "from": "F3--sumWjZj",  "to": "F3--sumZj",    "axis": "weight" },
+        { "from": "F2--sumWjZj",  "to": "F2--sumZj",    "axis": "weight" },
+        { "from": "1--sumWjZj",   "to": "1--sumZj",     "axis": "weight" },
+        { "from": "F1m--sumWjZj", "to": "F1c--sumWjZj", "axis": "flexibility" },
+        { "from": "F1c--sumWjZj", "to": "F2--sumWjZj",  "axis": "flexibility" },
+        { "from": "P--sumWjZj",   "to": "F1m--sumWjZj", "axis": "flexibility" },
+        { "from": "1--sumWjZj",   "to": "P--sumWjZj",   "axis": "parallel" }
+      ]
     }
   ]
 }
