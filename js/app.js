@@ -24,9 +24,15 @@
     detailClose: document.getElementById("detail-close"),
     detailOverlay: document.getElementById("detail-overlay"),
     bannerCount: document.getElementById("banner-count"),
+    viewSearch: document.getElementById("view-search"),
+    viewProblem: document.getElementById("view-problem"),
+    viewGlossary: document.getElementById("view-glossary"),
+    viewReferences: document.getElementById("view-references"),
+    navLinks: document.querySelectorAll(".site-nav a"),
   };
 
-  const EMPTY_BETA_TOKEN = "∅"; // ∅
+  const EMPTY_BETA_TOKEN = "∅";
+  const VIEWS = { "/": els.viewSearch, "/glossary": els.viewGlossary, "/references": els.viewReferences };
 
   fetch("data/problems.json")
     .then((r) => r.json())
@@ -37,7 +43,9 @@
       buildParamToggle();
       buildLegend();
       updateBannerCount();
-      render();
+      renderMatrix();
+      window.addEventListener("hashchange", route);
+      route();
     })
     .catch((err) => {
       els.matrixBody.innerHTML =
@@ -45,12 +53,64 @@
         String(err) + "</td></tr>";
     });
 
+  // ---------- routing ----------
+
+  function currentPath() {
+    const h = location.hash.replace(/^#/, "");
+    return h || "/";
+  }
+
+  function route() {
+    const path = currentPath();
+    Object.values(VIEWS).forEach((v) => (v.hidden = true));
+    els.viewProblem.hidden = true;
+
+    let matched = null;
+    let problemMatch = /^\/problem\/(.+)$/.exec(path);
+
+    if (problemMatch) {
+      renderProblemPage(decodeURIComponent(problemMatch[1]));
+      els.viewProblem.hidden = false;
+      matched = null; // no top-level nav item highlighted
+    } else if (VIEWS[path]) {
+      VIEWS[path].hidden = false;
+      if (path === "/glossary") renderGlossary();
+      if (path === "/references") renderReferences();
+      matched = path;
+    } else {
+      els.viewSearch.hidden = false;
+      matched = "/";
+    }
+
+    els.navLinks.forEach((a) => {
+      a.classList.toggle("active", a.dataset.route === matched);
+    });
+
+    closeDetail();
+    window.scrollTo(0, 0);
+  }
+
   function classById(id) {
     return DATA.complexityClasses.find((c) => c.id === id);
   }
   function paramById(id) {
     return DATA.parameters.find((p) => p.id === id);
   }
+  function problemById(id) {
+    return DATA.problems.find((p) => p.id === id);
+  }
+  function refText(key) {
+    const r = DATA.references[key];
+    return r ? r.text : key;
+  }
+  function citeLinks(keys) {
+    if (!keys || !keys.length) return "";
+    return keys
+      .map((k) => '<a class="cite-link" href="#/references">[' + k + "]</a>")
+      .join(" ");
+  }
+
+  // ---------- search / matrix view ----------
 
   function buildFacets() {
     const alphas = uniq(DATA.problems.map((p) => p.alpha));
@@ -59,9 +119,9 @@
       DATA.problems.flatMap((p) => (p.beta.length ? p.beta : [EMPTY_BETA_TOKEN]))
     );
 
-    renderChipRow(els.alphaRow, alphas, state.alpha, () => render());
-    renderChipRow(els.betaRow, betas, state.beta, () => render());
-    renderChipRow(els.gammaRow, gammas, state.gamma, () => render());
+    renderChipRow(els.alphaRow, alphas, state.alpha, renderMatrix);
+    renderChipRow(els.betaRow, betas, state.beta, renderMatrix);
+    renderChipRow(els.gammaRow, gammas, state.gamma, renderMatrix);
   }
 
   function uniq(arr) {
@@ -111,7 +171,7 @@
           chip.classList.add("active");
           chip.setAttribute("aria-pressed", "true");
         }
-        render();
+        renderMatrix();
       });
       els.paramToggle.appendChild(chip);
     });
@@ -127,7 +187,7 @@
         item.className = "legend-item";
         item.innerHTML =
           '<span class="legend-swatch" style="background:' + c.color + '"></span>' +
-          '<span>' + c.label + '</span>';
+          "<span>" + c.label + "</span>";
         item.title = c.description;
         els.legendItems.appendChild(item);
       });
@@ -154,7 +214,7 @@
         c.setAttribute("aria-pressed", "false");
       }
     });
-    render();
+    renderMatrix();
   });
 
   function filteredProblems() {
@@ -176,7 +236,7 @@
     return DATA.parameters.filter((p) => state.params.has(p.id) && used.has(p.id));
   }
 
-  function render() {
+  function renderMatrix() {
     const problems = filteredProblems();
     const params = activeParamsForProblems(problems);
 
@@ -210,13 +270,12 @@
       const tdProblem = document.createElement("td");
       tdProblem.className = "problem-cell";
       tdProblem.innerHTML =
-        '<div class="notation">' + p.notation + "</div>" +
+        '<a class="notation" href="#/problem/' + encodeURIComponent(p.id) + '">' + p.notation + "</a>" +
         '<div class="pname">' + p.name + "</div>" +
         '<div class="pname" style="margin-top:.3rem">' + p.classicalStatus + "</div>";
       tr.appendChild(tdProblem);
 
-      const cols = params.length ? params : [];
-      cols.forEach((param) => {
+      params.forEach((param) => {
         const td = document.createElement("td");
         td.className = "result-cell";
         const result = p.results.find((r) => r.parameter === param.id);
@@ -259,24 +318,26 @@
       detailField("Problem", problem.name) +
       detailField("Parameter", param.name) +
       detailField("Classical (unparameterized) status", problem.classicalStatus) +
-      detailField("Result", (cls ? cls.description : "")) +
+      detailField("Result", cls ? cls.description : "") +
       detailField("Note", result.note || "") +
-      detailField("Reference", result.reference || "—") +
+      detailFieldHtml("Reference", citeLinks(result.referenceKeys) || "—") +
       detailField(
         "Confidence",
         result.confidence === "verified"
           ? "Verified — cites a known published result."
           : "Illustrative — placeholder standing in for a real result; verify before relying on it."
-      );
+      ) +
+      '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(problem.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
   }
 
   function detailField(label, value) {
     if (!value) return "";
-    return (
-      '<div class="detail-field"><h4>' + label + "</h4><p>" + escapeHtml(value) + "</p></div>"
-    );
+    return '<div class="detail-field"><h4>' + label + "</h4><p>" + escapeHtml(value) + "</p></div>";
+  }
+  function detailFieldHtml(label, html) {
+    return '<div class="detail-field"><h4>' + label + "</h4><p>" + html + "</p></div>";
   }
 
   function escapeHtml(s) {
@@ -294,4 +355,103 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeDetail();
   });
+
+  // ---------- problem wiki page ----------
+
+  function renderProblemPage(id) {
+    const p = problemById(id);
+    if (!p) {
+      els.viewProblem.innerHTML =
+        '<div class="wiki-page"><a class="wiki-back" href="#/">&larr; Back to search</a><p>Unknown problem: ' +
+        escapeHtml(id) + "</p></div>";
+      return;
+    }
+
+    const resultsHtml = p.results.length
+      ? '<ul class="result-list">' +
+        p.results
+          .map((r) => {
+            const param = paramById(r.parameter);
+            const cls = classById(r.class);
+            return (
+              '<li class="result-row">' +
+              '<div class="param-name">' + (param ? param.symbol : r.parameter) +
+              '<span class="sym">' + (param ? param.name : "") + "</span></div>" +
+              '<div class="result-body"><p>' + (r.note || "") + "</p>" +
+              '<p>' + citeLinks(r.referenceKeys) + "</p></div>" +
+              '<span class="class-pill" style="background:' + (cls ? cls.color : "#868e96") + '">' +
+              (cls ? cls.label : r.class) + "</span>" +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ul>"
+      : '<p style="color:var(--muted)">No parameterized results recorded for this problem yet.</p>';
+
+    const relatedHtml = (p.related || []).length
+      ? '<div class="related-links">' +
+        p.related
+          .map((rid) => {
+            const rp = problemById(rid);
+            return rp
+              ? '<a href="#/problem/' + encodeURIComponent(rp.id) + '">' + rp.notation + "</a>"
+              : "";
+          })
+          .join("") +
+        "</div>"
+      : '<p style="color:var(--muted)">No related problems recorded.</p>';
+
+    els.viewProblem.innerHTML =
+      '<div class="wiki-page">' +
+      '<a class="wiki-back" href="#/">&larr; Back to search</a>' +
+      "<h2>" + p.notation + "</h2>" +
+      '<p class="wiki-alphabetagamma">' + p.name + "</p>" +
+      '<div class="wiki-status"><b>Classical (unparameterized) status</b>' + escapeHtml(p.classicalStatus) + "</div>" +
+      '<div class="wiki-section wiki-overview"><h3>Overview</h3><p>' + escapeHtml(p.overview || "") + "</p></div>" +
+      '<div class="wiki-section"><h3>Parameterized results</h3>' + resultsHtml + "</div>" +
+      '<div class="wiki-section"><h3>Related problems</h3>' + relatedHtml + "</div>" +
+      "</div>";
+  }
+
+  // ---------- glossary ----------
+
+  function renderGlossary() {
+    els.viewGlossary.innerHTML =
+      '<h2 class="page-title">Glossary</h2><div class="glossary-list">' +
+      '<div class="glossary-item"><h3>Complexity classes</h3></div>' +
+      DATA.complexityClasses
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map(
+          (c) =>
+            '<div class="glossary-item"><h3>' + c.label + "</h3><p>" + escapeHtml(c.description) + "</p></div>"
+        )
+        .join("") +
+      '<div class="glossary-item"><h3>Parameters</h3></div>' +
+      DATA.parameters
+        .map(
+          (p) =>
+            '<div class="glossary-item"><h3>' + p.name + ' <span class="sym">(' + p.symbol + ")</span></h3><p>" +
+            escapeHtml(p.gloss || "") +
+            "</p></div>"
+        )
+        .join("") +
+      "</div>";
+  }
+
+  // ---------- references ----------
+
+  function renderReferences() {
+    const keys = Object.keys(DATA.references).sort();
+    els.viewReferences.innerHTML =
+      '<h2 class="page-title">References</h2><div class="ref-list">' +
+      keys
+        .map(
+          (k) =>
+            '<div class="ref-item"><span class="ref-key">[' + k + ']</span><span>' +
+            escapeHtml(DATA.references[k].text) + "</span></div>"
+        )
+        .join("") +
+      "</div>";
+  }
 })();

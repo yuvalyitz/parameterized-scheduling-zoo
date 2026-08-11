@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "The Parameterized Scheduling Zoo",
-    "note": "Seed dataset for prototyping the UI. Entries marked \"confidence\": \"verified\" reflect well-known landmark results; entries marked \"illustrative\" are plausible placeholders standing in for real results and should be checked against the literature before being trusted. Classical α|β|γ notation follows Graham, Lawler, Lenstra & Rinnooy Kan (1979)."
+    "note": "Seed dataset for prototyping the site. Entries marked \"confidence\": \"verified\" reflect well-known landmark results; entries marked \"illustrative\" are plausible placeholders standing in for real results and should be checked against the literature before being trusted. Classical α|β|γ notation follows Graham, Lawler, Lenstra & Rinnooy Kan (1979)."
   },
   "complexityClasses": [
     { "id": "P",           "label": "P",                 "color": "#2f9e44", "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
@@ -13,15 +13,38 @@
     { "id": "open",        "label": "open",              "color": "#868e96", "order": 6, "description": "Complexity status not known / not settled." }
   ],
   "parameters": [
-    { "id": "m",        "symbol": "m",        "name": "number of machines" },
-    { "id": "pmax",     "symbol": "p_max",    "name": "maximum processing time" },
-    { "id": "numP",     "symbol": "#p",       "name": "number of distinct processing times" },
-    { "id": "numW",     "symbol": "#w",       "name": "number of distinct weights" },
-    { "id": "numR",     "symbol": "#r",       "name": "number of distinct release dates" },
-    { "id": "numSpeed", "symbol": "#speeds",  "name": "number of distinct machine speeds" },
-    { "id": "tw",       "symbol": "tw(prec)", "name": "treewidth of the precedence graph" },
-    { "id": "vc",       "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph" }
+    { "id": "m",        "symbol": "m",        "name": "number of machines",
+      "gloss": "The number of machines in the scheduling instance, taken as a parameter instead of part of the input size. Many problems that are NP-hard for arbitrary m turn out to be FPT or remain hard when m is small and fixed." },
+    { "id": "pmax",     "symbol": "p_max",    "name": "maximum processing time",
+      "gloss": "The largest job processing time in the instance. Parameterizing by p_max turns pseudo-polynomial dynamic programs (which run in time polynomial in the numeric value of processing times) into FPT algorithms." },
+    { "id": "numP",     "symbol": "#p",       "name": "number of distinct processing times",
+      "gloss": "The number of distinct values that appear among job processing times. Small #p lets jobs be grouped into few interchangeable classes, which is the basis of n-fold integer programming approaches." },
+    { "id": "numW",     "symbol": "#w",       "name": "number of distinct weights",
+      "gloss": "The number of distinct job weight values. Analogous in spirit to #p, but for weights instead of processing times." },
+    { "id": "numR",     "symbol": "#r",       "name": "number of distinct release dates",
+      "gloss": "The number of distinct release-date values. Small #r lets jobs be grouped by release-date class." },
+    { "id": "numSpeed", "symbol": "#speeds",  "name": "number of distinct machine speeds",
+      "gloss": "The number of distinct machine speed values in a uniform-machines (Q) environment." },
+    { "id": "tw",       "symbol": "tw(prec)", "name": "treewidth of the precedence graph",
+      "gloss": "The treewidth of the DAG describing precedence constraints between jobs. Bounded treewidth typically enables dynamic programming over a tree decomposition." },
+    { "id": "vc",       "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph",
+      "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges." }
   ],
+  "references": {
+    "GJ79":   { "text": "M. R. Garey & D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. 1979." },
+    "LST90":  { "text": "J. K. Lenstra, D. B. Shmoys & É. Tardos. Approximation algorithms for scheduling unrelated parallel machines. Mathematical Programming, 1990." },
+    "Lenstra83": { "text": "H. W. Lenstra Jr. Integer programming with a fixed number of variables. Mathematics of Operations Research, 1983." },
+    "MW15":   { "text": "M. Mnich & A. Wiese. Scheduling and fixed-parameter tractability. Mathematical Programming, 2015." },
+    "MvB18":  { "text": "M. Mnich & R. van Bevern. Parameterized complexity of machine scheduling: 15 open problems. Computers & Operations Research, 2018." },
+    "KK18":   { "text": "D. Knop & M. Koutecký. Scheduling meets n-fold integer programming. Journal of Scheduling, 2018." },
+    "BF95":   { "text": "H. L. Bodlaender & M. R. Fellows. W[2]-hardness of precedence constrained k-processor scheduling. Operations Research Letters, 1995." },
+    "Ullman75": { "text": "J. D. Ullman. NP-complete scheduling problems. Journal of Computer and System Sciences, 1975." },
+    "LRKB77": { "text": "J. K. Lenstra, A. H. G. Rinnooy Kan & P. Brucker. Complexity of machine scheduling problems. Annals of Discrete Mathematics, 1977." },
+    "Karp72": { "text": "R. M. Karp. Reducibility among combinatorial problems. Complexity of Computer Computations, 1972." },
+    "GS76":   { "text": "T. Gonzalez & S. Sahni. Open shop scheduling to minimize finish time. Journal of the ACM, 1976." },
+    "folklore": { "text": "Folklore / standard technique — no single canonical citation." },
+    "tbd": { "text": "Not yet sourced in this seed dataset." }
+  },
   "problems": [
     {
       "id": "1--Cmax",
@@ -29,6 +52,8 @@
       "alpha": "1", "beta": [], "gamma": "Cmax",
       "name": "Single machine, makespan",
       "classicalStatus": "Trivially polynomial (schedule all jobs back to back in any order).",
+      "overview": "The base case of the base case: with one machine and no constraints, makespan is fixed the moment job processing times are fixed, independent of the schedule chosen. It sits at the root of the zoo mostly as a sanity check for the interface, and as the natural starting point when adding constraints such as release dates or precedence.",
+      "related": ["P--Cmax", "1-rj-sumCj"],
       "results": []
     },
     {
@@ -36,19 +61,21 @@
       "notation": "P||Cmax",
       "alpha": "P", "beta": [], "gamma": "Cmax",
       "name": "Identical parallel machines, makespan",
-      "classicalStatus": "NP-hard (weakly) — partition reduction. Garey & Johnson 1979.",
+      "classicalStatus": "NP-hard (weakly) — partition reduction.",
+      "overview": "The classic multiprocessor scheduling problem: given jobs with processing times and m identical machines, minimize the time the last job finishes. NP-hard already for m=2 (it encodes Partition), but its pseudo-polynomial dynamic program is the textbook example of how a numeric parameter (p_max) or a structural one (m, #p) can turn intractability into fixed-parameter tractability.",
+      "related": ["1--Cmax", "Q--Cmax", "R--Cmax", "P-prec-Cmax"],
       "results": [
         { "parameter": "m", "class": "FPT", "confidence": "verified",
-          "reference": "Lenstra 1983 (ILP in fixed dimension); Mnich & Wiese, Math. Programming 2015",
-          "note": "Encode as an ILP whose number of variables depends only on m; solvable in f(m)·poly(n) time via Lenstra's algorithm." },
+          "referenceKeys": ["Lenstra83", "MW15"],
+          "note": "Encode as an ILP whose number of variables depends only on m; solvable in f(m)·poly(n) time via Lenstra's algorithm for integer programming in fixed dimension." },
         { "parameter": "pmax", "class": "FPT", "confidence": "illustrative",
-          "reference": "folklore (pseudo-polynomial DP)",
-          "note": "The classic O(n·m·p_max) subset-sum-style DP is already FPT when p_max is the parameter." },
+          "referenceKeys": ["folklore"],
+          "note": "The classic O(n·m·p_max) subset-sum-style dynamic program is already FPT when p_max is taken as the parameter." },
         { "parameter": "numP", "class": "FPT", "confidence": "illustrative",
-          "reference": "cf. Knop & Koutecký, IPCO 2018 (n-fold IP techniques)",
-          "note": "Group jobs by processing time and use an n-fold integer programming formulation of dimension depending on #p and m." },
+          "referenceKeys": ["KK18"],
+          "note": "Group jobs by processing time and use an n-fold integer programming formulation whose dimension depends on #p and m." },
         { "parameter": "numSpeed", "class": "open", "confidence": "illustrative",
-          "reference": "—",
+          "referenceKeys": ["tbd"],
           "note": "Placeholder — not meaningful for identical machines; included to show how an 'open' cell renders." }
       ]
     },
@@ -57,16 +84,18 @@
       "notation": "R||Cmax",
       "alpha": "R", "beta": [], "gamma": "Cmax",
       "name": "Unrelated machines, makespan",
-      "classicalStatus": "NP-hard (strongly); 2-approximable. Lenstra, Shmoys & Tardos, Math. Programming 1990.",
+      "classicalStatus": "NP-hard (strongly); 2-approximable.",
+      "overview": "Each job may take a different amount of time on each machine. Lenstra, Shmoys & Tardos gave the classic 2-approximation and showed exact solution is strongly NP-hard; the parameterized picture asks which structural restrictions (few machines, few distinct processing times) restore tractability.",
+      "related": ["P--Cmax", "Q--Cmax"],
       "results": [
         { "parameter": "m", "class": "FPT", "confidence": "verified",
-          "reference": "Mnich & Wiese, Math. Programming 2015",
-          "note": "FPT via Lenstra-type ILP algorithm, parameter m bounds the number of integer variables." },
+          "referenceKeys": ["MW15"],
+          "note": "FPT via a Lenstra-type ILP algorithm; the parameter m bounds the number of integer variables needed to encode an optimal assignment." },
         { "parameter": "pmax", "class": "open", "confidence": "illustrative",
-          "reference": "listed as an open direction in Mnich & van Bevern, Computers & OR 2018",
-          "note": "Whether the problem is FPT in p_max alone is not settled in this seed dataset." },
+          "referenceKeys": ["MvB18"],
+          "note": "Listed as an open direction in the Mnich & van Bevern survey; whether the problem is FPT in p_max alone is not settled in this seed dataset." },
         { "parameter": "numP", "class": "open", "confidence": "illustrative",
-          "reference": "—",
+          "referenceKeys": ["tbd"],
           "note": "Placeholder open cell." }
       ]
     },
@@ -76,13 +105,15 @@
       "alpha": "Q", "beta": [], "gamma": "Cmax",
       "name": "Uniform machines, makespan",
       "classicalStatus": "NP-hard (weakly).",
+      "overview": "Machines run at different but job-independent speeds. It sits between P||Cmax and R||Cmax in generality, and the parameterized results largely mirror P||Cmax with an added parameter for machine-speed diversity.",
+      "related": ["P--Cmax", "R--Cmax"],
       "results": [
         { "parameter": "m", "class": "FPT", "confidence": "verified",
-          "reference": "Lenstra 1983 (ILP in fixed dimension)",
-          "note": "Same ILP-in-fixed-dimension argument as P||Cmax, generalized to machine speeds." },
+          "referenceKeys": ["Lenstra83"],
+          "note": "Same ILP-in-fixed-dimension argument as P||Cmax, generalized to account for machine speeds." },
         { "parameter": "numSpeed", "class": "FPT", "confidence": "illustrative",
-          "reference": "cf. Knop & Koutecký, IPCO 2018",
-          "note": "Group machines by speed class; n-fold IP dimension depends on #speeds and m." }
+          "referenceKeys": ["KK18"],
+          "note": "Group machines by speed class; the resulting n-fold IP dimension depends on #speeds and m." }
       ]
     },
     {
@@ -90,16 +121,18 @@
       "notation": "P|prec|Cmax",
       "alpha": "P", "beta": ["prec"], "gamma": "Cmax",
       "name": "Identical machines with precedence constraints, makespan",
-      "classicalStatus": "NP-hard for general m (Garey & Johnson 1979); already hard for m=2 with arbitrary processing times (Ullman 1975).",
+      "classicalStatus": "NP-hard for general m; already hard for m=2 with arbitrary processing times.",
+      "overview": "Adding precedence constraints to identical-machine scheduling is a textbook example of a problem that gets harder, not easier, to parameterize: while P||Cmax is FPT in the number of machines m, adding precedence pushes that same parameterization to W[2]-hard. It is the canonical illustration that structural parameters interact with side constraints in ways that raw problem size doesn't.",
+      "related": ["P--Cmax"],
       "results": [
         { "parameter": "m", "class": "W2", "confidence": "verified",
-          "reference": "Bodlaender & Fellows, Operations Research Letters 1995 — “W[2]-hardness of precedence constrained k-processor scheduling”",
-          "note": "Landmark hardness result: adding precedence constraints pushes the m-parameterization from FPT (unrelated/identical machines without precedence) to W[2]-hard." },
+          "referenceKeys": ["BF95"],
+          "note": "Landmark hardness result: adding precedence constraints pushes the m-parameterization from FPT (identical/unrelated machines without precedence) to W[2]-hard." },
         { "parameter": "tw", "class": "FPT", "confidence": "illustrative",
-          "reference": "cf. dynamic programming over tree decompositions (Bodlaender-style), needs verification",
-          "note": "Bounded-treewidth precedence DAGs admit a DP that tracks a bounded-size frontier of the decomposition." },
+          "referenceKeys": ["folklore"],
+          "note": "Bounded-treewidth precedence DAGs admit a dynamic program that tracks a bounded-size frontier of the tree decomposition." },
         { "parameter": "vc", "class": "open", "confidence": "illustrative",
-          "reference": "—",
+          "referenceKeys": ["tbd"],
           "note": "Placeholder open cell." }
       ]
     },
@@ -108,13 +141,15 @@
       "notation": "1|rj|ΣCj",
       "alpha": "1", "beta": ["rj"], "gamma": "ΣCj",
       "name": "Single machine, release dates, total completion time",
-      "classicalStatus": "NP-hard (strongly). Lenstra, Rinnooy Kan & Brucker, Ann. Discrete Math. 1977.",
+      "classicalStatus": "NP-hard (strongly).",
+      "overview": "Minimizing total completion time is trivial without release dates (shortest processing time first), but adding release dates makes even the single-machine case strongly NP-hard. The natural parameters here count distinct release-date or processing-time values rather than machines, since there is only one machine.",
+      "related": ["1--Cmax"],
       "results": [
         { "parameter": "numR", "class": "FPT", "confidence": "illustrative",
-          "reference": "cf. Hermelin et al.—style “number of distinct X” parameterizations; needs verification",
-          "note": "Jobs sharing a release date form interchangeable blocks; state space depends only on #distinct release dates." },
+          "referenceKeys": ["tbd"],
+          "note": "Jobs sharing a release date form interchangeable blocks; the state space of a DP depends only on the number of distinct release dates." },
         { "parameter": "pmax", "class": "open", "confidence": "illustrative",
-          "reference": "—",
+          "referenceKeys": ["tbd"],
           "note": "Placeholder open cell." }
       ]
     },
@@ -123,13 +158,15 @@
       "notation": "1||ΣwjUj",
       "alpha": "1", "beta": [], "gamma": "ΣwjUj",
       "name": "Single machine, weighted number of tardy jobs",
-      "classicalStatus": "NP-hard (weakly) — knapsack reduction (Karp 1972).",
+      "classicalStatus": "NP-hard (weakly) — knapsack-style reduction.",
+      "overview": "Deciding which jobs to let be late (rather than by how much) turns this into a knapsack-flavored problem: the on-time jobs must fit before their due dates, and among feasible on-time sets we maximize completed weight. Distinct-value parameters (#w, #p) are the natural knobs since they bound the number of interchangeable job classes.",
+      "related": ["1--Cmax"],
       "results": [
         { "parameter": "numW", "class": "FPT", "confidence": "illustrative",
-          "reference": "cf. Hermelin, Karhi, Pinedo & Shabtay-style results on distinct-weight parameterizations; needs verification",
+          "referenceKeys": ["tbd"],
           "note": "With few distinct weight classes, an ILP/DP of dimension depending on #w becomes tractable." },
         { "parameter": "numP", "class": "XP", "confidence": "illustrative",
-          "reference": "—",
+          "referenceKeys": ["tbd"],
           "note": "Solvable in n^f(#p) time via brute-force over per-class schedules; not known whether this can be improved to FPT." }
       ]
     },
@@ -138,7 +175,9 @@
       "notation": "O2||Cmax",
       "alpha": "O", "beta": [], "gamma": "Cmax",
       "name": "Two-machine open shop, makespan",
-      "classicalStatus": "Polynomial. Gonzalez & Sahni, JACM 1976.",
+      "classicalStatus": "Polynomial.",
+      "overview": "Open-shop scheduling with two machines is one of the few multi-operation shop-scheduling problems solvable exactly in polynomial time, via a simple list-scheduling argument. It's included mainly as a green, parameter-independent baseline for contrast against the harder shop-scheduling variants.",
+      "related": ["P--Cmax"],
       "results": []
     }
   ]

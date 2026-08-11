@@ -8,8 +8,13 @@
 </head>
 <body>
 <header class="site-header">
-  <h1>The Parameterized Scheduling Zoo</h1>
+  <h1><a href="#/">The Parameterized Scheduling Zoo</a></h1>
   <p class="tagline">A faceted browser for the parameterized complexity of machine scheduling problems.</p>
+  <nav class="site-nav">
+    <a href="#/" data-route="/">Search</a>
+    <a href="#/glossary" data-route="/glossary">Glossary</a>
+    <a href="#/references" data-route="/references">References</a>
+  </nav>
 </header>
 
 <div class="banner" id="seed-banner">
@@ -17,6 +22,8 @@
 </div>
 
 <main>
+
+<section id="view-search" class="view">
   <section class="facets" aria-label="Problem facets">
     <div class="facet-group">
       <h2>Machine environment <span class="greek">α</span></h2>
@@ -49,6 +56,14 @@
     <h2>Legend</h2>
     <div id="legend-items" class="legend-items"></div>
   </section>
+</section>
+
+<section id="view-problem" class="view" hidden></section>
+
+<section id="view-glossary" class="view" hidden></section>
+
+<section id="view-references" class="view" hidden></section>
+
 </main>
 
 <aside id="detail-panel" class="detail-panel" hidden>
@@ -58,7 +73,7 @@
 <div id="detail-overlay" class="detail-overlay" hidden></div>
 
 <footer class="site-footer">
-  <p>Inspired by <a href="https://schedulingzoo.lip6.fr/search.php" target="_blank" rel="noopener">The Scheduling Zoo</a> (T'kindt et al., LIP6) — adapted here for parameterized complexity results. Notation: Graham, Lawler, Lenstra &amp; Rinnooy Kan (1979).</p>
+  <p>Inspired by <a href="https://schedulingzoo.lip6.fr/search.php" target="_blank" rel="noopener">The Scheduling Zoo</a> (T'kindt et al., LIP6) and by the <a href="https://complexityzoo.net/" target="_blank" rel="noopener">Complexity Zoo</a> (Aaronson et al.) — adapted here for parameterized complexity results. Notation: Graham, Lawler, Lenstra &amp; Rinnooy Kan (1979).</p>
 </footer>
 
 <script src="js/app.js"></script>

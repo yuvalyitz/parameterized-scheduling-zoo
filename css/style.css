@@ -41,7 +41,25 @@ body {
   text-align: center;
 }
 .site-header h1 { margin: 0 0 0.25rem; font-size: 1.9rem; }
+.site-header h1 a { color: inherit; text-decoration: none; }
 .tagline { color: var(--muted); margin: 0; }
+.site-nav {
+  display: flex;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 0.9rem;
+}
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding-bottom: 0.2rem;
+  border-bottom: 2px solid transparent;
+}
+.site-nav a:hover { color: var(--fg); }
+.site-nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 .banner {
   max-width: 900px;
@@ -237,3 +255,107 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   padding: 1rem 1.5rem 3rem;
 }
 .site-footer a { color: var(--accent); }
+
+/* Wiki-style problem page */
+.wiki-page { max-width: 820px; margin: 0 auto; }
+.wiki-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.wiki-back:hover { text-decoration: underline; }
+.wiki-page h2 {
+  margin: 0 0 0.15rem;
+  font-size: 1.6rem;
+}
+.wiki-alphabetagamma {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0 0 1.25rem;
+}
+.wiki-status {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+}
+.wiki-status b { color: var(--muted); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.04em; display: block; margin-bottom: 0.2rem; }
+.wiki-section { margin-bottom: 1.75rem; }
+.wiki-section h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+.wiki-overview p { font-size: 0.95rem; }
+
+.result-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.result-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8rem;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel-bg);
+}
+.result-row .param-name { font-weight: 600; font-size: 0.9rem; }
+.result-row .param-name .sym { color: var(--muted); font-weight: 400; font-size: 0.8rem; display: block; }
+.result-row .result-body p { margin: 0.15rem 0; font-size: 0.87rem; }
+.result-row .result-body .cite-link { color: var(--accent); text-decoration: none; }
+.result-row .result-body .cite-link:hover { text-decoration: underline; }
+.class-pill {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  color: white;
+  font-weight: 600;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.related-links { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.related-links a {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  color: var(--fg);
+  text-decoration: none;
+  background: var(--chip-bg);
+}
+.related-links a:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Glossary */
+.glossary-list { max-width: 820px; margin: 0 auto; display: grid; gap: 1.1rem; }
+.glossary-item h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.glossary-item .sym { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+.glossary-item p { margin: 0.2rem 0 0; font-size: 0.9rem; color: var(--fg); }
+
+/* References */
+.ref-list { max-width: 820px; margin: 0 auto; display: grid; gap: 0.7rem; }
+.ref-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.88rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+}
+.ref-item .ref-key {
+  font-weight: 700;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.view h2.page-title { text-align: center; margin-bottom: 1.5rem; }
