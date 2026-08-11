@@ -130,6 +130,15 @@
       .join(" ");
   }
 
+  const CONFIDENCE_LABELS = {
+    verified: "Verified — cites a known published result.",
+    inferred: "Inferred — a careful reading of the source's construction/proof, not an explicitly stated theorem there. Treat as a plausible but unverified claim.",
+    illustrative: "Illustrative — placeholder standing in for a real result; verify before relying on it.",
+  };
+  function confidenceLabel(confidence) {
+    return CONFIDENCE_LABELS[confidence] || confidence;
+  }
+
   // ---------- search / matrix view ----------
 
   function buildFacets() {
@@ -214,14 +223,14 @@
   }
 
   function updateBannerCount() {
-    let illustrative = 0, total = 0;
+    let notVerified = 0, total = 0;
     DATA.problems.forEach((p) =>
       p.results.forEach((r) => {
         total++;
-        if (r.confidence === "illustrative") illustrative++;
+        if (r.confidence !== "verified") notVerified++;
       })
     );
-    els.bannerCount.textContent = illustrative + " of " + total + " result cells";
+    els.bannerCount.textContent = notVerified + " of " + total + " result cells";
   }
 
   els.resetBtn.addEventListener("click", () => {
@@ -311,8 +320,8 @@
           btn.style.background = cls ? cls.color : "#868e96";
           btn.innerHTML =
             (cls ? cls.label : result.class) +
-            (result.confidence === "illustrative"
-              ? '<span class="conf-flag" title="Illustrative — not verified">•</span>'
+            (result.confidence && result.confidence !== "verified"
+              ? '<span class="conf-flag" title="' + escapeHtml(confidenceLabel(result.confidence)) + '">•</span>'
               : "");
           btn.addEventListener("click", () => openDetail(p, param, result, cls));
           td.appendChild(btn);
@@ -341,12 +350,7 @@
       detailField("Result", cls ? cls.description : "") +
       detailField("Note", result.note || "") +
       detailFieldHtml("Reference", citeLinks(result.referenceKeys) || "—") +
-      detailField(
-        "Confidence",
-        result.confidence === "verified"
-          ? "Verified — cites a known published result."
-          : "Illustrative — placeholder standing in for a real result; verify before relying on it."
-      ) +
+      detailField("Confidence", confidenceLabel(result.confidence)) +
       '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(problem.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
@@ -398,7 +402,11 @@
               '<div class="param-name">' + (param ? param.symbol : r.parameter) +
               '<span class="sym">' + (param ? param.name : "") + "</span></div>" +
               '<div class="result-body"><p>' + (r.note || "") + "</p>" +
-              '<p>' + citeLinks(r.referenceKeys) + "</p></div>" +
+              '<p>' + citeLinks(r.referenceKeys) +
+              (r.confidence ? ' <span class="conf-dot ' + escapeHtml(r.confidence) + '" title="' +
+                escapeHtml(confidenceLabel(r.confidence)) + '"></span> <em style="color:var(--muted);font-size:0.8em">' +
+                escapeHtml(r.confidence) + "</em>" : "") +
+              "</p></div>" +
               '<span class="class-pill" style="background:' + (cls ? cls.color : "#868e96") + '">' +
               (cls ? cls.label : r.class) + "</span>" +
               "</li>"
@@ -425,7 +433,7 @@
     const ccBadge = cc
       ? '<span class="class-pill" style="background:' +
         (cc.fill ? cc.color : "transparent") +
-        ";border:2px solid " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
+        ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
         '">' + cc.label + "</span> "
       : "";
 
@@ -482,13 +490,23 @@
       "</div>";
   }
 
-  const MAP_COL_W = 210, MAP_ROW_H = 130, MAP_COL_STAGGER = 60;
-  const MAP_NODE_W = 190, MAP_NODE_H = 56, MAP_MARGIN = 50;
+  const MAP_COL_W = 210, MAP_ROW_H = 130, MAP_MARGIN = 50;
+  const MAP_NODE_W_DEFAULT = 190, MAP_NODE_H_DEFAULT = 56, MAP_COL_STAGGER_DEFAULT = 60;
 
-  function mapNodeCenter(node) {
+  function axisById(id) {
+    return (DATA.axes || []).find((a) => a.id === id);
+  }
+
+  function mapNodeCenter(node, nodeW, nodeH, colStagger) {
     const left = MAP_MARGIN + (node.col - 1) * MAP_COL_W;
-    const top = MAP_MARGIN + node.row * MAP_ROW_H + (node.col - 1) * MAP_COL_STAGGER;
-    return { left, top, cx: left + MAP_NODE_W / 2, cy: top + MAP_NODE_H / 2 };
+    const top = MAP_MARGIN + node.row * MAP_ROW_H + (node.col - 1) * colStagger;
+    return { left, top, cx: left + nodeW / 2, cy: top + nodeH / 2 };
+  }
+
+  function notationFontSize(notation) {
+    if (notation.length > 20) return "0.68rem";
+    if (notation.length > 13) return "0.8rem";
+    return "0.92rem";
   }
 
   function renderMap(id) {
@@ -500,23 +518,28 @@
       return;
     }
 
+    const nodeW = map.nodeW || MAP_NODE_W_DEFAULT;
+    const nodeH = map.nodeH || MAP_NODE_H_DEFAULT;
+    const colStagger = map.colStagger != null ? map.colStagger : MAP_COL_STAGGER_DEFAULT;
+
     const positions = {};
     let maxCol = 0, maxRow = 0;
     map.nodes.forEach((n) => {
-      positions[n.problemId] = mapNodeCenter(n);
+      positions[n.problemId] = mapNodeCenter(n, nodeW, nodeH, colStagger);
       maxCol = Math.max(maxCol, n.col);
       maxRow = Math.max(maxRow, n.row);
     });
-    const width = MAP_MARGIN * 2 + (maxCol - 1) * MAP_COL_W + MAP_NODE_W;
-    const height = MAP_MARGIN * 2 + maxRow * MAP_ROW_H + (maxCol - 1) * MAP_COL_STAGGER + MAP_NODE_H;
+    const width = MAP_MARGIN * 2 + (maxCol - 1) * MAP_COL_W + nodeW;
+    const height = MAP_MARGIN * 2 + maxRow * MAP_ROW_H + (maxCol - 1) * colStagger + nodeH;
 
-    const axisColors = { stages: "#868e96", weight: "#1971c2", flexibility: "#ae3ec9", parallel: "#0c8599" };
+    const usedAxes = new Set(map.edges.map((e) => e.axis));
 
     const linesSvg = map.edges
       .map((e) => {
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
-        const color = axisColors[e.axis] || "#868e96";
+        const axis = axisById(e.axis);
+        const color = axis ? axis.color : "#868e96";
         return (
           '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
           '" stroke="' + color + '" stroke-width="2" />'
@@ -532,11 +555,13 @@
         const cc = classicalClassById(p.classicalClass);
         const bg = cc && cc.fill ? cc.color : "transparent";
         const border = cc ? cc.color : "#868e96";
+        const borderStyle = cc ? cc.border || "solid" : "solid";
         return (
           '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" title="' +
           escapeHtml(p.classicalStatus) + '" href="#/problem/' + encodeURIComponent(p.id) +
-          '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + MAP_NODE_W +
-          "px;height:" + MAP_NODE_H + "px;background:" + bg + ";border-color:" + border + '">' +
+          '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + nodeW +
+          "px;height:" + nodeH + "px;background:" + bg + ";border-color:" + border +
+          ";border-style:" + borderStyle + ";font-size:" + notationFontSize(p.notation) + '">' +
           escapeHtml(p.notation) + "</a>"
         );
       })
@@ -545,27 +570,37 @@
     const axisLabelsHtml = (map.axisLabels || [])
       .map((a) => {
         const left = MAP_MARGIN + (a.col - 1) * MAP_COL_W;
-        const top = MAP_MARGIN + a.row * MAP_ROW_H + (a.col - 1) * MAP_COL_STAGGER;
+        const top = MAP_MARGIN + a.row * MAP_ROW_H + (a.col - 1) * colStagger;
         return '<div class="map-axis-label" style="left:' + left + "px;top:" + top + 'px">' + escapeHtml(a.text) + "</div>";
       })
       .join("");
 
-    const legendHtml = Object.keys(axisColors)
-      .map(
-        (axis) =>
+    const axisLegendHtml = Array.from(usedAxes)
+      .map((axisId) => {
+        const axis = axisById(axisId);
+        return (
           '<div class="legend-item"><span class="legend-swatch" style="background:' +
-          axisColors[axis] + '"></span><span>' + axis + " axis</span></div>"
-      )
+          (axis ? axis.color : "#868e96") + '"></span><span>' + (axis ? axis.label : axisId) + "</span></div>"
+        );
+      })
       .join("");
 
+    const usedClasses = new Set(map.nodes.map((n) => (problemById(n.problemId) || {}).classicalClass));
     const classLegendHtml = DATA.classicalClasses
+      .filter((c) => usedClasses.has(c.id))
       .map(
         (c) =>
           '<div class="legend-item"><span class="legend-swatch" style="background:' +
-          (c.fill ? c.color : "transparent") + ";border:2px solid " + c.color +
+          (c.fill ? c.color : "transparent") + ";border:2px " + (c.border || "solid") + " " + c.color +
           '"></span><span>' + c.label + "</span></div>"
       )
       .join("");
+
+    const excludedHtml = (map.excluded || []).length
+      ? '<div class="map-excluded"><h3>Deliberately excluded</h3><ul>' +
+        map.excluded.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") +
+        "</ul></div>"
+      : "";
 
     els.viewMap.innerHTML =
       '<div class="map-page">' +
@@ -575,7 +610,8 @@
       '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + linesSvg + "</svg>" +
       axisLabelsHtml + nodesHtml +
       "</div></div>" +
-      '<div class="map-legend">' + classLegendHtml + legendHtml + "</div>" +
+      '<div class="map-legend">' + classLegendHtml + axisLegendHtml + "</div>" +
+      excludedHtml +
       "</div>";
   }
 

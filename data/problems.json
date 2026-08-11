@@ -4,11 +4,14 @@
     "note": "Seed dataset for prototyping the site. Entries marked \"confidence\": \"verified\" reflect well-known landmark results; entries marked \"illustrative\" are plausible placeholders standing in for real results and should be checked against the literature before being trusted. Classical α|β|γ notation follows Graham, Lawler, Lenstra & Rinnooy Kan (1979)."
   },
   "classicalClasses": [
-    { "id": "P",                 "label": "P",                              "color": "#2f9e44", "fill": true,  "order": 0, "description": "Polynomial-time solvable." },
-    { "id": "weakly-NP-hard",    "label": "weakly NP-hard",                 "color": "#f08c00", "fill": true,  "order": 1, "description": "NP-hard, and a pseudo-polynomial-time algorithm is known." },
-    { "id": "NP-hard-unresolved","label": "NP-hard (weak/strong open)",     "color": "#f08c00", "fill": false, "order": 2, "description": "Known NP-hard, but whether it is strongly NP-hard or admits a pseudo-polynomial algorithm is open." },
-    { "id": "strongly-NP-hard",  "label": "strongly NP-hard",               "color": "#c92a2a", "fill": true,  "order": 3, "description": "NP-hard even when all numeric input is given in unary; no pseudo-polynomial algorithm unless P=NP." },
-    { "id": "open",              "label": "open",                          "color": "#868e96", "fill": true,  "order": 4, "description": "Not even known to be NP-hard; complexity status unsettled." }
+    { "id": "P",                 "label": "P",                              "color": "#2f9e44", "fill": true,  "border": "solid",  "order": 0, "description": "Polynomial-time solvable." },
+    { "id": "weakly-NP-hard",    "label": "weakly NP-hard",                 "color": "#f08c00", "fill": true,  "border": "solid",  "order": 1, "description": "NP-hard, and a pseudo-polynomial-time algorithm is known." },
+    { "id": "NP-hard-unresolved","label": "NP-hard (weak/strong open)",     "color": "#f08c00", "fill": false, "border": "solid",  "order": 2, "description": "Known NP-hard, but whether it is strongly NP-hard or admits a pseudo-polynomial algorithm is open." },
+    { "id": "strongly-NP-hard",  "label": "strongly NP-hard",               "color": "#c92a2a", "fill": true,  "border": "solid",  "order": 3, "description": "NP-hard even when all numeric input is given in unary; no pseudo-polynomial algorithm unless P=NP." },
+    { "id": "FPT",               "label": "FPT (parameter noted on node)",  "color": "#1971c2", "fill": true,  "border": "solid",  "order": 4, "description": "Fixed-parameter tractable for the parameter named on the node; not necessarily polynomial for arbitrary input." },
+    { "id": "W-hard",            "label": "W[1]/W[2]-hard (param. noted)",  "color": "#ae3ec9", "fill": true,  "border": "solid",  "order": 5, "description": "W[1]- or W[2]-hard for the parameter named on the node; unlikely to be FPT in that parameter." },
+    { "id": "open",              "label": "open",                           "color": "#868e96", "fill": false, "border": "dashed", "order": 6, "description": "Not even known to be NP-hard, or an explicitly unresolved question; complexity status unsettled." },
+    { "id": "unclaimed",         "label": "no direct claim (structural)",   "color": "#868e96", "fill": false, "border": "dotted", "order": 7, "description": "No citation classifies this exact problem; its status is only bounded indirectly via problems it generalizes or specializes." }
   ],
   "complexityClasses": [
     { "id": "P",           "label": "P",                 "color": "#2f9e44", "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
@@ -18,6 +21,16 @@
     { "id": "W2",          "label": "W[2]-hard",         "color": "#d9480f", "order": 4, "description": "W[2]-hard: unlikely to be FPT (stronger than W[1])." },
     { "id": "paraNP",      "label": "para-NP-hard",      "color": "#c92a2a", "order": 5, "description": "NP-hard even for a constant value of the parameter." },
     { "id": "open",        "label": "open",              "color": "#868e96", "order": 6, "description": "Complexity status not known / not settled." }
+  ],
+  "axes": [
+    { "id": "stages",         "label": "flow-shop stage count", "color": "#868e96" },
+    { "id": "weight",         "label": "weighted vs. unweighted", "color": "#1971c2" },
+    { "id": "flexibility",    "label": "flexible-machine stages", "color": "#ae3ec9" },
+    { "id": "parallel",       "label": "single vs. parallel machines", "color": "#0c8599" },
+    { "id": "release-times",  "label": "release-time generality", "color": "#e8590c" },
+    { "id": "release+parallel", "label": "release times + machine count (combined)", "color": "#f08c00" },
+    { "id": "uniform-p",      "label": "uniform vs. general processing times", "color": "#2f9e44" },
+    { "id": "window",         "label": "due-date window / slack bound", "color": "#e64980" }
   ],
   "parameters": [
     { "id": "m",        "symbol": "m",        "name": "number of machines",
@@ -35,7 +48,11 @@
     { "id": "tw",       "symbol": "tw(prec)", "name": "treewidth of the precedence graph",
       "gloss": "The treewidth of the DAG describing precedence constraints between jobs. Bounded treewidth typically enables dynamic programming over a tree decomposition." },
     { "id": "vc",       "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph",
-      "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges." }
+      "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges." },
+    { "id": "numDD_numP", "symbol": "#dd+#p", "name": "number of distinct due dates plus number of distinct processing times",
+      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter. Common in single-machine scheduling: bounding both lets jobs be grouped into few interchangeable (due-date, processing-time) classes." },
+    { "id": "sigma_plus_m", "symbol": "σ+m", "name": "slack bound σ plus number of machines m",
+      "gloss": "The additive due-date slack bound (how far d_j−r_j may exceed p_j) plus the number of machines, treated as a single combined parameter." }
   ],
   "references": {
     "GJ79":   { "text": "M. R. Garey & D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. 1979." },
@@ -51,7 +68,11 @@
     "GS76":   { "text": "T. Gonzalez & S. Sahni. Open shop scheduling to minimize finish time. Journal of the ACM, 1976." },
     "folklore": { "text": "Folklore / standard technique — no single canonical citation." },
     "tbd": { "text": "Not yet sourced in this seed dataset." },
-    "user-diagram": { "text": "Classification as given directly by the site author's own diagram; original paper/citation not yet attached." }
+    "user-diagram": { "text": "Classification as given directly by the site author's own diagram; original paper/citation not yet attached." },
+    "Moore68": { "text": "J. M. Moore. An n job, one machine sequencing algorithm for minimizing the number of late jobs. Management Science, 1968." },
+    "HKPS18": { "text": "D. Hermelin, S. Karhi, M. Pinedo & D. Shabtay. New algorithms for minimizing the weighted number of tardy jobs on a single machine. Annals of Operations Research, 2018." },
+    "HM25": { "text": "K. Heeger & H. Molter, 2025. (Full citation to be attached — title/venue not yet confirmed by the site author.)" },
+    "Cieliebak04": { "text": "M. Cieliebak et al., 2004, on the hardness of feasibility for interval/deadline scheduling. (Full citation to be attached — the site author is citing this via a feasibility-to-optimization hardness argument, not a direct statement in the source.)" }
   },
   "problems": [
     {
@@ -294,6 +315,132 @@
       "overview": "The simplest problem in the family: one machine, unit weights. Polynomial, as are all of its direct generalizations along a single axis (adding machines or an extra unweighted flow-shop stage) — it only takes a combination of axes to reach NP-hardness.",
       "related": ["1--sumWjZj", "F2--sumZj"],
       "results": []
+    },
+    {
+      "id": "P-rj--sumWjUj-MEGA",
+      "notation": "P|rj|ΣwjUj",
+      "alpha": "P", "beta": ["rj"], "gamma": "ΣwjUj",
+      "name": "The mega problem: parallel machines, release times, no preemption, maximize weighted throughput",
+      "classicalClass": "unclaimed",
+      "classicalStatus": "No single citation classifies the problem as a whole — it is at least NP-hard and W[2]-hard by inheritance (it generalizes P|pj=p,rj|ΣUj, which is), but its own tight complexity is the open frontier this whole map is charting.",
+      "overview": "m identical machines, arbitrary release times, arbitrary processing times, no preemption; Uj=1 if job j is not completed (rejected), and the goal is to maximize completed weight (equivalently minimize ΣwjUj). This is the root problem this entire site was built to map: every other node here is a restriction of it along one of three independent axes — how much machine/release-time richness is kept, whether processing times are forced uniform, and how tightly the due-date window is bounded.",
+      "related": ["1-rj--sumWjUj", "P-rj--sumUj", "P-rj-JIT--sumWjUj"],
+      "results": []
+    },
+    {
+      "id": "1--sumUj",
+      "notation": "1||ΣUj",
+      "alpha": "1", "beta": [], "gamma": "ΣUj",
+      "name": "Single machine, no release times, unweighted rejection",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial (Moore's algorithm).",
+      "overview": "The base case of the mega problem's whole 'who/when' axis: one machine, every job available at time 0, and every job worth the same. Moore's 1968 algorithm solves it exactly via a greedy exchange argument, making it the easiest corner of the entire map.",
+      "related": ["1--sumWjUj", "P-rj--sumUj"],
+      "results": []
+    },
+    {
+      "id": "1--sumWjUj",
+      "notation": "1||ΣwjUj",
+      "alpha": "1", "beta": [], "gamma": "ΣwjUj",
+      "name": "Single machine, no release times, weighted rejection",
+      "classicalClass": "weakly-NP-hard",
+      "classicalStatus": "NP-hard — knapsack-style reduction; weak/strong status as given by Karp is the classical weakly-NP-hard knapsack flavor.",
+      "overview": "Adding weights to 1||ΣUj is enough on its own to leave polynomial territory: Karp's 1972 problem 19 shows this is NP-hard via a reduction resembling knapsack (choose which jobs to keep on time to maximize kept weight, subject to a single deadline ordering constraint).",
+      "related": ["1--sumUj", "1-rj--sumWjUj"],
+      "results": []
+    },
+    {
+      "id": "1-rj--sumWjUj",
+      "notation": "1|rj|ΣwjUj",
+      "alpha": "1", "beta": ["rj"], "gamma": "ΣwjUj",
+      "name": "Single machine, general release times, weighted rejection",
+      "classicalClass": "unclaimed",
+      "classicalStatus": "No classical (parameter-free) claim recorded here — it is at least as hard as 1||ΣwjUj (weakly NP-hard), which it generalizes by allowing release times. Hermelin, Karhi, Pinedo & Shabtay give an FPT result for a specific pair of parameters (see parameterized results below).",
+      "overview": "The single-machine mega problem: general release times, general weights, no machine parallelism. Hermelin, Karhi, Pinedo & Shabtay (2018) show it becomes tractable once both the number of distinct due dates and the number of distinct processing times are bounded together — a genuinely parameterized result, not a classical complexity statement.",
+      "related": ["1--sumWjUj", "P-rj--sumWjUj-MEGA"],
+      "results": [
+        { "parameter": "numDD_numP", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "FPT parameterized by the number of distinct due dates plus the number of distinct processing times, taken together as one combined parameter." }
+      ]
+    },
+    {
+      "id": "P-rj--sumUj",
+      "notation": "P|rj|ΣUj",
+      "alpha": "P", "beta": ["rj"], "gamma": "ΣUj",
+      "name": "Parallel machines, general release times, unweighted rejection",
+      "classicalClass": "unclaimed",
+      "classicalStatus": "No direct claim of its own in this map — it sits structurally between the single-machine/weighted branch above and the uniform-processing-time branch below, reachable from both but not independently classified by a citation yet.",
+      "overview": "This node exists mainly to hold the DAG together: it is what you get from 1||ΣUj by adding both machines and release times at once, and what the mega problem becomes once weights are dropped. Every uniform-processing-time node below is a further restriction of this one.",
+      "related": ["1--sumUj", "P-rj--sumWjUj-MEGA", "P-pj=p-rj--sumUj"],
+      "results": []
+    },
+    {
+      "id": "P-pj=p-rj--sumUj",
+      "notation": "P|pj=p,rj|ΣUj",
+      "alpha": "P", "beta": ["pj=p", "rj"], "gamma": "ΣUj",
+      "name": "Parallel machines, uniform processing time, general release times, unweighted rejection, no window bound",
+      "classicalClass": "unclaimed",
+      "classicalStatus": "NP-hard, W[2]-hard parameterized by m (Heeger & Molter 2025) — see parameterized results; classical weak-vs-strong status not stated by that citation, so left unclaimed here rather than guessed.",
+      "overview": "All processing times equal a common value p, due dates are otherwise unrestricted (no bound on the window dj−rj). Heeger & Molter (2025) show this is NP-hard and W[2]-hard in the number of machines m — the headline hardness result anchoring the whole uniform-processing-time branch of the map.",
+      "related": ["P-rj--sumUj", "P-pj=p-rj-lambda--sumUj", "P-pj=p-rj-sigma--sumUj"],
+      "results": [
+        { "parameter": "m", "class": "W2", "confidence": "verified",
+          "referenceKeys": ["HM25"],
+          "note": "W[2]-hard parameterized by the number of machines m." }
+      ]
+    },
+    {
+      "id": "P-pj=p-rj-lambda--sumUj",
+      "notation": "P|pj=p,rj,dj−rj≤λpj|ΣUj",
+      "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=lambda*pj (lambda≈2)"], "gamma": "ΣUj",
+      "name": "Uniform processing time, window bounded multiplicatively (λ≈2, fixed)",
+      "classicalClass": "unclaimed",
+      "classicalStatus": "W[2]-hard parameterized by m — not stated explicitly by Heeger & Molter, but inferred by the site author from reading their reduction's construction. Flag as inferred, not verified, if citing.",
+      "overview": "Same uniform-processing-time setting as P|pj=p,rj|ΣUj, but with the due-date window additionally bounded by a fixed multiplicative slack (dj−rj≤λpj for λ≈2). A tighter restriction than the unbounded-window node, so at least as hard; the site author's reading of the Heeger–Molter construction suggests it stays W[2]-hard under this restriction, but this specific claim is their own inference rather than a stated theorem.",
+      "related": ["P-pj=p-rj--sumUj"],
+      "results": [
+        { "parameter": "m", "class": "W2", "confidence": "inferred",
+          "referenceKeys": ["HM25"],
+          "note": "Inferred (not explicitly stated) from the structure of the Heeger & Molter '25 reduction — treat as a plausible reading, not a verified citation." }
+      ]
+    },
+    {
+      "id": "P-pj=p-rj-sigma--sumUj",
+      "notation": "P|pj=p,rj,dj−rj≤pj+σ|ΣUj",
+      "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=pj+sigma"], "gamma": "ΣUj",
+      "name": "Uniform processing time, window bounded additively (σ)",
+      "classicalClass": "open",
+      "classicalStatus": "OPEN — the live open question this whole map was built around.",
+      "overview": "The additive-slack sibling of the λ-bounded node: dj−rj≤pj+σ instead of dj−rj≤λpj. Whether this is FPT, W[2]-hard, or something else when parameterized by σ+m is not known — this is the specific open question that motivated building this map in the first place.",
+      "related": ["P-pj=p-rj--sumUj"],
+      "results": [
+        { "parameter": "sigma_plus_m", "class": "open", "confidence": "verified",
+          "referenceKeys": ["tbd"],
+          "note": "Open. The central unresolved question driving this map — no known FPT algorithm or W-hardness proof for this parameterization." }
+      ]
+    },
+    {
+      "id": "P-rj-sigma--sumUj",
+      "notation": "P|rj,dj−rj≤pj+σ|ΣUj",
+      "alpha": "P", "beta": ["rj", "dj-rj<=pj+sigma (sigma>=2 fixed)"], "gamma": "ΣUj",
+      "name": "General processing times, window bounded additively (σ≥2 fixed), unweighted",
+      "classicalClass": "NP-hard-unresolved",
+      "classicalStatus": "NP-hard — inferred via a feasibility-to-optimization hardness argument from Cieliebak et al. (2004), not stated as an optimization-hardness result anywhere directly. Weak/strong status not addressed.",
+      "overview": "The general-processing-time analogue of the uniform-p, σ-bounded node: same additive slack bound on the window, but processing times are no longer forced equal. The site author reasons that feasibility-hardness shown by Cieliebak et al. (2004) for a related deadline-scheduling setting implies optimization-hardness here, via a standard feasibility-to-optimization argument — but this chain of reasoning is the author's own, not a direct statement in the source.",
+      "related": ["P-rj--sumUj", "P-rj-JIT--sumWjUj"],
+      "results": []
+    },
+    {
+      "id": "P-rj-JIT--sumWjUj",
+      "notation": "P|rj,dj=rj+pj|ΣwjUj",
+      "alpha": "P", "beta": ["rj", "dj=rj+pj (zero slack / JIT)"], "gamma": "ΣwjUj",
+      "name": "General processing times, zero slack (just-in-time), weighted rejection",
+      "classicalClass": "P",
+      "classicalStatus": "Polynomial — classical weighted interval scheduling.",
+      "overview": "Pinning the due date to exactly rj+pj (zero slack) turns every job into a fixed interval [rj, dj] that must be scheduled entirely within its own window or not at all — classical weighted interval scheduling, solvable in polynomial time. This is also the node where ΣwjZj and ΣwjUj provably coincide (a job is either scheduled exactly on time or not scheduled at all, so 'not just-in-time' and 'rejected' mean the same thing), which is why a separate Zj-objective branch was not added here — it would collapse onto this node.",
+      "related": ["P-rj--sumWjUj-MEGA", "P-rj-sigma--sumUj"],
+      "results": []
     }
   ],
   "maps": [
@@ -328,6 +475,51 @@
         { "from": "F1c--sumWjZj", "to": "F2--sumWjZj",  "axis": "flexibility" },
         { "from": "P--sumWjZj",   "to": "F1m--sumWjZj", "axis": "flexibility" },
         { "from": "1--sumWjZj",   "to": "P--sumWjZj",   "axis": "parallel" }
+      ]
+    },
+    {
+      "id": "mega-problem",
+      "title": "The Mega Problem",
+      "description": "P|rj|ΣwjUj — parallel machines, release times, no preemption, maximize weighted throughput. Nine special cases along three axes: how much machine/release-time richness is kept, whether processing times are uniform, and how tightly the due-date window is bounded.",
+      "colStagger": 0,
+      "nodeW": 230,
+      "nodeH": 72,
+      "axisLabels": [
+        { "text": "who / when", "col": 1, "row": 0.55 },
+        { "text": "uniform p",  "col": 3, "row": 0.55 },
+        { "text": "window",     "col": 4.2, "row": 0.55 }
+      ],
+      "nodes": [
+        { "problemId": "P-rj--sumWjUj-MEGA",     "col": 3,   "row": 0 },
+        { "problemId": "1-rj--sumWjUj",           "col": 1,   "row": 1 },
+        { "problemId": "P-rj--sumUj",             "col": 3,   "row": 1 },
+        { "problemId": "P-rj-JIT--sumWjUj",       "col": 4.2, "row": 1 },
+        { "problemId": "1--sumWjUj",              "col": 1,   "row": 2 },
+        { "problemId": "P-pj=p-rj--sumUj",        "col": 3,   "row": 2 },
+        { "problemId": "P-rj-sigma--sumUj",       "col": 4.2, "row": 2 },
+        { "problemId": "1--sumUj",                "col": 1,   "row": 3 },
+        { "problemId": "P-pj=p-rj-lambda--sumUj", "col": 2.4, "row": 3 },
+        { "problemId": "P-pj=p-rj-sigma--sumUj",  "col": 3.6, "row": 3 }
+      ],
+      "edges": [
+        { "from": "1--sumUj",                "to": "1--sumWjUj",              "axis": "weight" },
+        { "from": "1--sumWjUj",               "to": "1-rj--sumWjUj",           "axis": "release-times" },
+        { "from": "1-rj--sumWjUj",            "to": "P-rj--sumWjUj-MEGA",      "axis": "parallel" },
+        { "from": "1--sumUj",                "to": "P-rj--sumUj",             "axis": "release+parallel" },
+        { "from": "P-rj--sumUj",              "to": "P-rj--sumWjUj-MEGA",      "axis": "weight" },
+        { "from": "P-pj=p-rj--sumUj",         "to": "P-rj--sumUj",             "axis": "uniform-p" },
+        { "from": "P-pj=p-rj-lambda--sumUj",  "to": "P-pj=p-rj--sumUj",        "axis": "window" },
+        { "from": "P-pj=p-rj-sigma--sumUj",   "to": "P-pj=p-rj--sumUj",        "axis": "window" },
+        { "from": "P-rj-sigma--sumUj",        "to": "P-rj--sumUj",             "axis": "window" },
+        { "from": "P-rj-JIT--sumWjUj",        "to": "P-rj--sumWjUj-MEGA",      "axis": "window" }
+      ],
+      "excluded": [
+        "The whole feasibility branch (γ=−) — a different objective field, not a restriction of the mega problem's ΣwjUj objective; cut from this map entirely.",
+        "P|rj|ΣwjZj as its own node — shown to collapse onto P|rj,dj=rj+pj|ΣwjUj (the JIT node), since rj is vestigial once every job's window equals its own processing time; not a genuine separate generalization.",
+        "Rolling-horizon / short-interval scheduling — a re-planning heuristic, not a formal instance restriction of the mega problem.",
+        "RCPSP / partial-order-width results — different constraint structure (precedence, not release times/deadlines); adjacent literature, not a generalization edge.",
+        "Secretary-model and prediction-augmented online scheduling papers — different information model (random or adversarial arrival order), not an offline instance restriction.",
+        "Murhekar et al.'s time-varying-capacity throughput paper (objective Σwj(1−Uj), constant capacity c(t)=m would make the mega problem its special case) — plausible correspondence, but not yet worked through carefully enough to add as a real edge."
       ]
     }
   ]

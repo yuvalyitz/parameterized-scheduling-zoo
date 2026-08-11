@@ -79,6 +79,7 @@ body {
   margin: 0 0.15em;
 }
 .conf-dot.verified { background: #2f9e44; }
+.conf-dot.inferred { background: #1971c2; }
 .conf-dot.illustrative { background: #f08c00; }
 
 main {
@@ -419,3 +420,18 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   color: var(--muted);
 }
 .map-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; margin-top: 1.2rem; }
+
+.map-excluded {
+  max-width: 720px;
+  margin: 1.5rem auto 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.map-excluded h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem;
+}
+.map-excluded ul { margin: 0; padding-left: 1.1rem; }
+.map-excluded li { margin-bottom: 0.4rem; }
