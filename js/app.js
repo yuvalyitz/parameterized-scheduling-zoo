@@ -676,7 +676,7 @@
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
         const axis = axisById(e.axis);
-        const tip = pullBackPoint(a.cx, a.cy, b.cx, b.cy, nodeH / 2 + 8);
+        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
         return (
           '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
           '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
@@ -748,13 +748,40 @@
     enableMapNodeDragging(els.viewMap.querySelector(".map-canvas"), nodeW, nodeH);
   }
 
+  // Drag is tracked at the document level once started, not on the node
+  // element itself: a real mouse moving quickly outrun a small node's
+  // bounds between events, and per-element listeners simply stop firing
+  // once the cursor leaves them — which looks exactly like "dragging does
+  // nothing." Document-level listeners don't have that problem.
   function enableMapNodeDragging(canvas, nodeW, nodeH) {
     if (!canvas) return;
     const svg = canvas.querySelector(".map-edge-svg");
-    let drag = null; // { el, startX, startY, left0, top0, moved }
+    const halfW = nodeW / 2, halfH = nodeH / 2;
+    let drag = null; // { el, id, startX, startY, left0, top0, moved }
+
+    function updateEdgesFor(id, cx, cy) {
+      svg.querySelectorAll('line[data-from="' + cssEscape(id) + '"]').forEach((line) => {
+        line.setAttribute("x1", cx);
+        line.setAttribute("y1", cy);
+        const targetEl = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(line.dataset.to) + '"]');
+        if (!targetEl) return;
+        const tcx = parseFloat(targetEl.style.left) + halfW, tcy = parseFloat(targetEl.style.top) + halfH;
+        const tip = pullBackToRect(cx, cy, tcx, tcy, halfW, halfH, 5);
+        line.setAttribute("x2", tip.x);
+        line.setAttribute("y2", tip.y);
+      });
+      svg.querySelectorAll('line[data-to="' + cssEscape(id) + '"]').forEach((line) => {
+        const x1 = parseFloat(line.getAttribute("x1")), y1 = parseFloat(line.getAttribute("y1"));
+        const tip = pullBackToRect(x1, y1, cx, cy, halfW, halfH, 5);
+        line.setAttribute("x2", tip.x);
+        line.setAttribute("y2", tip.y);
+      });
+    }
 
     canvas.querySelectorAll(".map-node").forEach((el) => {
       el.addEventListener("pointerdown", (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        e.preventDefault();
         drag = {
           el,
           id: el.dataset.problemId,
@@ -764,46 +791,31 @@
           top0: parseFloat(el.style.top),
           moved: false,
         };
-        el.setPointerCapture(e.pointerId);
       });
-      el.addEventListener("pointermove", (e) => {
-        if (!drag || drag.el !== el) return;
-        const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
-        if (!drag.moved) return;
-        const left = drag.left0 + dx, top = drag.top0 + dy;
-        el.style.left = left + "px";
-        el.style.top = top + "px";
-        const cx = left + nodeW / 2, cy = top + nodeH / 2;
-        svg.querySelectorAll('line[data-from="' + cssEscape(drag.id) + '"]').forEach((line) => {
-          line.setAttribute("x1", cx);
-          line.setAttribute("y1", cy);
-          // source moved; recompute the arrow tip's pullback relative to the (unmoved) target center
-          const targetEl = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(line.dataset.to) + '"]');
-          if (targetEl) {
-            const tcx = parseFloat(targetEl.style.left) + nodeW / 2, tcy = parseFloat(targetEl.style.top) + nodeH / 2;
-            const tip = pullBackPoint(cx, cy, tcx, tcy, nodeH / 2 + 8);
-            line.setAttribute("x2", tip.x);
-            line.setAttribute("y2", tip.y);
-          }
-        });
-        svg.querySelectorAll('line[data-to="' + cssEscape(drag.id) + '"]').forEach((line) => {
-          const x1 = parseFloat(line.getAttribute("x1")), y1 = parseFloat(line.getAttribute("y1"));
-          const tip = pullBackPoint(x1, y1, cx, cy, nodeH / 2 + 8);
-          line.setAttribute("x2", tip.x);
-          line.setAttribute("y2", tip.y);
-        });
-      });
-      el.addEventListener("pointerup", (e) => {
-        if (drag && drag.el === el && drag.moved) {
-          const suppressClick = (ev) => {
-            ev.preventDefault();
-            el.removeEventListener("click", suppressClick);
-          };
-          el.addEventListener("click", suppressClick);
-        }
-        drag = null;
-      });
+    });
+
+    document.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+      if (!drag.moved) return;
+      const left = drag.left0 + dx, top = drag.top0 + dy;
+      drag.el.style.left = left + "px";
+      drag.el.style.top = top + "px";
+      updateEdgesFor(drag.id, left + halfW, top + halfH);
+    });
+
+    document.addEventListener("pointerup", () => {
+      if (!drag) return;
+      if (drag.moved) {
+        const el = drag.el;
+        const suppressClick = (ev) => {
+          ev.preventDefault();
+          el.removeEventListener("click", suppressClick);
+        };
+        el.addEventListener("click", suppressClick);
+      }
+      drag = null;
     });
   }
 
@@ -814,11 +826,20 @@
   // Point along the a->b segment, pulled back from b by `dist`, so the
   // arrowhead lands just outside the target node's box instead of being
   // hidden underneath it.
-  function pullBackPoint(ax, ay, bx, by, dist) {
+  // Where a ray from (bx,by) toward (ax,ay) exits b's axis-aligned box
+  // (half-width/half-height halfW/halfH), plus a small gap — the correct
+  // rectangle-edge intersection, not a fixed-radius circle approximation.
+  // A circle big enough to clear a wide-but-short box's corners overshoots
+  // badly on near-vertical approaches, and one sized for the short side
+  // undershoots (arrowhead lands under the box) on near-horizontal ones.
+  function pullBackToRect(ax, ay, bx, by, halfW, halfH, gap) {
     const dx = bx - ax, dy = by - ay;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const d = Math.min(dist, len - 1);
-    return { x: bx - (dx / len) * d, y: by - (dy / len) * d };
+    const ux = dx / len, uy = dy / len;
+    const tx = ux !== 0 ? halfW / Math.abs(ux) : Infinity;
+    const ty = uy !== 0 ? halfH / Math.abs(uy) : Infinity;
+    const t = Math.min(tx, ty, len - 1) + gap;
+    return { x: bx - ux * t, y: by - uy * t };
   }
 
   // ---------- references ----------
