@@ -629,15 +629,14 @@
 
     const usedClasses = new Set(map.nodes.map((n) => effective[n.problemId]));
     const classLegendHtml = DATA.classicalClasses
-      .filter((c) => usedClasses.has(c.id))
+      .filter((c) => usedClasses.has(c.id) && c.id !== "unclaimed")
       .map(
         (c) =>
           '<div class="legend-item"><span class="legend-swatch" style="background:' +
           (c.fill ? c.color : "transparent") + ";border:2px " + (c.border || "solid") + " " + c.color +
           '"></span><span>' + c.label + "</span></div>"
       )
-      .join("") +
-      '<div class="legend-item"><span class="legend-swatch" style="border:2px dashed #868e96;background:transparent"></span><span>inherited from a generalized/specialized problem, not a direct citation</span></div>';
+      .join("");
 
     const excludedHtml = (map.excluded || []).length
       ? '<div class="map-excluded"><h3>Deliberately excluded</h3><ul>' +
