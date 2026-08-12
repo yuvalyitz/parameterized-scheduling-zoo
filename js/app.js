@@ -391,9 +391,10 @@
       return;
     }
 
-    const resultsHtml = p.results.length
+    const effectiveResults = effectiveResultsForProblem(p.id);
+    const resultsHtml = effectiveResults.length
       ? '<ul class="result-list">' +
-        p.results
+        effectiveResults
           .map((r) => {
             const param = paramById(r.parameter);
             const cls = classById(r.class);
@@ -491,7 +492,7 @@
   }
 
   const MAP_COL_W = 210, MAP_ROW_H = 130, MAP_MARGIN = 50;
-  const MAP_NODE_W_DEFAULT = 190, MAP_NODE_H_DEFAULT = 56, MAP_COL_STAGGER_DEFAULT = 60;
+  const MAP_NODE_W_DEFAULT = 140, MAP_NODE_H_DEFAULT = 40, MAP_COL_STAGGER_DEFAULT = 60;
   const MAP_EDGE_COLOR = "#868e96";
 
   function axisById(id) {
@@ -560,6 +561,75 @@
     return computeEffectiveClasses(map)[problemId];
   }
 
+  // Same generalization principle as computeEffectiveClasses, applied to
+  // parameterized results[] instead of classicalClass: a W[1]/W[2]/para-NP-hard
+  // result for a given parameter on a specific problem is automatically also
+  // evidence for every problem that generalizes it, for that same parameter
+  // (the specific problem's hard instances are valid instances of the general
+  // one too). FPT/XP/P results do not transfer upward — a tractable special
+  // case says nothing about the general problem. A direct citation on the
+  // problem itself always takes priority over an inherited one.
+  function resultHardnessRank(classId) {
+    return { W1: 1, W2: 2, paraNP: 3 }[classId] || 0;
+  }
+
+  function computeEffectiveResults(map) {
+    const effective = {};
+    const visiting = new Set();
+    function resolve(problemId) {
+      if (effective[problemId]) return effective[problemId];
+      const p = problemById(problemId);
+      const merged = {};
+      (p ? p.results : []).forEach((r) => {
+        merged[r.parameter] = Object.assign({ inherited: false }, r);
+      });
+      if (!visiting.has(problemId)) {
+        visiting.add(problemId);
+        map.edges.forEach((e) => {
+          if (e.from !== problemId) return;
+          const childResults = resolve(e.to);
+          Object.keys(childResults).forEach((paramId) => {
+            if (merged[paramId]) return; // a direct citation always wins
+            const child = childResults[paramId];
+            if (resultHardnessRank(child.class) === 0) return; // FPT/XP/P don't transfer upward
+            const existing = merged[paramId];
+            if (existing && resultHardnessRank(existing.class) >= resultHardnessRank(child.class)) return;
+            const childProblem = problemById(e.to);
+            const cls = classById(child.class);
+            const note = child.inherited
+              ? "Inherited (via " + (childProblem ? childProblem.notation : e.to) + "): " + (child.note || "")
+              : "Inherited: generalizes " + (childProblem ? childProblem.notation : e.to) +
+                ", which is " + (cls ? cls.label : child.class) + " for this parameter." +
+                (child.note ? " (" + child.note + ")" : "");
+            merged[paramId] = {
+              parameter: paramId,
+              class: child.class,
+              confidence: child.confidence,
+              referenceKeys: child.referenceKeys,
+              inherited: true,
+              note: note,
+            };
+          });
+        });
+        visiting.delete(problemId);
+      }
+      effective[problemId] = merged;
+      return merged;
+    }
+    map.nodes.forEach((n) => resolve(n.problemId));
+    return effective;
+  }
+
+  function effectiveResultsForProblem(problemId) {
+    const map = findMapForProblem(problemId);
+    if (!map) {
+      const p = problemById(problemId);
+      return p ? p.results : [];
+    }
+    const merged = computeEffectiveResults(map)[problemId] || {};
+    return Object.keys(merged).map((k) => merged[k]);
+  }
+
   function mapNodeCenter(node, nodeW, nodeH, colStagger) {
     const left = MAP_MARGIN + (node.col - 1) * MAP_COL_W;
     const top = MAP_MARGIN + node.row * MAP_ROW_H + (node.col - 1) * colStagger;
@@ -567,9 +637,9 @@
   }
 
   function notationFontSize(notation) {
-    if (notation.length > 20) return "0.68rem";
-    if (notation.length > 13) return "0.8rem";
-    return "0.92rem";
+    if (notation.length > 20) return "0.56rem";
+    if (notation.length > 13) return "0.64rem";
+    return "0.74rem";
   }
 
   function renderMap(id) {
@@ -603,7 +673,8 @@
         if (!a || !b) return "";
         const axis = axisById(e.axis);
         return (
-          '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
+          '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
+          '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
           '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.5">' +
           (axis ? "<title>" + escapeHtml(axis.label) + "</title>" : "") +
           "</line>"
@@ -621,7 +692,7 @@
         const border = cc ? cc.color : "#868e96";
         const borderStyle = cc ? cc.border || "solid" : "solid";
         return (
-          '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" title="' +
+          '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" data-problem-id="' + escapeHtml(p.id) + '" title="' +
           escapeHtml(p.classicalStatus) + '" href="#/problem/' + encodeURIComponent(p.id) +
           '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + nodeW +
           "px;height:" + nodeH + "px;background:" + bg + ";border-color:" + border +
@@ -659,7 +730,8 @@
     els.viewMap.innerHTML =
       '<div class="map-page">' +
       '<a class="wiki-back" href="#/maps">&larr; Back to problem maps</a>' +
-      '<div class="map-page-header"><h2>' + escapeHtml(map.title) + "</h2><p>" + escapeHtml(map.description || "") + "</p></div>" +
+      '<div class="map-page-header"><h2>' + escapeHtml(map.title) + "</h2><p>" + escapeHtml(map.description || "") +
+      '</p><p class="map-drag-hint">Drag any node to declutter overlapping edges — layout is per-session, not saved.</p></div>' +
       '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + "px;height:" + height + 'px">' +
       '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + linesSvg + "</svg>" +
       axisLabelsHtml + nodesHtml +
@@ -667,6 +739,61 @@
       '<div class="map-legend">' + classLegendHtml + "</div>" +
       excludedHtml +
       "</div>";
+
+    enableMapNodeDragging(els.viewMap.querySelector(".map-canvas"), nodeW, nodeH);
+  }
+
+  function enableMapNodeDragging(canvas, nodeW, nodeH) {
+    if (!canvas) return;
+    const svg = canvas.querySelector(".map-edge-svg");
+    let drag = null; // { el, startX, startY, left0, top0, moved }
+
+    canvas.querySelectorAll(".map-node").forEach((el) => {
+      el.addEventListener("pointerdown", (e) => {
+        drag = {
+          el,
+          id: el.dataset.problemId,
+          startX: e.clientX,
+          startY: e.clientY,
+          left0: parseFloat(el.style.left),
+          top0: parseFloat(el.style.top),
+          moved: false,
+        };
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (!drag || drag.el !== el) return;
+        const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+        if (!drag.moved) return;
+        const left = drag.left0 + dx, top = drag.top0 + dy;
+        el.style.left = left + "px";
+        el.style.top = top + "px";
+        const cx = left + nodeW / 2, cy = top + nodeH / 2;
+        svg.querySelectorAll('line[data-from="' + cssEscape(drag.id) + '"]').forEach((line) => {
+          line.setAttribute("x1", cx);
+          line.setAttribute("y1", cy);
+        });
+        svg.querySelectorAll('line[data-to="' + cssEscape(drag.id) + '"]').forEach((line) => {
+          line.setAttribute("x2", cx);
+          line.setAttribute("y2", cy);
+        });
+      });
+      el.addEventListener("pointerup", (e) => {
+        if (drag && drag.el === el && drag.moved) {
+          const suppressClick = (ev) => {
+            ev.preventDefault();
+            el.removeEventListener("click", suppressClick);
+          };
+          el.addEventListener("click", suppressClick);
+        }
+        drag = null;
+      });
+    });
+  }
+
+  function cssEscape(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
   }
 
   // ---------- references ----------

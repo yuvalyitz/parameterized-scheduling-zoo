@@ -8,8 +8,8 @@
     { "id": "weakly-NP-hard",    "label": "weakly NP-hard",                 "color": "#f08c00", "fill": true,  "border": "solid",  "order": 1, "description": "NP-hard, and a pseudo-polynomial-time algorithm is known." },
     { "id": "NP-hard-unresolved","label": "NP-hard (weak/strong open)",     "color": "#f08c00", "fill": false, "border": "solid",  "order": 2, "description": "Known NP-hard, but whether it is strongly NP-hard or admits a pseudo-polynomial algorithm is open." },
     { "id": "strongly-NP-hard",  "label": "strongly NP-hard",               "color": "#c92a2a", "fill": true,  "border": "solid",  "order": 3, "description": "NP-hard even when all numeric input is given in unary; no pseudo-polynomial algorithm unless P=NP." },
-    { "id": "open",              "label": "open",                           "color": "#868e96", "fill": false, "border": "dashed", "order": 4, "description": "Not even known to be NP-hard, or an explicitly unresolved question; complexity status unsettled." },
-    { "id": "unclaimed",         "label": "no direct claim (structural)",   "color": "#868e96", "fill": false, "border": "dashed", "order": 5, "description": "No citation classifies this exact problem's classical (unparameterized) complexity; its status is only bounded indirectly via problems it generalizes or specializes. May still have parameterized results — see the problem's wiki page. Same visual treatment as 'open' — hover a node to see which one applies." }
+    { "id": "open",              "label": "open",                           "color": "#868e96", "fill": false, "border": "solid", "order": 4, "description": "Not even known to be NP-hard, or an explicitly unresolved question; complexity status unsettled." },
+    { "id": "unclaimed",         "label": "no direct claim (structural)",   "color": "#868e96", "fill": false, "border": "solid", "order": 5, "description": "No citation classifies this exact problem's classical (unparameterized) complexity; its status is only bounded indirectly via problems it generalizes or specializes. May still have parameterized results — see the problem's wiki page." }
   ],
   "complexityClasses": [
     { "id": "P",           "label": "P",                 "color": "#2f9e44", "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
@@ -73,7 +73,8 @@
     "Moore68": { "text": "J. M. Moore. An n job, one machine sequencing algorithm for minimizing the number of late jobs. Management Science, 1968." },
     "HKPS18": { "text": "D. Hermelin, S. Karhi, M. Pinedo & D. Shabtay. New algorithms for minimizing the weighted number of tardy jobs on a single machine. Annals of Operations Research, 2018." },
     "HM25": { "text": "K. Heeger & H. Molter. Minimizing the Number of Tardy Jobs with Uniform Processing Times on Parallel Machines. arXiv:2404.14208, 2024." },
-    "Cieliebak04": { "text": "M. Cieliebak et al., 2004, on the hardness of feasibility for interval/deadline scheduling. (Full citation to be attached — the site author is citing this via a feasibility-to-optimization hardness argument, not a direct statement in the source.)" }
+    "Cieliebak04": { "text": "M. Cieliebak, T. Erlebach, F. Hennecke, B. Weber & P. Widmayer. Scheduling with Release Times and Deadlines on a Minimum Number of Machines. In Exploring New Frontiers of Theoretical Informatics (IFIP TCS 2004), pp. 209-222. Springer, 2004." },
+    "vBNS17": { "text": "R. van Bevern, R. Niedermeier & O. Suchý. A parameterized complexity view on non-preemptively scheduling interval-constrained jobs: few machines, small looseness, and small slack. Journal of Scheduling, 20:255-265, 2017." }
   },
   "problems": [
     {
@@ -446,13 +447,13 @@
       "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=pj+sigma"], "gamma": "ΣUj",
       "name": "Uniform processing time, window bounded additively (σ)",
       "classicalClass": "open",
-      "classicalStatus": "OPEN — the live open question this whole map was built around.",
-      "overview": "The additive-slack sibling of the λ-bounded node: dj−rj≤pj+σ instead of dj−rj≤λpj. Whether this is FPT, W[2]-hard, or something else when parameterized by σ+m is not known — this is the specific open question that motivated building this map in the first place.",
+      "classicalStatus": "OPEN for this optimization (ΣUj) problem — the live open question this whole map was built around. The closely related FEASIBILITY problem (can all jobs be scheduled with no rejections at all, general processing times) is known FPT parameterized by σ+m (van Bevern, Niedermeier & Suchý 2017, Theorem 5.1) — since uniform processing time is a special case of general, feasibility here is therefore also FPT by σ+m as a free corollary. But an FPT feasibility algorithm does not automatically give an FPT optimization algorithm (jobs can be dropped here, changing the structure of the problem), and that paper stays scoped to the decision problem — it does not attempt the extension. So the natural building block this open question would need already exists; what's missing is specifically whether it extends to weighted rejection.",
+      "overview": "The additive-slack sibling of the λ-bounded node: dj−rj≤pj+σ instead of dj−rj≤λpj. Whether this is FPT, W[2]-hard, or something else when parameterized by σ+m is not known for the optimization objective studied here — this is the specific open question that motivated building this map in the first place. Note table 1 of van Bevern, Niedermeier & Suchý (2017) also flags the combined parameter looseness+slack (λ+σ) as open for their feasibility problem — a different open combination from this one.",
       "related": ["P-pj=p-rj--sumUj"],
       "results": [
         { "parameter": "sigma_plus_m", "class": "open", "confidence": "verified",
-          "referenceKeys": ["tbd"],
-          "note": "Open. The central unresolved question driving this map — no known FPT algorithm or W-hardness proof for this parameterization." }
+          "referenceKeys": ["vBNS17"],
+          "note": "Open for this optimization problem. The feasibility analogue (general processing times, no rejection allowed) is FPT parameterized by σ+m (Theorem 5.1) — a very close but not identical result, since it doesn't cover rejection/weights." }
       ]
     },
     {
@@ -461,8 +462,8 @@
       "alpha": "P", "beta": ["rj", "dj-rj<=pj+sigma (sigma>=2 fixed)"], "gamma": "ΣUj",
       "name": "General processing times, window bounded additively (σ≥2 fixed), unweighted",
       "classicalClass": "NP-hard-unresolved",
-      "classicalStatus": "NP-hard — via a feasibility-to-optimization hardness argument from Cieliebak et al. (2004), not stated as an optimization-hardness result anywhere directly in that source. Weak/strong status not addressed.",
-      "overview": "The general-processing-time analogue of the uniform-p, σ-bounded node: same additive slack bound on the window, but processing times are no longer forced equal. The site author reasons that feasibility-hardness shown by Cieliebak et al. (2004) for a related deadline-scheduling setting implies optimization-hardness here, via a standard feasibility-to-optimization argument — but this chain of reasoning is the author's own, not a direct statement in the source.",
+      "classicalStatus": "NP-hard — Cieliebak, Erlebach, Hennecke, Weber & Widmayer (2004), Theorem 13, prove the feasibility version (their SRDM problem: minimum machines to meet all deadlines) is NP-hard already at slack exactly 2 (δ_max=2), general processing times, via reduction from 3-SAT; instances with δ_max=2 are also valid instances of every δ_max≥2, so this covers σ≥2 generally. Getting from feasibility-hardness to hardness of the ΣUj optimization version here is a standard feasibility-to-optimization argument (checking whether the optimum equals 0 solves feasibility), not itself stated in that source. Weak/strong classical status is not addressed.",
+      "overview": "The general-processing-time analogue of the uniform-p, σ-bounded node: same additive slack bound on the window, but processing times are no longer forced equal. Cieliebak et al. (2004) also show a matching positive result one slack level down (δ_max≤1 is polynomial-time solvable for feasibility, Theorem 1) and a related multiplicative-window hardness result (any fixed looseness ratio λ>1 is already NP-hard for feasibility, Theorem 14) — the surrounding picture this node sits inside.",
       "related": ["P-rj--sumUj", "P-rj-JIT--sumWjUj"],
       "results": []
     },
@@ -517,8 +518,8 @@
       "title": "The Mega Problem",
       "description": "P|rj|ΣwjUj — parallel machines, release times, no preemption, maximize weighted throughput. Eleven special cases along three axes: how much machine/release-time richness is kept, whether processing times are uniform, and how tightly the due-date window is bounded.",
       "colStagger": 0,
-      "nodeW": 230,
-      "nodeH": 72,
+      "nodeW": 150,
+      "nodeH": 44,
       "axisLabels": [
         { "text": "who / when", "col": 1, "row": 0.55 },
         { "text": "uniform p",  "col": 4, "row": 0.55 },
