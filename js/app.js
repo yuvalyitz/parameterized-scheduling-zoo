@@ -432,7 +432,7 @@
     const cc = classicalClassById(p.classicalClass);
     const ccBadge = cc
       ? '<span class="class-pill" style="background:' +
-        (cc.fill ? cc.color : "transparent") +
+        (cc.fill ? cc.color : "var(--panel-bg)") +
         ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
         '">' + cc.label + "</span> "
       : "";
@@ -553,7 +553,7 @@
         if (!p) return "";
         const pos = positions[n.problemId];
         const cc = classicalClassById(p.classicalClass);
-        const bg = cc && cc.fill ? cc.color : "transparent";
+        const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
         const border = cc ? cc.color : "#868e96";
         const borderStyle = cc ? cc.border || "solid" : "solid";
         return (
