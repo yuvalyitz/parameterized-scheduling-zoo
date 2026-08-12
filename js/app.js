@@ -364,6 +364,67 @@
     return '<div class="detail-field"><h4>' + label + "</h4><p>" + html + "</p></div>";
   }
 
+  // Shared between the problem wiki page and the map's side panel.
+  function buildResultsListHtml(effectiveResults) {
+    if (!effectiveResults.length) {
+      return '<p style="color:var(--muted)">No parameterized results recorded for this problem yet.</p>';
+    }
+    return (
+      '<ul class="result-list">' +
+      effectiveResults
+        .map((r) => {
+          const param = paramById(r.parameter);
+          const cls = classById(r.class);
+          return (
+            '<li class="result-row">' +
+            '<div class="param-name">' + (param ? param.symbol : r.parameter) +
+            '<span class="sym">' + (param ? param.name : "") + "</span></div>" +
+            '<div class="result-body"><p>' + (r.note || "") + "</p>" +
+            "<p>" + citeLinks(r.referenceKeys) +
+            (r.confidence ? ' <span class="conf-dot ' + escapeHtml(r.confidence) + '" title="' +
+              escapeHtml(confidenceLabel(r.confidence)) + '"></span> <em style="color:var(--muted);font-size:0.8em">' +
+              escapeHtml(r.confidence) + "</em>" : "") +
+            "</p></div>" +
+            '<span class="class-pill" style="background:' + (cls ? cls.color : "#868e96") + '">' +
+            (cls ? cls.label : r.class) + "</span>" +
+            "</li>"
+          );
+        })
+        .join("") +
+      "</ul>"
+    );
+  }
+
+  function buildClassicalBadgeHtml(problem) {
+    const cc = classicalClassById(effectiveClassForProblem(problem.id));
+    if (!cc) return "";
+    return (
+      '<span class="class-pill" style="background:' +
+      (cc.fill ? cc.color : "var(--panel-bg)") +
+      ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
+      '">' + cc.label + "</span> "
+    );
+  }
+
+  // Opens the shared side panel for a problem (used by the problem maps so
+  // clicking a node reviews its parameterized results without leaving the
+  // map). Distinct from openDetail(), which is scoped to a single
+  // parameter's result from the search matrix.
+  function openProblemPanel(problemId) {
+    const p = problemById(problemId);
+    if (!p) return;
+    els.detailContent.innerHTML =
+      "<h3>" + p.notation + "</h3>" +
+      '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">' + escapeHtml(p.name) + "</p>" +
+      '<div class="wiki-status" style="margin-bottom:1.25rem"><b>Classical (unparameterized) status</b>' +
+      buildClassicalBadgeHtml(p) + escapeHtml(p.classicalStatus) + "</div>" +
+      (p.overview ? detailField("Overview", p.overview) : "") +
+      '<div class="detail-field"><h4>Parameterized results</h4>' + buildResultsListHtml(effectiveResultsForProblem(p.id)) + "</div>" +
+      '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(p.id) + '">View full problem page →</a></p>';
+    els.detailPanel.hidden = false;
+    els.detailOverlay.hidden = false;
+  }
+
   function escapeHtml(s) {
     const div = document.createElement("div");
     div.textContent = s;
@@ -391,31 +452,7 @@
       return;
     }
 
-    const effectiveResults = effectiveResultsForProblem(p.id);
-    const resultsHtml = effectiveResults.length
-      ? '<ul class="result-list">' +
-        effectiveResults
-          .map((r) => {
-            const param = paramById(r.parameter);
-            const cls = classById(r.class);
-            return (
-              '<li class="result-row">' +
-              '<div class="param-name">' + (param ? param.symbol : r.parameter) +
-              '<span class="sym">' + (param ? param.name : "") + "</span></div>" +
-              '<div class="result-body"><p>' + (r.note || "") + "</p>" +
-              '<p>' + citeLinks(r.referenceKeys) +
-              (r.confidence ? ' <span class="conf-dot ' + escapeHtml(r.confidence) + '" title="' +
-                escapeHtml(confidenceLabel(r.confidence)) + '"></span> <em style="color:var(--muted);font-size:0.8em">' +
-                escapeHtml(r.confidence) + "</em>" : "") +
-              "</p></div>" +
-              '<span class="class-pill" style="background:' + (cls ? cls.color : "#868e96") + '">' +
-              (cls ? cls.label : r.class) + "</span>" +
-              "</li>"
-            );
-          })
-          .join("") +
-        "</ul>"
-      : '<p style="color:var(--muted)">No parameterized results recorded for this problem yet.</p>';
+    const resultsHtml = buildResultsListHtml(effectiveResultsForProblem(p.id));
 
     const relatedHtml = (p.related || []).length
       ? '<div class="related-links">' +
@@ -430,13 +467,7 @@
         "</div>"
       : '<p style="color:var(--muted)">No related problems recorded.</p>';
 
-    const cc = classicalClassById(effectiveClassForProblem(p.id));
-    const ccBadge = cc
-      ? '<span class="class-pill" style="background:' +
-        (cc.fill ? cc.color : "var(--panel-bg)") +
-        ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
-        '">' + cc.label + "</span> "
-      : "";
+    const ccBadge = buildClassicalBadgeHtml(p);
 
     els.viewProblem.innerHTML =
       '<div class="wiki-page">' +
@@ -707,14 +738,6 @@
       })
       .join("");
 
-    const axisLabelsHtml = (map.axisLabels || [])
-      .map((a) => {
-        const left = MAP_MARGIN + (a.col - 1) * MAP_COL_W;
-        const top = MAP_MARGIN + a.row * MAP_ROW_H + (a.col - 1) * colStagger;
-        return '<div class="map-axis-label" style="left:' + left + "px;top:" + top + 'px">' + escapeHtml(a.text) + "</div>";
-      })
-      .join("");
-
     const usedClasses = new Set(map.nodes.map((n) => effective[n.problemId]));
     const classLegendHtml = DATA.classicalClasses
       .filter((c) => usedClasses.has(c.id) && c.id !== "unclaimed")
@@ -739,7 +762,7 @@
       '</p><p class="map-drag-hint">Drag any node to declutter overlapping edges — layout is per-session, not saved.</p></div>' +
       '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + "px;height:" + height + 'px">' +
       '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + arrowDef + linesSvg + "</svg>" +
-      axisLabelsHtml + nodesHtml +
+      nodesHtml +
       "</div></div>" +
       '<div class="map-legend">' + classLegendHtml + "</div>" +
       excludedHtml +
@@ -792,6 +815,14 @@
           moved: false,
         };
       });
+      // A click always opens the side panel in place instead of navigating
+      // (a real page nav would be jarring while reviewing a map); dragging
+      // suppresses this via drag.moved below.
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (drag && drag.moved) return;
+        openProblemPanel(el.dataset.problemId);
+      });
     });
 
     document.addEventListener("pointermove", (e) => {
@@ -806,16 +837,9 @@
     });
 
     document.addEventListener("pointerup", () => {
-      if (!drag) return;
-      if (drag.moved) {
-        const el = drag.el;
-        const suppressClick = (ev) => {
-          ev.preventDefault();
-          el.removeEventListener("click", suppressClick);
-        };
-        el.addEventListener("click", suppressClick);
-      }
-      drag = null;
+      // Cleared on the next tick, after the browser's own click event (which
+      // fires right after pointerup) has had a chance to read drag.moved.
+      setTimeout(() => { drag = null; }, 0);
     });
   }
 

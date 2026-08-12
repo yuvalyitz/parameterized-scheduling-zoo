@@ -415,14 +415,6 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   .map-node.outline { color: var(--fg); background: var(--bg); }
 }
 .map-drag-hint { font-size: 0.75rem !important; color: var(--muted); opacity: 0.8; }
-.map-axis-label {
-  position: absolute;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
 .map-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; margin-top: 1.2rem; }
 
 .map-excluded {

@@ -485,10 +485,6 @@
       "title": "JIT Flow Shop",
       "description": "Weighted number of just-in-time-violating jobs, across three independent generalization axes: number of flow-shop stages, flexibility (parallel machines at a stage), and weighted vs. unweighted.",
       "colStagger": 0,
-      "axisLabels": [
-        { "text": "Flexible",   "col": 1, "row": 0.6 },
-        { "text": "Unweighted", "col": 4, "row": -0.35 }
-      ],
       "nodes": [
         { "problemId": "F1m--sumWjZj", "col": 1,   "row": 0 },
         { "problemId": "F3--sumWjZj",  "col": 3,   "row": 0 },
@@ -521,11 +517,6 @@
       "colStagger": 0,
       "nodeW": 150,
       "nodeH": 44,
-      "axisLabels": [
-        { "text": "who / when", "col": 1, "row": 0.55 },
-        { "text": "uniform p",  "col": 4, "row": 0.55 },
-        { "text": "window",     "col": 5.2, "row": 0.55 }
-      ],
       "nodes": [
         { "problemId": "P-rj--sumWjUj-MEGA",     "col": 4,   "row": 0 },
         { "problemId": "1-rj--sumWjUj",           "col": 1,   "row": 1 },
