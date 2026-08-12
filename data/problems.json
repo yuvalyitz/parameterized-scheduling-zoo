@@ -484,20 +484,21 @@
       "id": "jit-flowshop",
       "title": "JIT Flow Shop",
       "description": "Weighted number of just-in-time-violating jobs, across three independent generalization axes: number of flow-shop stages, flexibility (parallel machines at a stage), and weighted vs. unweighted.",
+      "colStagger": 0,
       "axisLabels": [
         { "text": "Flexible",   "col": 1, "row": 0.6 },
         { "text": "Unweighted", "col": 4, "row": -0.35 }
       ],
       "nodes": [
-        { "problemId": "F3--sumWjZj",  "col": 3, "row": 0 },
-        { "problemId": "F3--sumZj",    "col": 4, "row": 0 },
-        { "problemId": "F1m--sumWjZj", "col": 1, "row": 1 },
-        { "problemId": "F1c--sumWjZj", "col": 2, "row": 1 },
-        { "problemId": "F2--sumWjZj",  "col": 3, "row": 1 },
-        { "problemId": "F2--sumZj",    "col": 4, "row": 1 },
-        { "problemId": "P--sumWjZj",   "col": 1, "row": 2 },
-        { "problemId": "1--sumWjZj",   "col": 3, "row": 2 },
-        { "problemId": "1--sumZj",     "col": 4, "row": 2 }
+        { "problemId": "F1m--sumWjZj", "col": 1,   "row": 0 },
+        { "problemId": "F3--sumWjZj",  "col": 3,   "row": 0 },
+        { "problemId": "F3--sumZj",    "col": 4,   "row": 0.5 },
+        { "problemId": "F1c--sumWjZj", "col": 2,   "row": 1 },
+        { "problemId": "P--sumWjZj",   "col": 1,   "row": 1 },
+        { "problemId": "F2--sumWjZj",  "col": 3,   "row": 2 },
+        { "problemId": "F2--sumZj",    "col": 4,   "row": 3 },
+        { "problemId": "1--sumWjZj",   "col": 3,   "row": 3 },
+        { "problemId": "1--sumZj",     "col": 3.5, "row": 4 }
       ],
       "edges": [
         { "from": "F3--sumWjZj",  "to": "F2--sumWjZj",  "axis": "stages" },

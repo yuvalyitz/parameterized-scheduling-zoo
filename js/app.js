@@ -667,15 +667,20 @@
 
     const effective = computeEffectiveClasses(map);
 
+    const arrowDef =
+      '<defs><marker id="map-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+      '<path d="M0,0 L10,5 L0,10 z" fill="' + MAP_EDGE_COLOR + '" /></marker></defs>';
+
     const linesSvg = map.edges
       .map((e) => {
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
         const axis = axisById(e.axis);
+        const tip = pullBackPoint(a.cx, a.cy, b.cx, b.cy, nodeH / 2 + 8);
         return (
           '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
-          '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
-          '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.5">' +
+          '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+          '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.5" marker-end="url(#map-arrow)">' +
           (axis ? "<title>" + escapeHtml(axis.label) + "</title>" : "") +
           "</line>"
         );
@@ -733,7 +738,7 @@
       '<div class="map-page-header"><h2>' + escapeHtml(map.title) + "</h2><p>" + escapeHtml(map.description || "") +
       '</p><p class="map-drag-hint">Drag any node to declutter overlapping edges — layout is per-session, not saved.</p></div>' +
       '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + "px;height:" + height + 'px">' +
-      '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + linesSvg + "</svg>" +
+      '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + arrowDef + linesSvg + "</svg>" +
       axisLabelsHtml + nodesHtml +
       "</div></div>" +
       '<div class="map-legend">' + classLegendHtml + "</div>" +
@@ -773,10 +778,20 @@
         svg.querySelectorAll('line[data-from="' + cssEscape(drag.id) + '"]').forEach((line) => {
           line.setAttribute("x1", cx);
           line.setAttribute("y1", cy);
+          // source moved; recompute the arrow tip's pullback relative to the (unmoved) target center
+          const targetEl = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(line.dataset.to) + '"]');
+          if (targetEl) {
+            const tcx = parseFloat(targetEl.style.left) + nodeW / 2, tcy = parseFloat(targetEl.style.top) + nodeH / 2;
+            const tip = pullBackPoint(cx, cy, tcx, tcy, nodeH / 2 + 8);
+            line.setAttribute("x2", tip.x);
+            line.setAttribute("y2", tip.y);
+          }
         });
         svg.querySelectorAll('line[data-to="' + cssEscape(drag.id) + '"]').forEach((line) => {
-          line.setAttribute("x2", cx);
-          line.setAttribute("y2", cy);
+          const x1 = parseFloat(line.getAttribute("x1")), y1 = parseFloat(line.getAttribute("y1"));
+          const tip = pullBackPoint(x1, y1, cx, cy, nodeH / 2 + 8);
+          line.setAttribute("x2", tip.x);
+          line.setAttribute("y2", tip.y);
         });
       });
       el.addEventListener("pointerup", (e) => {
@@ -794,6 +809,16 @@
 
   function cssEscape(s) {
     return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
+  }
+
+  // Point along the a->b segment, pulled back from b by `dist`, so the
+  // arrowhead lands just outside the target node's box instead of being
+  // hidden underneath it.
+  function pullBackPoint(ax, ay, bx, by, dist) {
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const d = Math.min(dist, len - 1);
+    return { x: bx - (dx / len) * d, y: by - (dy / len) * d };
   }
 
   // ---------- references ----------
