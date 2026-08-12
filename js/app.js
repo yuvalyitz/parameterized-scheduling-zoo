@@ -429,12 +429,14 @@
         "</div>"
       : '<p style="color:var(--muted)">No related problems recorded.</p>';
 
-    const cc = classicalClassById(p.classicalClass);
+    const effId = effectiveClassForProblem(p.id);
+    const cc = classicalClassById(effId);
+    const inherited = effId !== p.classicalClass;
     const ccBadge = cc
       ? '<span class="class-pill" style="background:' +
         (cc.fill ? cc.color : "var(--panel-bg)") +
-        ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
-        '">' + cc.label + "</span> "
+        ";border:2px " + (inherited ? "dashed" : cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
+        '" title="' + (inherited ? "Inherited from a problem this one generalizes — not a direct citation." : "") + '">' + cc.label + "</span> "
       : "";
 
     els.viewProblem.innerHTML =
@@ -541,6 +543,23 @@
     }
     map.nodes.forEach((n) => resolve(n.problemId));
     return effective;
+  }
+
+  function findMapForProblem(problemId) {
+    return (DATA.maps || []).find((m) => m.nodes.some((n) => n.problemId === problemId));
+  }
+
+  // Used by both the map view and the problem wiki page, so a problem's
+  // displayed status is consistent everywhere: if it has no direct citation
+  // but strictly generalizes a known-hard problem, it shows that inherited
+  // hardness rather than a flat "no direct claim".
+  function effectiveClassForProblem(problemId) {
+    const map = findMapForProblem(problemId);
+    if (!map) {
+      const p = problemById(problemId);
+      return p ? p.classicalClass : null;
+    }
+    return computeEffectiveClasses(map)[problemId];
   }
 
   function mapNodeCenter(node, nodeW, nodeH, colStagger) {
