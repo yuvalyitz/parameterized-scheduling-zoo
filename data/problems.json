@@ -50,7 +50,11 @@
     { "id": "numDD_numP", "symbol": "#dd+#p", "name": "number of distinct due dates plus number of distinct processing times",
       "gloss": "The sum of two distinct-value counts, treated as a single combined parameter. Common in single-machine scheduling: bounding both lets jobs be grouped into few interchangeable (due-date, processing-time) classes." },
     { "id": "sigma_plus_m", "symbol": "σ+m", "name": "slack bound σ plus number of machines m",
-      "gloss": "The additive due-date slack bound (how far d_j−r_j may exceed p_j) plus the number of machines, treated as a single combined parameter." }
+      "gloss": "The additive due-date slack bound (how far d_j−r_j may exceed p_j) plus the number of machines, treated as a single combined parameter." },
+    { "id": "m_plus_p", "symbol": "m+p", "name": "number of machines plus the (uniform) processing time",
+      "gloss": "The number of machines plus the shared processing-time value p, treated as a single combined parameter — meaningful only when processing times are uniform (pj=p)." },
+    { "id": "numDD", "symbol": "#dd", "name": "number of distinct due dates",
+      "gloss": "The number of distinct due-date values in the instance, on its own (not combined with any other count)." }
   ],
   "references": {
     "GJ79":   { "text": "M. R. Garey & D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. 1979." },
@@ -69,7 +73,7 @@
     "user-diagram": { "text": "Classification as given directly by the site author's own diagram; original paper/citation not yet attached." },
     "Moore68": { "text": "J. M. Moore. An n job, one machine sequencing algorithm for minimizing the number of late jobs. Management Science, 1968." },
     "HKPS18": { "text": "D. Hermelin, S. Karhi, M. Pinedo & D. Shabtay. New algorithms for minimizing the weighted number of tardy jobs on a single machine. Annals of Operations Research, 2018." },
-    "HM25": { "text": "K. Heeger & H. Molter, 2025. (Full citation to be attached — title/venue not yet confirmed by the site author.)" },
+    "HM25": { "text": "K. Heeger & H. Molter. Minimizing the Number of Tardy Jobs with Uniform Processing Times on Parallel Machines. arXiv:2404.14208, 2024." },
     "Cieliebak04": { "text": "M. Cieliebak et al., 2004, on the hardness of feasibility for interval/deadline scheduling. (Full citation to be attached — the site author is citing this via a feasibility-to-optimization hardness argument, not a direct statement in the source.)" }
   },
   "problems": [
@@ -379,30 +383,40 @@
       "alpha": "P", "beta": ["pj=p", "rj"], "gamma": "ΣUj",
       "name": "Parallel machines, uniform processing time, general release times, unweighted rejection, no window bound",
       "classicalClass": "NP-hard-unresolved",
-      "classicalConfidence": "verified",
-      "classicalStatus": "NP-hard (Heeger & Molter 2025, stated directly); also W[2]-hard parameterized by m (see parameterized results). Weak-vs-strong status not addressed by that citation.",
-      "overview": "All processing times equal a common value p, due dates are otherwise unrestricted (no bound on the window dj−rj). Heeger & Molter (2025) show this is NP-hard and W[2]-hard in the number of machines m — the headline hardness result anchoring the whole uniform-processing-time branch of the map.",
+      "classicalStatus": "NP-hard and W[2]-hard parameterized by the number of machines m (Heeger & Molter, arXiv:2404.14208, 2024, Theorem 3) — both proved by the same polynomial-time parameterized reduction from Hitting Set, since Hitting Set is itself both NP-hard and W[2]-hard-in-solution-size. Resolves a longstanding open problem (Kravchenko & Werner, J. Scheduling 2011, Note 2.1.19; Sgall, ESA 2012, Open Problem 2; Mnich & van Bevern, Computers & OR 2018, Open Problem 7). Weak-vs-strong classical status is not addressed by that citation.",
+      "overview": "All processing times equal a common value p, due dates are otherwise unrestricted. Heeger & Molter (2024) settle a problem open since at least 2011: they give a single polynomial-time reduction from Hitting Set (parameterized by solution size k, using k machines) that simultaneously proves NP-hardness and W[2]-hardness in the number of machines m. On the positive side, refining the running-time analysis of a known XP algorithm (Baptiste et al.) gives FPT and XP results for several other parameterizations, and a new MILP-based algorithm gives FPT results parameterized by the number of distinct release or due dates. Those algorithmic results are stated by the paper for the weighted objective ΣwjUj, which is the more general problem this node (ΣUj) is the unweighted special case of — they apply here too, since an algorithm for the general problem also solves its special cases.",
       "related": ["P-rj--sumUj", "P-pj=p-rj-lambda--sumUj", "P-pj=p-rj-sigma--sumUj"],
       "results": [
         { "parameter": "m", "class": "W2", "confidence": "verified",
           "referenceKeys": ["HM25"],
-          "note": "W[2]-hard parameterized by the number of machines m." }
+          "note": "W[2]-hard parameterized by the number of machines m (Theorem 3), via a polynomial-time parameterized reduction from Hitting Set." },
+        { "parameter": "m_plus_p", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HM25"],
+          "note": "FPT parameterized by the combination of the number of machines m and the processing time p (Theorem 8), via a refined running-time analysis of the known XP algorithm for m alone (Baptiste et al.). Stated for the weighted objective ΣwjUj; applies to this unweighted special case." },
+        { "parameter": "pmax", "class": "XP", "confidence": "verified",
+          "referenceKeys": ["HM25"],
+          "note": "In XP parameterized by the processing time p alone (Theorem 8). Whether this improves to FPT is left open by the paper (their concluding open question)." },
+        { "parameter": "numR", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HM25"],
+          "note": "FPT parameterized by the number of distinct release dates (Theorem 10), via a mixed-integer-linear-program formulation whose integer-variable count depends only on the parameter, solved with an FPT algorithm for MILP (Lenstra-style)." },
+        { "parameter": "numDD", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HM25"],
+          "note": "FPT parameterized by the number of distinct due dates (Theorem 10) — symmetric to the release-date result via a release/due-date reversal (their Observation 1)." }
       ]
     },
     {
       "id": "P-pj=p-rj-lambda--sumUj",
-      "notation": "P|pj=p,rj,dj−rj≤λpj|ΣUj",
-      "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=lambda*pj (lambda≈2)"], "gamma": "ΣUj",
-      "name": "Uniform processing time, window bounded multiplicatively (λ≈2, fixed)",
+      "notation": "P|pj=p,rj,dj−rj≤1.5pj|ΣUj",
+      "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=1.5*pj"], "gamma": "ΣUj",
+      "name": "Uniform processing time, window bounded multiplicatively (λ=1.5)",
       "classicalClass": "NP-hard-unresolved",
-      "classicalConfidence": "inferred",
-      "classicalStatus": "NP-hard (inferred): a W[2]-hardness reduction is, in essentially every real case including this one as the site author reads it, also a plain polynomial-time reduction from an NP-hard problem — so it doubles as classical NP-hardness. Not stated explicitly by Heeger & Molter as either NP-hard or W[2]-hard for this exact restricted variant; both are the site author's own reading of their construction. Flag as inferred, not verified, if citing.",
-      "overview": "Same uniform-processing-time setting as P|pj=p,rj|ΣUj, but with the due-date window additionally bounded by a fixed multiplicative slack (dj−rj≤λpj for λ≈2). A tighter restriction than the unbounded-window node, so at least as hard; the site author's reading of the Heeger–Molter construction suggests it stays W[2]-hard under this restriction, but this specific claim is their own inference rather than a stated theorem.",
+      "classicalStatus": "NP-hard and W[2]-hard parameterized by m, as a direct corollary of Heeger & Molter's Theorem 3 reduction (arXiv:2404.14208, 2024): their construction fixes p=2n and gives every job a window of either exactly p (the Jℓ selection jobs) or p+n=1.5p (the Dℓ dummy jobs, per their Table 1), so every produced instance already satisfies dj−rj≤1.5·pj. Not a separately stated theorem in the paper — this is arithmetic from their own construction, not an independent citation.",
+      "overview": "Same uniform-processing-time setting as P|pj=p,rj|ΣUj, but with the due-date window additionally bounded multiplicatively. Heeger & Molter don't state a window-bounded theorem, but their Hitting Set reduction happens to only ever produce windows up to 1.5·p (computed directly from their Table 1 with p=2n), so their NP-hardness and W[2]-hardness proof already covers this more restricted case for free.",
       "related": ["P-pj=p-rj--sumUj"],
       "results": [
-        { "parameter": "m", "class": "W2", "confidence": "inferred",
+        { "parameter": "m", "class": "W2", "confidence": "verified",
           "referenceKeys": ["HM25"],
-          "note": "Inferred (not explicitly stated) from the structure of the Heeger & Molter '25 reduction — treat as a plausible reading, not a verified citation." }
+          "note": "W[2]-hard parameterized by m: every instance produced by Theorem 3's reduction already satisfies dj−rj≤1.5·pj (computed directly from their Table 1 with p=2n — not a separately stated theorem, but arithmetic from their own construction)." }
       ]
     },
     {
@@ -426,8 +440,7 @@
       "alpha": "P", "beta": ["rj", "dj-rj<=pj+sigma (sigma>=2 fixed)"], "gamma": "ΣUj",
       "name": "General processing times, window bounded additively (σ≥2 fixed), unweighted",
       "classicalClass": "NP-hard-unresolved",
-      "classicalConfidence": "inferred",
-      "classicalStatus": "NP-hard — inferred via a feasibility-to-optimization hardness argument from Cieliebak et al. (2004), not stated as an optimization-hardness result anywhere directly. Weak/strong status not addressed.",
+      "classicalStatus": "NP-hard — via a feasibility-to-optimization hardness argument from Cieliebak et al. (2004), not stated as an optimization-hardness result anywhere directly in that source. Weak/strong status not addressed.",
       "overview": "The general-processing-time analogue of the uniform-p, σ-bounded node: same additive slack bound on the window, but processing times are no longer forced equal. The site author reasons that feasibility-hardness shown by Cieliebak et al. (2004) for a related deadline-scheduling setting implies optimization-hardness here, via a standard feasibility-to-optimization argument — but this chain of reasoning is the author's own, not a direct statement in the source.",
       "related": ["P-rj--sumUj", "P-rj-JIT--sumWjUj"],
       "results": []
