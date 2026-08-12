@@ -26,7 +26,6 @@
     { "id": "flexibility",    "label": "flexible-machine stages" },
     { "id": "parallel",       "label": "single vs. parallel machines" },
     { "id": "release-times",  "label": "release-time generality" },
-    { "id": "release+parallel", "label": "release times + machine count (combined)" },
     { "id": "uniform-p",      "label": "uniform vs. general processing times" },
     { "id": "window",         "label": "due-date window / slack bound" }
   ],
@@ -359,7 +358,7 @@
       "classicalClass": "unclaimed",
       "classicalStatus": "No classical (parameter-free) claim recorded here — it is at least as hard as 1||ΣwjUj (weakly NP-hard), which it generalizes by allowing release times. Hermelin, Karhi, Pinedo & Shabtay give an FPT result for a specific pair of parameters (see parameterized results below).",
       "overview": "The single-machine mega problem: general release times, general weights, no machine parallelism. Hermelin, Karhi, Pinedo & Shabtay (2018) show it becomes tractable once both the number of distinct due dates and the number of distinct processing times are bounded together — a genuinely parameterized result, not a classical complexity statement.",
-      "related": ["1--sumWjUj", "P-rj--sumWjUj-MEGA"],
+      "related": ["1--sumWjUj", "1-rj--sumUj", "P-rj--sumWjUj-MEGA"],
       "results": [
         { "parameter": "numDD_numP", "class": "FPT", "confidence": "verified",
           "referenceKeys": ["HKPS18"],
@@ -367,14 +366,36 @@
       ]
     },
     {
+      "id": "1-rj--sumUj",
+      "notation": "1|rj|ΣUj",
+      "alpha": "1", "beta": ["rj"], "gamma": "ΣUj",
+      "name": "Single machine, general release times, unweighted rejection",
+      "classicalClass": "strongly-NP-hard",
+      "classicalStatus": "Weakly NP-hard (Lenstra, Rinnooy Kan & Brucker 1977), even with only two distinct release dates and two distinct due dates; Heeger & Molter note in their introduction that the same reduction extends in a straightforward way to strongly NP-hard. Stated as background exposition, not a numbered theorem, but explicit in the source.",
+      "overview": "The unweighted single-machine version of the mega problem, dropping only the weight axis. Sits directly below 1|rj|ΣwjUj (adding weights back) and above 1||ΣUj (dropping release times) in the map.",
+      "related": ["1--sumUj", "1-rj--sumWjUj", "P-rj--sumUj"],
+      "results": []
+    },
+    {
+      "id": "P--sumUj",
+      "notation": "P||ΣUj",
+      "alpha": "P", "beta": [], "gamma": "ΣUj",
+      "name": "Parallel machines, no release times, unweighted rejection",
+      "classicalClass": "strongly-NP-hard",
+      "classicalStatus": "Strongly NP-hard even if all jobs share the same due date, since it generalizes Bin Packing (Garey & Johnson 1979).",
+      "overview": "The unweighted, release-time-free parallel-machine version of the mega problem, dropping the release-time and weight axes at once. Sits directly below P|rj|ΣUj (adding release times back) and above 1||ΣUj (dropping machine parallelism) in the map.",
+      "related": ["1--sumUj", "P-rj--sumUj"],
+      "results": []
+    },
+    {
       "id": "P-rj--sumUj",
       "notation": "P|rj|ΣUj",
       "alpha": "P", "beta": ["rj"], "gamma": "ΣUj",
       "name": "Parallel machines, general release times, unweighted rejection",
       "classicalClass": "unclaimed",
-      "classicalStatus": "No direct claim of its own in this map — it sits structurally between the single-machine/weighted branch above and the uniform-processing-time branch below, reachable from both but not independently classified by a citation yet.",
-      "overview": "This node exists mainly to hold the DAG together: it is what you get from 1||ΣUj by adding both machines and release times at once, and what the mega problem becomes once weights are dropped. Every uniform-processing-time node below is a further restriction of this one.",
-      "related": ["1--sumUj", "P-rj--sumWjUj-MEGA", "P-pj=p-rj--sumUj"],
+      "classicalStatus": "No direct citation of its own — but it strictly generalizes both 1|rj|ΣUj (strongly NP-hard) and P||ΣUj (strongly NP-hard), so it is at least strongly NP-hard by inheritance from either.",
+      "overview": "This node exists mainly to hold the DAG together: it is what you get from 1||ΣUj by adding both machines and release times, and what the mega problem becomes once weights are dropped. Every uniform-processing-time node below is a further restriction of this one.",
+      "related": ["1-rj--sumUj", "P--sumUj", "P-rj--sumWjUj-MEGA", "P-pj=p-rj--sumUj"],
       "results": []
     },
     {
@@ -494,32 +515,38 @@
     {
       "id": "mega-problem",
       "title": "The Mega Problem",
-      "description": "P|rj|ΣwjUj — parallel machines, release times, no preemption, maximize weighted throughput. Nine special cases along three axes: how much machine/release-time richness is kept, whether processing times are uniform, and how tightly the due-date window is bounded.",
+      "description": "P|rj|ΣwjUj — parallel machines, release times, no preemption, maximize weighted throughput. Eleven special cases along three axes: how much machine/release-time richness is kept, whether processing times are uniform, and how tightly the due-date window is bounded.",
       "colStagger": 0,
       "nodeW": 230,
       "nodeH": 72,
       "axisLabels": [
         { "text": "who / when", "col": 1, "row": 0.55 },
-        { "text": "uniform p",  "col": 3, "row": 0.55 },
-        { "text": "window",     "col": 4.2, "row": 0.55 }
+        { "text": "uniform p",  "col": 4, "row": 0.55 },
+        { "text": "window",     "col": 5.2, "row": 0.55 }
       ],
       "nodes": [
-        { "problemId": "P-rj--sumWjUj-MEGA",     "col": 3,   "row": 0 },
+        { "problemId": "P-rj--sumWjUj-MEGA",     "col": 4,   "row": 0 },
         { "problemId": "1-rj--sumWjUj",           "col": 1,   "row": 1 },
-        { "problemId": "P-rj--sumUj",             "col": 3,   "row": 1 },
-        { "problemId": "P-rj-JIT--sumWjUj",       "col": 4.2, "row": 1 },
+        { "problemId": "P-rj--sumUj",             "col": 4,   "row": 1 },
+        { "problemId": "P-rj-JIT--sumWjUj",       "col": 5.2, "row": 1 },
         { "problemId": "1--sumWjUj",              "col": 1,   "row": 2 },
-        { "problemId": "P-pj=p-rj--sumUj",        "col": 3,   "row": 2 },
-        { "problemId": "P-rj-sigma--sumUj",       "col": 4.2, "row": 2 },
+        { "problemId": "1-rj--sumUj",             "col": 2.3, "row": 1.5 },
+        { "problemId": "P--sumUj",                "col": 2.3, "row": 2.9 },
+        { "problemId": "P-pj=p-rj--sumUj",        "col": 4,   "row": 2 },
+        { "problemId": "P-rj-sigma--sumUj",       "col": 5.2, "row": 2 },
         { "problemId": "1--sumUj",                "col": 1,   "row": 3 },
-        { "problemId": "P-pj=p-rj-lambda--sumUj", "col": 2.4, "row": 3 },
-        { "problemId": "P-pj=p-rj-sigma--sumUj",  "col": 3.6, "row": 3 }
+        { "problemId": "P-pj=p-rj-lambda--sumUj", "col": 3.4, "row": 3 },
+        { "problemId": "P-pj=p-rj-sigma--sumUj",  "col": 4.6, "row": 3 }
       ],
       "edges": [
         { "from": "1--sumWjUj",              "to": "1--sumUj",                "axis": "weight" },
         { "from": "1-rj--sumWjUj",           "to": "1--sumWjUj",              "axis": "release-times" },
         { "from": "P-rj--sumWjUj-MEGA",      "to": "1-rj--sumWjUj",           "axis": "parallel" },
-        { "from": "P-rj--sumUj",             "to": "1--sumUj",                "axis": "release+parallel" },
+        { "from": "1-rj--sumUj",             "to": "1--sumUj",                "axis": "release-times" },
+        { "from": "1-rj--sumWjUj",           "to": "1-rj--sumUj",             "axis": "weight" },
+        { "from": "P-rj--sumUj",             "to": "1-rj--sumUj",             "axis": "parallel" },
+        { "from": "P--sumUj",                "to": "1--sumUj",                "axis": "parallel" },
+        { "from": "P-rj--sumUj",             "to": "P--sumUj",                "axis": "release-times" },
         { "from": "P-rj--sumWjUj-MEGA",      "to": "P-rj--sumUj",             "axis": "weight" },
         { "from": "P-rj--sumUj",             "to": "P-pj=p-rj--sumUj",        "axis": "uniform-p" },
         { "from": "P-pj=p-rj--sumUj",        "to": "P-pj=p-rj-lambda--sumUj", "axis": "window" },
