@@ -21,14 +21,14 @@
     { "id": "open",        "label": "open",              "color": "#868e96", "order": 6, "description": "Complexity status not known / not settled." }
   ],
   "axes": [
-    { "id": "stages",         "label": "flow-shop stage count", "color": "#adb5bd" },
-    { "id": "weight",         "label": "weighted vs. unweighted", "color": "#74c0fc" },
-    { "id": "flexibility",    "label": "flexible-machine stages", "color": "#b197fc" },
-    { "id": "parallel",       "label": "single vs. parallel machines", "color": "#66d9e8" },
-    { "id": "release-times",  "label": "release-time generality", "color": "#91a7ff" },
-    { "id": "release+parallel", "label": "release times + machine count (combined)", "color": "#99e9f2" },
-    { "id": "uniform-p",      "label": "uniform vs. general processing times", "color": "#faa2c1" },
-    { "id": "window",         "label": "due-date window / slack bound", "color": "#e599f7" }
+    { "id": "stages",         "label": "flow-shop stage count" },
+    { "id": "weight",         "label": "weighted vs. unweighted" },
+    { "id": "flexibility",    "label": "flexible-machine stages" },
+    { "id": "parallel",       "label": "single vs. parallel machines" },
+    { "id": "release-times",  "label": "release-time generality" },
+    { "id": "release+parallel", "label": "release times + machine count (combined)" },
+    { "id": "uniform-p",      "label": "uniform vs. general processing times" },
+    { "id": "window",         "label": "due-date window / slack bound" }
   ],
   "parameters": [
     { "id": "m",        "symbol": "m",        "name": "number of machines",
@@ -471,8 +471,8 @@
         { "from": "1--sumWjZj",   "to": "1--sumZj",     "axis": "weight" },
         { "from": "F1m--sumWjZj", "to": "F1c--sumWjZj", "axis": "flexibility" },
         { "from": "F1c--sumWjZj", "to": "F2--sumWjZj",  "axis": "flexibility" },
-        { "from": "P--sumWjZj",   "to": "F1m--sumWjZj", "axis": "flexibility" },
-        { "from": "1--sumWjZj",   "to": "P--sumWjZj",   "axis": "parallel" }
+        { "from": "F1m--sumWjZj", "to": "P--sumWjZj",   "axis": "flexibility" },
+        { "from": "P--sumWjZj",   "to": "1--sumWjZj",   "axis": "parallel" }
       ]
     },
     {
@@ -500,16 +500,16 @@
         { "problemId": "P-pj=p-rj-sigma--sumUj",  "col": 3.6, "row": 3 }
       ],
       "edges": [
-        { "from": "1--sumUj",                "to": "1--sumWjUj",              "axis": "weight" },
-        { "from": "1--sumWjUj",               "to": "1-rj--sumWjUj",           "axis": "release-times" },
-        { "from": "1-rj--sumWjUj",            "to": "P-rj--sumWjUj-MEGA",      "axis": "parallel" },
-        { "from": "1--sumUj",                "to": "P-rj--sumUj",             "axis": "release+parallel" },
-        { "from": "P-rj--sumUj",              "to": "P-rj--sumWjUj-MEGA",      "axis": "weight" },
-        { "from": "P-pj=p-rj--sumUj",         "to": "P-rj--sumUj",             "axis": "uniform-p" },
-        { "from": "P-pj=p-rj-lambda--sumUj",  "to": "P-pj=p-rj--sumUj",        "axis": "window" },
-        { "from": "P-pj=p-rj-sigma--sumUj",   "to": "P-pj=p-rj--sumUj",        "axis": "window" },
-        { "from": "P-rj-sigma--sumUj",        "to": "P-rj--sumUj",             "axis": "window" },
-        { "from": "P-rj-JIT--sumWjUj",        "to": "P-rj--sumWjUj-MEGA",      "axis": "window" }
+        { "from": "1--sumWjUj",              "to": "1--sumUj",                "axis": "weight" },
+        { "from": "1-rj--sumWjUj",           "to": "1--sumWjUj",              "axis": "release-times" },
+        { "from": "P-rj--sumWjUj-MEGA",      "to": "1-rj--sumWjUj",           "axis": "parallel" },
+        { "from": "P-rj--sumUj",             "to": "1--sumUj",                "axis": "release+parallel" },
+        { "from": "P-rj--sumWjUj-MEGA",      "to": "P-rj--sumUj",             "axis": "weight" },
+        { "from": "P-rj--sumUj",             "to": "P-pj=p-rj--sumUj",        "axis": "uniform-p" },
+        { "from": "P-pj=p-rj--sumUj",        "to": "P-pj=p-rj-lambda--sumUj", "axis": "window" },
+        { "from": "P-pj=p-rj--sumUj",        "to": "P-pj=p-rj-sigma--sumUj",  "axis": "window" },
+        { "from": "P-rj--sumUj",             "to": "P-rj-sigma--sumUj",       "axis": "window" },
+        { "from": "P-rj--sumWjUj-MEGA",      "to": "P-rj-JIT--sumWjUj",       "axis": "window" }
       ],
       "excluded": [
         "The whole feasibility branch (γ=−) — a different objective field, not a restriction of the mega problem's ΣwjUj objective; cut from this map entirely.",

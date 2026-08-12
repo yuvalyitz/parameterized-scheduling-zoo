@@ -492,9 +492,55 @@
 
   const MAP_COL_W = 210, MAP_ROW_H = 130, MAP_MARGIN = 50;
   const MAP_NODE_W_DEFAULT = 190, MAP_NODE_H_DEFAULT = 56, MAP_COL_STAGGER_DEFAULT = 60;
+  const MAP_EDGE_COLOR = "#868e96";
 
   function axisById(id) {
     return (DATA.axes || []).find((a) => a.id === id);
+  }
+
+  // A map edge means "from generalizes to" (to is a special case of from).
+  // A problem with no direct classicalClass citation ("unclaimed") inherits
+  // the strongest hardness known among the special cases it generalizes:
+  // strongly-NP-hard carries up as-is; weakly-NP-hard or NP-hard-unresolved
+  // carry up as NP-hard-unresolved (we can't assume the general problem also
+  // has a pseudo-polynomial algorithm just because a special case does).
+  // Polynomial-time results do NOT carry upward — a tractable special case
+  // says nothing about the general problem.
+  function inheritedContribution(effectiveId) {
+    if (effectiveId === "strongly-NP-hard") return "strongly-NP-hard";
+    if (effectiveId === "NP-hard-unresolved" || effectiveId === "weakly-NP-hard") return "NP-hard-unresolved";
+    return null;
+  }
+  function strongerOf(a, b) {
+    const rank = { "strongly-NP-hard": 2, "NP-hard-unresolved": 1 };
+    if (!a) return b;
+    if (!b) return a;
+    return (rank[a] || 0) >= (rank[b] || 0) ? a : b;
+  }
+
+  function computeEffectiveClasses(map) {
+    const effective = {};
+    const visiting = new Set();
+    function resolve(problemId) {
+      if (effective[problemId] !== undefined) return effective[problemId];
+      const p = problemById(problemId);
+      let result = p ? p.classicalClass : null;
+      if ((!result || result === "unclaimed") && !visiting.has(problemId)) {
+        visiting.add(problemId);
+        let best = null;
+        map.edges.forEach((e) => {
+          if (e.from === problemId) {
+            best = strongerOf(best, inheritedContribution(resolve(e.to)));
+          }
+        });
+        visiting.delete(problemId);
+        if (best) result = best;
+      }
+      effective[problemId] = result;
+      return result;
+    }
+    map.nodes.forEach((n) => resolve(n.problemId));
+    return effective;
   }
 
   function mapNodeCenter(node, nodeW, nodeH, colStagger) {
@@ -532,17 +578,18 @@
     const width = MAP_MARGIN * 2 + (maxCol - 1) * MAP_COL_W + nodeW;
     const height = MAP_MARGIN * 2 + maxRow * MAP_ROW_H + (maxCol - 1) * colStagger + nodeH;
 
-    const usedAxes = new Set(map.edges.map((e) => e.axis));
+    const effective = computeEffectiveClasses(map);
 
     const linesSvg = map.edges
       .map((e) => {
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
         const axis = axisById(e.axis);
-        const color = axis ? axis.color : "#868e96";
         return (
           '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + b.cx + '" y2="' + b.cy +
-          '" stroke="' + color + '" stroke-width="2" />'
+          '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.5">' +
+          (axis ? "<title>" + escapeHtml(axis.label) + "</title>" : "") +
+          "</line>"
         );
       })
       .join("");
@@ -552,13 +599,18 @@
         const p = problemById(n.problemId);
         if (!p) return "";
         const pos = positions[n.problemId];
-        const cc = classicalClassById(p.classicalClass);
+        const effId = effective[n.problemId];
+        const inherited = effId !== p.classicalClass;
+        const cc = classicalClassById(effId);
         const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
         const border = cc ? cc.color : "#868e96";
-        const borderStyle = cc ? cc.border || "solid" : "solid";
+        const borderStyle = inherited ? "dashed" : cc ? cc.border || "solid" : "solid";
+        const title = p.classicalStatus + (inherited
+          ? " [Shown here as " + (cc ? cc.label : effId) + ", inherited from a problem it generalizes — not a direct citation for this exact problem.]"
+          : "");
         return (
           '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" title="' +
-          escapeHtml(p.classicalStatus) + '" href="#/problem/' + encodeURIComponent(p.id) +
+          escapeHtml(title) + '" href="#/problem/' + encodeURIComponent(p.id) +
           '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + nodeW +
           "px;height:" + nodeH + "px;background:" + bg + ";border-color:" + border +
           ";border-style:" + borderStyle + ";font-size:" + notationFontSize(p.notation) + '">' +
@@ -575,17 +627,7 @@
       })
       .join("");
 
-    const axisLegendHtml = Array.from(usedAxes)
-      .map((axisId) => {
-        const axis = axisById(axisId);
-        return (
-          '<div class="legend-item"><span class="legend-swatch" style="background:' +
-          (axis ? axis.color : "#868e96") + '"></span><span>' + (axis ? axis.label : axisId) + "</span></div>"
-        );
-      })
-      .join("");
-
-    const usedClasses = new Set(map.nodes.map((n) => (problemById(n.problemId) || {}).classicalClass));
+    const usedClasses = new Set(map.nodes.map((n) => effective[n.problemId]));
     const classLegendHtml = DATA.classicalClasses
       .filter((c) => usedClasses.has(c.id))
       .map(
@@ -594,7 +636,8 @@
           (c.fill ? c.color : "transparent") + ";border:2px " + (c.border || "solid") + " " + c.color +
           '"></span><span>' + c.label + "</span></div>"
       )
-      .join("");
+      .join("") +
+      '<div class="legend-item"><span class="legend-swatch" style="border:2px dashed #868e96;background:transparent"></span><span>inherited from a generalized/specialized problem, not a direct citation</span></div>';
 
     const excludedHtml = (map.excluded || []).length
       ? '<div class="map-excluded"><h3>Deliberately excluded</h3><ul>' +
@@ -610,7 +653,7 @@
       '<svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + linesSvg + "</svg>" +
       axisLabelsHtml + nodesHtml +
       "</div></div>" +
-      '<div class="map-legend">' + classLegendHtml + axisLegendHtml + "</div>" +
+      '<div class="map-legend">' + classLegendHtml + "</div>" +
       excludedHtml +
       "</div>";
   }
