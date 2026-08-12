@@ -432,11 +432,15 @@
     const effId = effectiveClassForProblem(p.id);
     const cc = classicalClassById(effId);
     const inherited = effId !== p.classicalClass;
+    const notVerified = !inherited && p.classicalConfidence && p.classicalConfidence !== "verified";
+    const ccTitle = inherited
+      ? "Inherited from a problem this one generalizes — not a direct citation."
+      : notVerified ? confidenceLabel(p.classicalConfidence) : "";
     const ccBadge = cc
       ? '<span class="class-pill" style="background:' +
         (cc.fill ? cc.color : "var(--panel-bg)") +
-        ";border:2px " + (inherited ? "dashed" : cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
-        '" title="' + (inherited ? "Inherited from a problem this one generalizes — not a direct citation." : "") + '">' + cc.label + "</span> "
+        ";border:2px " + (inherited || notVerified ? "dashed" : cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
+        '" title="' + escapeHtml(ccTitle) + '">' + cc.label + "</span> "
       : "";
 
     els.viewProblem.innerHTML =
@@ -620,13 +624,14 @@
         const pos = positions[n.problemId];
         const effId = effective[n.problemId];
         const inherited = effId !== p.classicalClass;
+        const notVerified = !inherited && p.classicalConfidence && p.classicalConfidence !== "verified";
         const cc = classicalClassById(effId);
         const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
         const border = cc ? cc.color : "#868e96";
-        const borderStyle = inherited ? "dashed" : cc ? cc.border || "solid" : "solid";
+        const borderStyle = inherited || notVerified ? "dashed" : cc ? cc.border || "solid" : "solid";
         const title = p.classicalStatus + (inherited
           ? " [Shown here as " + (cc ? cc.label : effId) + ", inherited from a problem it generalizes — not a direct citation for this exact problem.]"
-          : "");
+          : notVerified ? " [" + confidenceLabel(p.classicalConfidence) + "]" : "");
         return (
           '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + '" title="' +
           escapeHtml(title) + '" href="#/problem/' + encodeURIComponent(p.id) +
