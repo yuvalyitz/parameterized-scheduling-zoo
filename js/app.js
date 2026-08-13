@@ -1072,10 +1072,14 @@
   // Converts the handful of unicode symbols actually used in notation/label
   // strings into plain LaTeX source, and escapes LaTeX special characters.
   // Not a general-purpose converter — just enough for this site's own text.
+  // \Sigma, \leq, \sigma etc. are math-mode-only commands in plain LaTeX --
+  // emitting them bare in running text is exactly "Missing $ inserted."
+  // Each gets its own self-contained $...$ instead of math-ifying the whole
+  // label, so surrounding plain text (job/machine letters) stays upright.
   const LATEX_CHAR_MAP = {
-    "Σ": "\\Sigma{}", "≤": "\\leq{}", "≥": "\\geq{}", "−": "-",
-    "σ": "\\sigma{}", "λ": "\\lambda{}", "α": "\\alpha{}", "β": "\\beta{}", "γ": "\\gamma{}",
-    "_": "\\_", "%": "\\%", "&": "\\&", "#": "\\#", "$": "\\$", "^": "\\^{}",
+    "Σ": "$\\Sigma$", "≤": "$\\leq$", "≥": "$\\geq$", "−": "-",
+    "σ": "$\\sigma$", "λ": "$\\lambda$", "α": "$\\alpha$", "β": "$\\beta$", "γ": "$\\gamma$",
+    "_": "\\_", "%": "\\%", "&": "\\&", "#": "\\#", "$": "\\$", "^": "\\textasciicircum{}",
   };
   function latexEscapeText(s) {
     return String(s).replace(/[Σ≤≥−σλαβγ_%&#$^]/g, (c) => LATEX_CHAR_MAP[c] || c);
