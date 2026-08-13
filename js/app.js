@@ -114,17 +114,33 @@
   // flag: FPT/XP/para-NP-hard are solid; W[1]/W[2]-hard/open are outline
   // only, so "hard but not fully resolved" reads differently at a glance
   // from "resolved, one way or the other."
-  function hexToRgba(hex, alpha) {
+  // The site has no manual theme toggle, only prefers-color-scheme, so this
+  // is safe to detect once. Kept in sync by hand with --panel-bg in style.css.
+  const PANEL_BG_HEX = { light: "#f8f9fa", dark: "#1d1e22" };
+  function currentPanelBgHex() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? PANEL_BG_HEX.dark
+      : PANEL_BG_HEX.light;
+  }
+  function hexToRgbTuple(hex) {
     const h = hex.replace("#", "");
-    const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
-    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+    return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+  }
+  // A "fake" translucency: blend the class color with the actual panel
+  // background into one opaque RGB, rather than using real alpha, which
+  // would let SVG lines behind the node show through it.
+  function mixWithPanelBg(hex, alpha) {
+    const [r1, g1, b1] = hexToRgbTuple(hex);
+    const [r2, g2, b2] = hexToRgbTuple(currentPanelBgHex());
+    const mix = (a, b) => Math.round(a * alpha + b * (1 - alpha));
+    return "rgb(" + mix(r1, r2) + "," + mix(g1, g2) + "," + mix(b1, b2) + ")";
   }
   function classPillStyle(cls) {
     if (!cls) return "background:#868e96;color:#fff;border:2px solid #868e96";
     const border = "2px " + (cls.border || "solid") + " " + cls.color;
     // opacity (e.g. XP) fades only the fill, not the border/text -- signals
     // "positive result that doesn't rule out hardness," not "unfilled/open".
-    if (cls.opacity) return "background:" + hexToRgba(cls.color, cls.opacity) + ";color:#111;border:" + border;
+    if (cls.opacity) return "background:" + mixWithPanelBg(cls.color, cls.opacity) + ";color:#111;border:" + border;
     return cls.fill
       ? "background:" + cls.color + ";color:#111;border:" + border
       : "background:transparent;color:" + cls.color + ";border:" + border;
@@ -856,23 +872,29 @@
   // width (~356px after padding) without horizontal scrolling. All
   // columns are >=1 — a column below 1 goes negative and renders off
   //-canvas, the same mistake made once already on the main map.
+  // Rows follow the same convention as the problem maps: above = smaller/
+  // more general parameter, below = larger/more restrictive one, matching
+  // parameterHierarchy's edges exactly (row(from) < row(to) for every
+  // edge -- e.g. numP (row0) is strictly above pmax (row1), since
+  // numP <= pmax always, and m_plus_p (row2) sits below BOTH of its
+  // parents m (row0) and pmax (row1).
   const PARAM_TREE_LAYOUT = {
-    m:             { col: 1,    row: 0 },
-    pmax:          { col: 2,    row: 0 },
-    numDD:         { col: 3,    row: 0 },
-    numR:          { col: 4,    row: 0 },
-    numW:          { col: 5,    row: 0 },
-    numP:          { col: 6,    row: 0 },
-    numSpeed:      { col: 7,    row: 0 },
-    tw:            { col: 8,    row: 0 },
-    vc:            { col: 9,    row: 0 },
-    sigma_plus_m:  { col: 1,    row: 1 },
-    m_plus_p:      { col: 2,    row: 1 },
-    numDD_numW:    { col: 3.15, row: 1 },
-    numDD_numP:    { col: 4.15, row: 1 },
-    numP_numW:     { col: 5.15, row: 1 },
+    m:             { col: 1,   row: 0 },
+    numDD:         { col: 2,   row: 0 },
+    numR:          { col: 3,   row: 0 },
+    numW:          { col: 4,   row: 0 },
+    numP:          { col: 5,   row: 0 },
+    numSpeed:      { col: 6,   row: 0 },
+    tw:            { col: 7,   row: 0 },
+    vc:            { col: 8,   row: 0 },
+    sigma_plus_m:  { col: 1,   row: 1 },
+    numDD_numW:    { col: 2.7, row: 1 },
+    numDD_numP:    { col: 3.8, row: 1 },
+    numP_numW:     { col: 4.9, row: 1 },
+    pmax:          { col: 6.2, row: 1 },
+    m_plus_p:      { col: 3.5, row: 2 },
   };
-  const PARAM_TREE_NODE_W = 52, PARAM_TREE_NODE_H = 22, PARAM_TREE_COL_W = 58, PARAM_TREE_ROW_H = 42, PARAM_TREE_MARGIN = 6;
+  const PARAM_TREE_NODE_W = 68, PARAM_TREE_NODE_H = 30, PARAM_TREE_COL_W = 76, PARAM_TREE_ROW_H = 54, PARAM_TREE_MARGIN = 8;
 
   // Prefers the computed per-problem relevance (which dimensions this exact
   // problem leaves free) over the older map-wide union, whenever the
@@ -945,7 +967,7 @@
         // cls.opacity (XP) fades the fill and dashes the border, marking
         // "positive result, doesn't rule out hardness" as visually distinct
         // from a settled FPT/W-hard/para-NP-hard classification.
-        const bg = cls && cls.opacity ? hexToRgba(cls.color, cls.opacity) : cls && cls.fill ? cls.color : "var(--panel-bg)";
+        const bg = cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : cls && cls.fill ? cls.color : "var(--panel-bg)";
         const border = cls ? cls.color : "#5c5f66";
         const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
         const textColor = cls && (cls.fill || cls.opacity) ? "#111" : "var(--fg)";
