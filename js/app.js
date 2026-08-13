@@ -434,6 +434,7 @@
       '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(p.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
+    enableParamTreeDragging(els.detailContent.querySelector(".param-tree-wrap"));
   }
 
   function escapeHtml(s) {
@@ -734,21 +735,26 @@
     return ids;
   }
 
+  // Layout is deliberately compact (small col/row units) so the mega
+  // problem's 7 relevant parameters fit inside the side panel's content
+  // width (~356px after padding) without horizontal scrolling. All
+  // columns are >=1 — a column below 1 goes negative and renders off
+  //-canvas, the same mistake made once already on the main map.
   const PARAM_TREE_LAYOUT = {
-    m:             { col: 1,   row: 0 },
-    pmax:          { col: 2.2, row: 0 },
-    numDD:         { col: 3.6, row: 0 },
-    numR:          { col: 4.8, row: 0 },
-    numW:          { col: 5.6, row: 0 },
-    numP:          { col: 6.4, row: 0 },
-    numSpeed:      { col: 7.2, row: 0 },
-    tw:            { col: 8,   row: 0 },
-    vc:            { col: 8.8, row: 0 },
-    sigma_plus_m:  { col: 0.5, row: 1 },
-    m_plus_p:      { col: 1.7, row: 1 },
-    numDD_numP:    { col: 3.6, row: 1 },
+    m:             { col: 1,    row: 0 },
+    pmax:          { col: 2,    row: 0 },
+    numDD:         { col: 3,    row: 0 },
+    numR:          { col: 3.85, row: 0 },
+    numW:          { col: 4.7,  row: 0 },
+    numP:          { col: 5.55, row: 0 },
+    numSpeed:      { col: 6.4,  row: 0 },
+    tw:            { col: 7.25, row: 0 },
+    vc:            { col: 8.1,  row: 0 },
+    sigma_plus_m:  { col: 1,    row: 1 },
+    m_plus_p:      { col: 1.95, row: 1 },
+    numDD_numP:    { col: 3,    row: 1 },
   };
-  const PARAM_TREE_NODE_W = 74, PARAM_TREE_NODE_H = 26, PARAM_TREE_COL_W = 78, PARAM_TREE_ROW_H = 56, PARAM_TREE_MARGIN = 12;
+  const PARAM_TREE_NODE_W = 58, PARAM_TREE_NODE_H = 24, PARAM_TREE_COL_W = 66, PARAM_TREE_ROW_H = 48, PARAM_TREE_MARGIN = 10;
 
   function buildParameterTreeHtml(problemId) {
     const relevant = mapRelevantParameters(problemId);
@@ -764,9 +770,7 @@
     let maxCol = 0, maxRow = 0;
     nodeIds.forEach((id) => {
       const l = PARAM_TREE_LAYOUT[id];
-      const left = PARAM_TREE_MARGIN + (l.col - 1) * PARAM_TREE_COL_W;
-      const top = PARAM_TREE_MARGIN + l.row * PARAM_TREE_ROW_H;
-      pos[id] = { left, top, cx: left + PARAM_TREE_NODE_W / 2, cy: top + PARAM_TREE_NODE_H / 2 };
+      pos[id] = { left: PARAM_TREE_MARGIN + (l.col - 1) * PARAM_TREE_COL_W, top: PARAM_TREE_MARGIN + l.row * PARAM_TREE_ROW_H };
       maxCol = Math.max(maxCol, l.col);
       maxRow = Math.max(maxRow, l.row);
     });
@@ -780,10 +784,8 @@
 
     const linesSvg = edges
       .map((e) => {
-        const a = pos[e.from], b = pos[e.to];
-        if (!a || !b) return "";
-        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, PARAM_TREE_NODE_W / 2, PARAM_TREE_NODE_H / 2, 4);
-        return '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+        if (!pos[e.from] || !pos[e.to]) return "";
+        return '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
           '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.25" marker-end="url(#' + arrowId + ')" />';
       })
       .join("");
@@ -799,11 +801,11 @@
         const textColor = cls && cls.fill ? "#111" : "var(--fg)";
         const title = (param ? param.name : id) + (r ? " — " + (cls ? cls.label : r.class) + (r.inherited ? " (inherited)" : "") : " — no result recorded");
         return (
-          '<g>' +
+          '<g class="param-node" data-param="' + escapeHtml(id) + '" transform="translate(' + p.left + "," + p.top + ')">' +
           '<title>' + escapeHtml(title) + "</title>" +
-          '<rect x="' + p.left + '" y="' + p.top + '" width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
+          '<rect width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
           '" rx="5" fill="' + bg + '" stroke="' + border + '" stroke-width="1.5" />' +
-          '<text x="' + p.cx + '" y="' + (p.cy + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + textColor + '">' +
+          '<text x="' + PARAM_TREE_NODE_W / 2 + '" y="' + (PARAM_TREE_NODE_H / 2 + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + textColor + '">' +
           escapeHtml(param ? param.symbol : id) + "</text>" +
           "</g>"
         );
@@ -811,10 +813,58 @@
       .join("");
 
     return (
-      '<div class="param-tree-wrap"><svg width="' + width + '" height="' + height + '" style="min-width:' + width + 'px">' +
+      '<div class="param-tree-wrap"><svg class="param-tree-svg" width="' + width + '" height="' + height + '">' +
       defs + linesSvg + nodesSvg +
       "</svg></div>"
     );
+  }
+
+  // Positions each edge line from the current transform of its endpoint
+  // nodes (rather than baking in coordinates at HTML-string build time),
+  // and is called both once after inserting the tree and again on every
+  // drag frame — the single source of truth for line placement.
+  function layoutParamTreeEdges(svg) {
+    svg.querySelectorAll("g.param-node").forEach((g) => {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute("transform"));
+      g.dataset.x = m[1];
+      g.dataset.y = m[2];
+    });
+    svg.querySelectorAll("line[data-from]").forEach((line) => {
+      const a = svg.querySelector('g.param-node[data-param="' + cssEscape(line.dataset.from) + '"]');
+      const b = svg.querySelector('g.param-node[data-param="' + cssEscape(line.dataset.to) + '"]');
+      if (!a || !b) return;
+      const ax = parseFloat(a.dataset.x) + PARAM_TREE_NODE_W / 2, ay = parseFloat(a.dataset.y) + PARAM_TREE_NODE_H / 2;
+      const bx = parseFloat(b.dataset.x) + PARAM_TREE_NODE_W / 2, by = parseFloat(b.dataset.y) + PARAM_TREE_NODE_H / 2;
+      const tip = pullBackToRect(ax, ay, bx, by, PARAM_TREE_NODE_W / 2, PARAM_TREE_NODE_H / 2, 4);
+      line.setAttribute("x1", ax);
+      line.setAttribute("y1", ay);
+      line.setAttribute("x2", tip.x);
+      line.setAttribute("y2", tip.y);
+    });
+  }
+
+  function enableParamTreeDragging(wrap) {
+    const svg = wrap && wrap.querySelector(".param-tree-svg");
+    if (!svg) return;
+    layoutParamTreeEdges(svg);
+    let drag = null;
+    svg.querySelectorAll("g.param-node").forEach((g) => {
+      g.style.cursor = "grab";
+      g.addEventListener("pointerdown", (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        e.preventDefault();
+        drag = { g, startX: e.clientX, startY: e.clientY, x0: parseFloat(g.dataset.x), y0: parseFloat(g.dataset.y) };
+      });
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const x = drag.x0 + (e.clientX - drag.startX), y = drag.y0 + (e.clientY - drag.startY);
+      drag.g.setAttribute("transform", "translate(" + x + "," + y + ")");
+      drag.g.dataset.x = x;
+      drag.g.dataset.y = y;
+      layoutParamTreeEdges(svg);
+    });
+    document.addEventListener("pointerup", () => { drag = null; });
   }
 
   function mapNodeCenter(node, nodeW, nodeH, colStagger) {
