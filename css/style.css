@@ -215,7 +215,10 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .detail-panel {
   position: fixed;
   top: 0; right: 0;
-  width: min(420px, 92vw);
+  /* --content-min-width is set from JS when a panel's content (e.g. the
+     parameter hierarchy tree) needs more room than the default 420px, so
+     it never has to scroll horizontally; otherwise it defaults to 420px. */
+  width: min(max(420px, var(--content-min-width, 0px)), 92vw);
   height: 100%;
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -385,7 +388,10 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .map-card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
 
 /* Problem map (poset diagram) */
-.map-page { max-width: 1100px; margin: 0 auto; position: relative; }
+/* No max-width cap: the canvas inside is already sized exactly to its
+   content (computed in JS), so let the page grow to match it instead of
+   clipping to an arbitrary cap and forcing .map-canvas-wrap to scroll. */
+.map-page { width: fit-content; max-width: 100%; margin: 0 auto; position: relative; }
 .map-page-header { text-align: center; margin-bottom: 1rem; }
 .map-page-header p { color: var(--muted); font-size: 0.9rem; max-width: 680px; margin: 0.3rem auto 0; }
 .tikz-export-btn {

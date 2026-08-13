@@ -389,6 +389,7 @@
       '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(problem.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
+    setPanelMinWidth(0);
   }
 
   function detailField(label, value) {
@@ -448,18 +449,33 @@
   function openProblemPanel(problemId) {
     const p = problemById(problemId);
     if (!p) return;
+    const tree = buildParameterTreeHtml(p.id);
     els.detailContent.innerHTML =
       "<h3>" + p.notation + "</h3>" +
       '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">' + escapeHtml(p.name) + "</p>" +
       '<div class="wiki-status" style="margin-bottom:1.25rem"><b>Classical (unparameterized) status</b>' +
       buildClassicalBadgeHtml(p) + escapeHtml(p.classicalStatus) + "</div>" +
       (p.overview ? detailField("Overview", p.overview) : "") +
-      '<div class="detail-field"><h4>Parameter hierarchy</h4>' + buildParameterTreeHtml(p.id) + "</div>" +
+      '<div class="detail-field"><h4>Parameter hierarchy</h4>' + tree.html + "</div>" +
       '<div class="detail-field"><h4>Parameterized results</h4>' + buildResultsListHtml(effectiveResultsForProblem(p.id)) + "</div>" +
       '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(p.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
+    setPanelMinWidth(tree.width);
     enableParamTreeDragging(els.detailContent.querySelector(".param-tree-wrap"));
+  }
+
+  // Widens the shared side panel (via the --content-min-width custom
+  // property, see style.css) just enough that a wide diagram inside it
+  // never needs its own horizontal scrollbar; resets to the default
+  // 420px-ish width for panels with no such content (e.g. openDetail()'s
+  // single-result view from the search matrix).
+  function setPanelMinWidth(contentWidth) {
+    // .detail-panel padding (1.5rem*2=48px) + .param-tree-wrap's own padding
+    // (0.5rem*2=16px) + its 1px border on each side, so the SVG never
+    // needs its own horizontal scrollbar inside the widened panel.
+    const PANEL_PADDING = 48 + 16 + 4;
+    els.detailPanel.style.setProperty("--content-min-width", contentWidth ? contentWidth + PANEL_PADDING + "px" : "0px");
   }
 
   function escapeHtml(s) {
@@ -925,11 +941,11 @@
         if (param && !isParamRelevantForProblem(param, problemId)) relevant.delete(id);
       });
     }
-    if (!relevant.size) return "";
+    if (!relevant.size) return { html: "", width: 0 };
 
     const effective = effectiveParamResultsForProblem(problemId);
     const nodeIds = Array.from(relevant).filter((id) => PARAM_TREE_LAYOUT[id]);
-    if (!nodeIds.length) return "";
+    if (!nodeIds.length) return { html: "", width: 0 };
 
     const pos = {};
     let maxCol = 0, maxRow = 0;
@@ -984,11 +1000,13 @@
       })
       .join("");
 
-    return (
-      '<div class="param-tree-wrap"><svg class="param-tree-svg" width="' + width + '" height="' + height + '">' +
-      defs + linesSvg + nodesSvg +
-      "</svg></div>"
-    );
+    return {
+      html:
+        '<div class="param-tree-wrap"><svg class="param-tree-svg" width="' + width + '" height="' + height + '">' +
+        defs + linesSvg + nodesSvg +
+        "</svg></div>",
+      width: width,
+    };
   }
 
   // Positions each edge line from the current transform of its endpoint
