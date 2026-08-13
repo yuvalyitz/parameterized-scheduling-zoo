@@ -114,11 +114,20 @@
   // flag: FPT/XP/para-NP-hard are solid; W[1]/W[2]-hard/open are outline
   // only, so "hard but not fully resolved" reads differently at a glance
   // from "resolved, one way or the other."
+  function hexToRgba(hex, alpha) {
+    const h = hex.replace("#", "");
+    const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
   function classPillStyle(cls) {
     if (!cls) return "background:#868e96;color:#fff;border:2px solid #868e96";
+    const border = "2px " + (cls.border || "solid") + " " + cls.color;
+    // opacity (e.g. XP) fades only the fill, not the border/text -- signals
+    // "positive result that doesn't rule out hardness," not "unfilled/open".
+    if (cls.opacity) return "background:" + hexToRgba(cls.color, cls.opacity) + ";color:#111;border:" + border;
     return cls.fill
-      ? "background:" + cls.color + ";color:#111;border:2px solid " + cls.color
-      : "background:transparent;color:" + cls.color + ";border:2px solid " + cls.color;
+      ? "background:" + cls.color + ";color:#111;border:" + border
+      : "background:transparent;color:" + cls.color + ";border:" + border;
   }
   function problemById(id) {
     return DATA.problems.find((p) => p.id === id);
@@ -933,15 +942,19 @@
         // Fill with the panel's own background (not "transparent") so the
         // connecting lines never show through an uncolored/unfilled node —
         // same convention as the map's own "open"/"unclaimed" nodes.
-        const bg = cls && cls.fill ? cls.color : "var(--panel-bg)";
+        // cls.opacity (XP) fades the fill and dashes the border, marking
+        // "positive result, doesn't rule out hardness" as visually distinct
+        // from a settled FPT/W-hard/para-NP-hard classification.
+        const bg = cls && cls.opacity ? hexToRgba(cls.color, cls.opacity) : cls && cls.fill ? cls.color : "var(--panel-bg)";
         const border = cls ? cls.color : "#5c5f66";
-        const textColor = cls && cls.fill ? "#111" : "var(--fg)";
+        const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
+        const textColor = cls && (cls.fill || cls.opacity) ? "#111" : "var(--fg)";
         const title = (param ? param.name : id) + (r ? " — " + (cls ? cls.label : r.class) + (r.inherited ? " (inherited)" : "") : " — no result recorded");
         return (
           '<g class="param-node" data-param="' + escapeHtml(id) + '" transform="translate(' + p.left + "," + p.top + ')">' +
           '<title>' + escapeHtml(title) + "</title>" +
           '<rect width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
-          '" rx="5" style="fill:' + bg + ";stroke:" + border + '" stroke-width="1.5" />' +
+          '" rx="5" style="fill:' + bg + ";stroke:" + border + '"' + dash + ' stroke-width="1.5" />' +
           '<text x="' + PARAM_TREE_NODE_W / 2 + '" y="' + (PARAM_TREE_NODE_H / 2 + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" style="fill:' + textColor + '">' +
           escapeHtml(param ? param.symbol : id) + "</text>" +
           "</g>"

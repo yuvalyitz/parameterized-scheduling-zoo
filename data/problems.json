@@ -14,7 +14,7 @@
   "complexityClasses": [
     { "id": "P",           "label": "P",                 "color": "#2f9e44", "fill": true,  "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
     { "id": "FPT",         "label": "FPT",               "color": "#2f9e44", "fill": true,  "order": 1, "description": "Fixed-parameter tractable: solvable in f(k)·poly(n) time." },
-    { "id": "XP",          "label": "XP",                "color": "#f08c00", "fill": true,  "order": 2, "description": "Solvable in n^f(k) time; not known to be FPT." },
+    { "id": "XP",          "label": "XP",                "color": "#f08c00", "fill": true, "border": "dashed", "opacity": 0.5, "order": 2, "description": "Solvable in n^f(k) time; not known to be FPT, and not known to be W-hard either — a positive result that doesn't rule out hardness. Dashed + translucent to distinguish it from a settled result." },
     { "id": "W1",          "label": "W[1]-hard",         "color": "#f08c00", "fill": false, "order": 3, "description": "W[1]-hard: unlikely to be FPT under standard assumptions." },
     { "id": "W2",          "label": "W[2]-hard",         "color": "#f08c00", "fill": false, "order": 4, "description": "W[2]-hard: unlikely to be FPT (stronger than W[1])." },
     { "id": "paraNP",      "label": "para-NP-hard",      "color": "#c92a2a", "fill": true,  "order": 5, "description": "NP-hard even for a constant value of the parameter." },
@@ -55,6 +55,7 @@
       { "from": "m",     "to": "m_plus_p" },
       { "from": "pmax",  "to": "m_plus_p" },
       { "from": "m",     "to": "sigma_plus_m" },
+      { "from": "numP",  "to": "pmax" },
       { "from": "numDD", "to": "numDD_numP" },
       { "from": "numP",  "to": "numDD_numP" },
       { "from": "numDD", "to": "numDD_numW" },
