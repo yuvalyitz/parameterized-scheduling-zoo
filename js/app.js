@@ -562,7 +562,113 @@
     return (rank[a] || 0) >= (rank[b] || 0) ? a : b;
   }
 
+  // ---------- restriction engine (computed generalization) ----------
+  // A problem opts into this system by having a `restrictions` object
+  // (possibly {} for the mega problem itself, which restricts nothing).
+  // Maps whose nodes don't have it (the JIT flow-shop map, still on the
+  // older hand-authored-edges model) fall through to map.edges unchanged.
+  const RESTRICTION_DIMENSIONS = ["machines", "releaseTimes", "processingTimes", "dueDates", "weights", "window", "slack"];
+
+  function mapUsesRestrictions(map) {
+    return map.nodes.every((n) => {
+      const p = problemById(n.problemId);
+      return p && p.restrictions !== undefined;
+    });
+  }
+
+  function restrictionOf(problemId, dim) {
+    const p = problemById(problemId);
+    return (p && p.restrictions && p.restrictions[dim]) || { family: "free" };
+  }
+
+  // -1: ra stricter than rb, 0: equal, 1: ra more general than rb, null: incomparable.
+  function compareRestriction(ra, rb) {
+    if (ra.family === "free") return rb.family === "free" ? 0 : 1;
+    if (rb.family === "free") return -1;
+    if (ra.family !== rb.family) return null;
+    if (ra.family === "value") return ra.equals === rb.equals ? 0 : null;
+    const ca = ra.k !== undefined ? ra.k : ra.c;
+    const cb = rb.k !== undefined ? rb.k : rb.c;
+    if (ca === "param" && cb === "param") return 0;
+    if (ca === "param") return 1;
+    if (cb === "param") return -1;
+    return ca === cb ? 0 : ca > cb ? 1 : -1;
+  }
+
+  // Does problem A generalize problem B? (A's restrictions are >= B's on
+  // every dimension, strictly greater on at least one.) This REPLACES
+  // hand-authored map.edges for any map where every node declares
+  // `restrictions` — no {from,to} pair to get backwards, ever.
+  function generalizesRestrictions(idA, idB) {
+    if (idA === idB) return false;
+    let strict = false;
+    for (const dim of RESTRICTION_DIMENSIONS) {
+      const cmp = compareRestriction(restrictionOf(idA, dim), restrictionOf(idB, dim));
+      if (cmp === null || cmp < 0) return false;
+      if (cmp > 0) strict = true;
+    }
+    return strict;
+  }
+
+  // Full pairwise generalizes() relation, reduced to its Hasse diagram
+  // (drop any edge implied by a longer path through a third node in the
+  // same map) so the rendered graph shows only direct/covering relations.
+  const _mapEdgesCache = new Map();
+  function computedMapEdges(map) {
+    if (_mapEdgesCache.has(map.id)) return _mapEdgesCache.get(map.id);
+    const ids = map.nodes.map((n) => n.problemId);
+    const full = [];
+    ids.forEach((a) => ids.forEach((b) => { if (generalizesRestrictions(a, b)) full.push([a, b]); }));
+    const redundant = (a, b) => ids.some((c) => c !== a && c !== b && generalizesRestrictions(a, c) && generalizesRestrictions(c, b));
+    const hasse = full.filter(([a, b]) => !redundant(a, b)).map(([from, to]) => ({ from, to, axis: differingDimension(from, to) }));
+    _mapEdgesCache.set(map.id, hasse);
+    return hasse;
+  }
+
+  function differingDimension(idA, idB) {
+    const diffs = RESTRICTION_DIMENSIONS.filter((dim) => compareRestriction(restrictionOf(idA, dim), restrictionOf(idB, dim)) !== 0);
+    return diffs.join("+") || null;
+  }
+
+  function mapEdges(map) {
+    return mapUsesRestrictions(map) ? computedMapEdges(map) : map.edges;
+  }
+
+  // A parameter is only meaningful for a problem if every dimension it
+  // measures is NOT already pinned by that problem's restrictions:
+  // "cardinality"-kind measures (e.g. #p) are trivial once that dimension
+  // is fixed to a single value OR a fixed cardinality (uniform); "magnitude"
+  // -kind measures (e.g. p_max) are trivial only once the dimension is
+  // pinned to one exact value (a fixed cardinality like "uniform" still
+  // leaves the shared value free to vary, so p_max stays meaningful there).
+  function isParamRelevantForProblem(param, problemId) {
+    const p = problemById(problemId);
+    if (!p || p.restrictions === undefined) return true; // no restriction data -> can't rule it out
+    const dims = param.dimensions || [];
+    // A parameter with no declared dimension isn't part of THIS problem's
+    // dimension model at all (e.g. tw(prec)/vc(prec)/#speeds belong to
+    // other problem families entirely) -- exclude rather than guess.
+    if (!dims.length) return false;
+    return dims.every(({ dimension, measureKind }) => {
+      const r = restrictionOf(problemId, dimension);
+      if (r.family === "value") return false;
+      if (measureKind === "cardinality" && r.family === "cardinality" && r.k !== "param") return false;
+      // boundedValue/ratioBound (e.g. slack<=sigma, window<=lambda*p): unlike
+      // cardinality vs magnitude on processingTimes, there's only one thing
+      // to measure here, so a fixed constant excludes the parameter outright
+      // regardless of measureKind -- fixing sigma=2 leaves nothing left to
+      // parameterize by.
+      if ((r.family === "boundedValue" || r.family === "ratioBound") && r.c !== "param") return false;
+      return true;
+    });
+  }
+
+  function relevantParametersForProblem(problemId) {
+    return DATA.parameters.filter((param) => isParamRelevantForProblem(param, problemId));
+  }
+
   function computeEffectiveClasses(map) {
+    const edges = mapEdges(map);
     const effective = {};
     const visiting = new Set();
     function resolve(problemId) {
@@ -572,7 +678,7 @@
       if ((!result || result === "unclaimed") && !visiting.has(problemId)) {
         visiting.add(problemId);
         let best = null;
-        map.edges.forEach((e) => {
+        edges.forEach((e) => {
           if (e.from === problemId) {
             best = strongerOf(best, inheritedContribution(resolve(e.to)));
           }
@@ -617,6 +723,7 @@
   }
 
   function computeEffectiveResults(map) {
+    const edges = mapEdges(map);
     const effective = {};
     const visiting = new Set();
     function resolve(problemId) {
@@ -628,7 +735,7 @@
       });
       if (!visiting.has(problemId)) {
         visiting.add(problemId);
-        map.edges.forEach((e) => {
+        edges.forEach((e) => {
           if (e.from !== problemId) return;
           const childResults = resolve(e.to);
           Object.keys(childResults).forEach((paramId) => {
@@ -744,22 +851,49 @@
     m:             { col: 1,    row: 0 },
     pmax:          { col: 2,    row: 0 },
     numDD:         { col: 3,    row: 0 },
-    numR:          { col: 3.85, row: 0 },
-    numW:          { col: 4.7,  row: 0 },
-    numP:          { col: 5.55, row: 0 },
-    numSpeed:      { col: 6.4,  row: 0 },
-    tw:            { col: 7.25, row: 0 },
-    vc:            { col: 8.1,  row: 0 },
+    numR:          { col: 4,    row: 0 },
+    numW:          { col: 5,    row: 0 },
+    numP:          { col: 6,    row: 0 },
+    numSpeed:      { col: 7,    row: 0 },
+    tw:            { col: 8,    row: 0 },
+    vc:            { col: 9,    row: 0 },
     sigma_plus_m:  { col: 1,    row: 1 },
-    m_plus_p:      { col: 1.95, row: 1 },
-    numDD_numP:    { col: 3,    row: 1 },
+    m_plus_p:      { col: 2,    row: 1 },
+    numDD_numW:    { col: 3.15, row: 1 },
+    numDD_numP:    { col: 4.15, row: 1 },
+    numP_numW:     { col: 5.15, row: 1 },
   };
-  const PARAM_TREE_NODE_W = 58, PARAM_TREE_NODE_H = 24, PARAM_TREE_COL_W = 66, PARAM_TREE_ROW_H = 48, PARAM_TREE_MARGIN = 10;
+  const PARAM_TREE_NODE_W = 52, PARAM_TREE_NODE_H = 22, PARAM_TREE_COL_W = 58, PARAM_TREE_ROW_H = 42, PARAM_TREE_MARGIN = 6;
+
+  // Prefers the computed per-problem relevance (which dimensions this exact
+  // problem leaves free) over the older map-wide union, whenever the
+  // problem's map has opted into the restrictions system. This is the
+  // fix for parameters like #r or m showing up on a problem that fixes
+  // machines=1 and has no release times at all — they're not "unstudied
+  // here," they're structurally undefined here.
+  function relevantParamIdsForTree(problemId) {
+    const map = findMapForProblem(problemId);
+    if (map && mapUsesRestrictions(map)) {
+      return new Set(relevantParametersForProblem(problemId).map((p) => p.id));
+    }
+    return mapRelevantParameters(problemId);
+  }
 
   function buildParameterTreeHtml(problemId) {
-    const relevant = mapRelevantParameters(problemId);
+    const relevant = relevantParamIdsForTree(problemId);
     const edges = paramHierarchyEdges().filter((e) => relevant.has(e.from) || relevant.has(e.to));
     edges.forEach((e) => { relevant.add(e.from); relevant.add(e.to); });
+    // Hierarchy-adjacency can pull in a neighbor for context (fine when it's
+    // merely "not cited here yet"), but it must never override a parameter
+    // being structurally inapplicable (a dimension it needs is pinned) --
+    // that's a hard exclusion, checked again after the expansion above.
+    const map = findMapForProblem(problemId);
+    if (map && mapUsesRestrictions(map)) {
+      Array.from(relevant).forEach((id) => {
+        const param = paramById(id);
+        if (param && !isParamRelevantForProblem(param, problemId)) relevant.delete(id);
+      });
+    }
     if (!relevant.size) return "";
 
     const effective = effectiveParamResultsForProblem(problemId);
@@ -796,7 +930,10 @@
         const p = pos[id];
         const r = effective[id];
         const cls = r ? classById(r.class) : null;
-        const bg = cls && cls.fill ? cls.color : "transparent";
+        // Fill with the panel's own background (not "transparent") so the
+        // connecting lines never show through an uncolored/unfilled node —
+        // same convention as the map's own "open"/"unclaimed" nodes.
+        const bg = cls && cls.fill ? cls.color : "var(--panel-bg)";
         const border = cls ? cls.color : "#5c5f66";
         const textColor = cls && cls.fill ? "#111" : "var(--fg)";
         const title = (param ? param.name : id) + (r ? " — " + (cls ? cls.label : r.class) + (r.inherited ? " (inherited)" : "") : " — no result recorded");
@@ -804,8 +941,8 @@
           '<g class="param-node" data-param="' + escapeHtml(id) + '" transform="translate(' + p.left + "," + p.top + ')">' +
           '<title>' + escapeHtml(title) + "</title>" +
           '<rect width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
-          '" rx="5" fill="' + bg + '" stroke="' + border + '" stroke-width="1.5" />' +
-          '<text x="' + PARAM_TREE_NODE_W / 2 + '" y="' + (PARAM_TREE_NODE_H / 2 + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + textColor + '">' +
+          '" rx="5" style="fill:' + bg + ";stroke:" + border + '" stroke-width="1.5" />' +
+          '<text x="' + PARAM_TREE_NODE_W / 2 + '" y="' + (PARAM_TREE_NODE_H / 2 + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" style="fill:' + textColor + '">' +
           escapeHtml(param ? param.symbol : id) + "</text>" +
           "</g>"
         );
@@ -879,6 +1016,84 @@
     return "0.74rem";
   }
 
+  // Converts the handful of unicode symbols actually used in notation/label
+  // strings into plain LaTeX source, and escapes LaTeX special characters.
+  // Not a general-purpose converter — just enough for this site's own text.
+  const LATEX_CHAR_MAP = {
+    "Σ": "\\Sigma{}", "≤": "\\leq{}", "≥": "\\geq{}", "−": "-",
+    "σ": "\\sigma{}", "λ": "\\lambda{}", "α": "\\alpha{}", "β": "\\beta{}", "γ": "\\gamma{}",
+    "_": "\\_", "%": "\\%", "&": "\\&", "#": "\\#", "$": "\\$", "^": "\\^{}",
+  };
+  function latexEscapeText(s) {
+    return String(s).replace(/[Σ≤≥−σλαβγ_%&#$^]/g, (c) => LATEX_CHAR_MAP[c] || c);
+  }
+  function tikzSanitizeId(id) {
+    return "n" + String(id).replace(/[^a-zA-Z0-9]/g, "");
+  }
+
+  // Builds a self-contained tikzpicture reproducing the currently rendered
+  // map: same node positions/colors/labels and same generalizes->specific
+  // edges. TikZ auto-clips `--` connections to each named node's boundary,
+  // so no manual arrow pullback is needed here (unlike the SVG renderer).
+  function mapToTikzCode(map, positions, effective, nodeW, nodeH) {
+    const SCALE = 42; // px per cm
+    const usedColors = new Map();
+    function colorName(hex) {
+      const key = hex.replace("#", "").toUpperCase();
+      if (!usedColors.has(key)) usedColors.set(key, "c" + key);
+      return usedColors.get(key);
+    }
+
+    const nodeLines = map.nodes
+      .map((n) => {
+        const p = problemById(n.problemId);
+        if (!p) return "";
+        const pos = positions[n.problemId];
+        const cc = classicalClassById(effective[n.problemId]);
+        const borderName = colorName(cc ? cc.color : "868e96");
+        const fillName = cc && cc.fill ? colorName(cc.color) : null;
+        const x = (pos.cx / SCALE).toFixed(2), y = (-pos.cy / SCALE).toFixed(2);
+        const style =
+          "draw=" + borderName + (cc && cc.border === "dashed" ? ", dashed" : "") +
+          (fillName ? ", fill=" + fillName : ", fill=white") +
+          ", rounded corners=2pt, minimum width=" + (nodeW / SCALE).toFixed(2) + "cm" +
+          ", minimum height=" + (nodeH / SCALE).toFixed(2) + "cm, align=center, font=\\scriptsize, text=black";
+        return "\\node[" + style + "] (" + tikzSanitizeId(n.problemId) + ") at (" + x + "," + y + ") {" + latexEscapeText(p.notation) + "};";
+      })
+      .filter(Boolean);
+
+    const edgeLines = mapEdges(map).map(
+      (e) => "\\draw[-{Stealth[length=2mm]}, gray!70] (" + tikzSanitizeId(e.from) + ") -- (" + tikzSanitizeId(e.to) + ");"
+    );
+
+    const colorDefs = Array.from(usedColors.entries()).map(
+      ([hex, name]) => "\\definecolor{" + name + "}{HTML}{" + hex + "}"
+    );
+
+    return (
+      "% " + map.title + " -- exported from The Parameterized Scheduling Zoo\n" +
+      "% Requires: \\usepackage{tikz} \\usetikzlibrary{arrows.meta}\n" +
+      "\\begin{tikzpicture}[>=Stealth]\n" +
+      colorDefs.map((l) => "  " + l).join("\n") + "\n" +
+      nodeLines.map((l) => "  " + l).join("\n") + "\n" +
+      edgeLines.map((l) => "  " + l).join("\n") + "\n" +
+      "\\end{tikzpicture}\n"
+    );
+  }
+
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    return Promise.resolve();
+  }
+
   function renderMap(id) {
     const map = mapById(id);
     if (!map) {
@@ -908,11 +1123,11 @@
       '<defs><marker id="map-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
       '<path d="M0,0 L10,5 L0,10 z" fill="' + MAP_EDGE_COLOR + '" /></marker></defs>';
 
-    const linesSvg = map.edges
+    const linesSvg = mapEdges(map)
       .map((e) => {
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
-        const axis = axisById(e.axis);
+        const axis = axisById(e.axis) || (e.axis ? { label: e.axis } : null);
         const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
         return (
           '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
@@ -964,6 +1179,7 @@
     els.viewMap.innerHTML =
       '<div class="map-page">' +
       '<a class="wiki-back" href="#/maps">&larr; Back to problem maps</a>' +
+      '<button type="button" class="tikz-export-btn" title="Copy this diagram as TikZ code">⧉ TikZ</button>' +
       '<div class="map-page-header"><h2>' + escapeHtml(map.title) + "</h2><p>" + escapeHtml(map.description || "") +
       '</p><p class="map-drag-hint">Drag any node to declutter overlapping edges — layout is per-session, not saved.</p></div>' +
       '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + "px;height:" + height + 'px">' +
@@ -975,6 +1191,16 @@
       "</div>";
 
     enableMapNodeDragging(els.viewMap.querySelector(".map-canvas"), nodeW, nodeH);
+
+    const tikzBtn = els.viewMap.querySelector(".tikz-export-btn");
+    tikzBtn.addEventListener("click", () => {
+      const code = mapToTikzCode(map, positions, effective, nodeW, nodeH);
+      const original = tikzBtn.textContent;
+      copyTextToClipboard(code)
+        .then(() => { tikzBtn.textContent = "Copied!"; })
+        .catch(() => { tikzBtn.textContent = "Copy failed — see console"; console.log(code); })
+        .then(() => setTimeout(() => { tikzBtn.textContent = original; }, 1800));
+    });
   }
 
   // Drag is tracked at the document level once started, not on the node

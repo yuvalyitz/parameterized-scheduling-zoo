@@ -29,40 +29,80 @@
     { "id": "uniform-p",      "label": "uniform vs. general processing times" },
     { "id": "window",         "label": "due-date window / slack bound" }
   ],
+  "dimensions": {
+    "_note": "The mega problem's free variables. 'base' dimensions are direct job attributes; 'derived' ones are computed from base dimensions. Only used by problems that opt in via a 'restrictions' object (currently the mega-problem map) — the JIT-flow-shop map and the original 8 problems still use the older alpha/beta/gamma-only encoding.",
+    "machines":        { "kind": "base" },
+    "releaseTimes":    { "kind": "base" },
+    "processingTimes": { "kind": "base" },
+    "dueDates":        { "kind": "base" },
+    "weights":         { "kind": "base" },
+    "window":          { "kind": "derived", "formula": "dueDates - releaseTimes", "base": "processingTimes",
+                          "note": "used only by ratioBound restrictions (window <= c * processingTimes)" },
+    "slack":           { "kind": "derived", "formula": "dueDates - releaseTimes - processingTimes", "invariant": "slack >= 0",
+                          "note": "used by value/boundedValue restrictions (slack = 0, or slack <= c)" }
+  },
+  "restrictionFamilies": {
+    "_note": "How to compare two restrictions on the SAME dimension. 'free' generalizes everything. 'value' pins to one exact constant (distinct constants are mutually incomparable). 'cardinality'/'boundedValue'/'ratioBound' take a field ('k' or 'c') that is either a fixed number (a genuine restriction, smaller = more restrictive) or the string 'param' (not a restriction at all -- every instance already satisfies 'some k/c works', so this is exactly equivalent to 'free' for generalization purposes; it just marks that a parameter is being studied over the unrestricted problem). Restrictions in different families on the same dimension are incomparable, except that they may share a boundary value (documented per-dimension, not auto-derived).",
+    "free":        {},
+    "value":       {},
+    "cardinality": { "field": "k" },
+    "boundedValue":{ "field": "c" },
+    "ratioBound":  { "field": "c" }
+  },
   "parameterHierarchy": {
     "note": "Edges mean 'from is bounded by a function of to' (from ≤ f(to)) — the same convention as problem-map edges: 'from' is the weaker/more general parameter, 'to' is the stronger/more restrictive one. Hardness inherits from the specific (to) end up to the general (from) end; FPT/XP do not transfer. Only edges that are plain arithmetic (one parameter trivially bounds another) are included — no invented structural relationships.",
     "edges": [
       { "from": "m",     "to": "m_plus_p" },
       { "from": "pmax",  "to": "m_plus_p" },
       { "from": "m",     "to": "sigma_plus_m" },
-      { "from": "numDD", "to": "numDD_numP" }
+      { "from": "numDD", "to": "numDD_numP" },
+      { "from": "numP",  "to": "numDD_numP" },
+      { "from": "numDD", "to": "numDD_numW" },
+      { "from": "numW",  "to": "numDD_numW" },
+      { "from": "numP",  "to": "numP_numW" },
+      { "from": "numW",  "to": "numP_numW" }
     ]
   },
   "parameters": [
     { "id": "m",        "symbol": "m",        "name": "number of machines",
+      "dimensions": [{ "dimension": "machines", "measureKind": "magnitude" }],
       "gloss": "The number of machines in the scheduling instance, taken as a parameter instead of part of the input size. Many problems that are NP-hard for arbitrary m turn out to be FPT or remain hard when m is small and fixed." },
     { "id": "pmax",     "symbol": "p_max",    "name": "maximum processing time",
+      "dimensions": [{ "dimension": "processingTimes", "measureKind": "magnitude" }],
       "gloss": "The largest job processing time in the instance. Parameterizing by p_max turns pseudo-polynomial dynamic programs (which run in time polynomial in the numeric value of processing times) into FPT algorithms." },
     { "id": "numP",     "symbol": "#p",       "name": "number of distinct processing times",
+      "dimensions": [{ "dimension": "processingTimes", "measureKind": "cardinality" }],
       "gloss": "The number of distinct values that appear among job processing times. Small #p lets jobs be grouped into few interchangeable classes, which is the basis of n-fold integer programming approaches." },
     { "id": "numW",     "symbol": "#w",       "name": "number of distinct weights",
+      "dimensions": [{ "dimension": "weights", "measureKind": "cardinality" }],
       "gloss": "The number of distinct job weight values. Analogous in spirit to #p, but for weights instead of processing times." },
     { "id": "numR",     "symbol": "#r",       "name": "number of distinct release dates",
+      "dimensions": [{ "dimension": "releaseTimes", "measureKind": "cardinality" }],
       "gloss": "The number of distinct release-date values. Small #r lets jobs be grouped by release-date class." },
     { "id": "numSpeed", "symbol": "#speeds",  "name": "number of distinct machine speeds",
-      "gloss": "The number of distinct machine speed values in a uniform-machines (Q) environment." },
+      "gloss": "The number of distinct machine speed values in a uniform-machines (Q) environment. Not part of the mega-problem dimension model (no machine-speed dimension defined there)." },
     { "id": "tw",       "symbol": "tw(prec)", "name": "treewidth of the precedence graph",
-      "gloss": "The treewidth of the DAG describing precedence constraints between jobs. Bounded treewidth typically enables dynamic programming over a tree decomposition." },
+      "gloss": "The treewidth of the DAG describing precedence constraints between jobs. Bounded treewidth typically enables dynamic programming over a tree decomposition. Not part of the mega-problem dimension model (precedence constraints aren't one of its dimensions)." },
     { "id": "vc",       "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph",
-      "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges." },
+      "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges. Not part of the mega-problem dimension model." },
     { "id": "numDD_numP", "symbol": "#dd+#p", "name": "number of distinct due dates plus number of distinct processing times",
+      "dimensions": [{ "dimension": "dueDates", "measureKind": "cardinality" }, { "dimension": "processingTimes", "measureKind": "cardinality" }],
       "gloss": "The sum of two distinct-value counts, treated as a single combined parameter. Common in single-machine scheduling: bounding both lets jobs be grouped into few interchangeable (due-date, processing-time) classes." },
     { "id": "sigma_plus_m", "symbol": "σ+m", "name": "slack bound σ plus number of machines m",
+      "dimensions": [{ "dimension": "slack", "measureKind": "magnitude" }, { "dimension": "machines", "measureKind": "magnitude" }],
       "gloss": "The additive due-date slack bound (how far d_j−r_j may exceed p_j) plus the number of machines, treated as a single combined parameter." },
     { "id": "m_plus_p", "symbol": "m+p", "name": "number of machines plus the (uniform) processing time",
+      "dimensions": [{ "dimension": "machines", "measureKind": "magnitude" }, { "dimension": "processingTimes", "measureKind": "magnitude" }],
       "gloss": "The number of machines plus the shared processing-time value p, treated as a single combined parameter — meaningful only when processing times are uniform (pj=p)." },
     { "id": "numDD", "symbol": "#dd", "name": "number of distinct due dates",
-      "gloss": "The number of distinct due-date values in the instance, on its own (not combined with any other count)." }
+      "dimensions": [{ "dimension": "dueDates", "measureKind": "cardinality" }],
+      "gloss": "The number of distinct due-date values in the instance, on its own (not combined with any other count)." },
+    { "id": "numDD_numW", "symbol": "#dd+#w", "name": "number of distinct due dates plus number of distinct weights",
+      "dimensions": [{ "dimension": "dueDates", "measureKind": "cardinality" }, { "dimension": "weights", "measureKind": "cardinality" }],
+      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter." },
+    { "id": "numP_numW", "symbol": "#p+#w", "name": "number of distinct processing times plus number of distinct weights",
+      "dimensions": [{ "dimension": "processingTimes", "measureKind": "cardinality" }, { "dimension": "weights", "measureKind": "cardinality" }],
+      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter." }
   ],
   "references": {
     "GJ79":   { "text": "M. R. Garey & D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. 1979." },
@@ -332,6 +372,7 @@
       "notation": "P|rj|ΣwjUj",
       "alpha": "P", "beta": ["rj"], "gamma": "ΣwjUj",
       "name": "The mega problem: parallel machines, release times, no preemption, maximize weighted throughput",
+      "restrictions": {},
       "classicalClass": "unclaimed",
       "classicalStatus": "No single citation classifies the problem as a whole — it is at least NP-hard and W[2]-hard by inheritance (it generalizes P|pj=p,rj|ΣUj, which is), but its own tight complexity is the open frontier this whole map is charting.",
       "overview": "m identical machines, arbitrary release times, arbitrary processing times, no preemption; Uj=1 if job j is not completed (rejected), and the goal is to maximize completed weight (equivalently minimize ΣwjUj). This is the root problem this entire site was built to map: every other node here is a restriction of it along one of three independent axes — how much machine/release-time richness is kept, whether processing times are forced uniform, and how tightly the due-date window is bounded.",
@@ -343,6 +384,11 @@
       "notation": "1||ΣUj",
       "alpha": "1", "beta": [], "gamma": "ΣUj",
       "name": "Single machine, no release times, unweighted rejection",
+      "restrictions": {
+        "machines": { "family": "value", "equals": 1 },
+        "releaseTimes": { "family": "value", "equals": 0 },
+        "weights": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "P",
       "classicalStatus": "Polynomial (Moore's algorithm).",
       "overview": "The base case of the mega problem's whole 'who/when' axis: one machine, every job available at time 0, and every job worth the same. Moore's 1968 algorithm solves it exactly via a greedy exchange argument, making it the easiest corner of the entire map.",
@@ -354,32 +400,58 @@
       "notation": "1||ΣwjUj",
       "alpha": "1", "beta": [], "gamma": "ΣwjUj",
       "name": "Single machine, no release times, weighted rejection",
+      "restrictions": {
+        "machines": { "family": "value", "equals": 1 },
+        "releaseTimes": { "family": "value", "equals": 0 }
+      },
       "classicalClass": "weakly-NP-hard",
-      "classicalStatus": "NP-hard — knapsack-style reduction; weak/strong status as given by Karp is the classical weakly-NP-hard knapsack flavor.",
-      "overview": "Adding weights to 1||ΣUj is enough on its own to leave polynomial territory: Karp's 1972 problem 19 shows this is NP-hard via a reduction resembling knapsack (choose which jobs to keep on time to maximize kept weight, subject to a single deadline ordering constraint).",
+      "classicalStatus": "NP-hard — knapsack-style reduction; weak/strong status as given by Karp is the classical weakly-NP-hard knapsack flavor. Hermelin, Karhi, Pinedo & Shabtay (2018) sharpen this into a full parameterized picture with respect to three counting parameters (#distinct due dates, #distinct processing times, #distinct weights): NP-hard already for a single due date (para-NP-hard in #dd alone), FPT for any pairwise combination of the three, and XP (open whether FPT) for #p alone or #w alone.",
+      "overview": "Adding weights to 1||ΣUj is enough on its own to leave polynomial territory: Karp's 1972 problem 19 shows this is NP-hard via a reduction resembling knapsack. Hermelin, Karhi, Pinedo & Shabtay (2018) — this paper has no release dates at all, despite the similar author list to the FPT-by-σ+m paper elsewhere on this map; they explicitly list arbitrary release dates as future work — give a complete-feeling parameterized landscape for exactly this problem: an MICP-based FPT algorithm for any two of {#dd, #p, #w} combined, and a separate dynamic program giving XP for #p alone or #w alone, both explicitly left open as to whether they're actually FPT.",
       "related": ["1--sumUj", "1-rj--sumWjUj"],
-      "results": []
+      "results": [
+        { "parameter": "numDD", "class": "paraNP", "confidence": "verified",
+          "referenceKeys": ["Karp72"],
+          "note": "Para-NP-hard: Karp's reduction produces instances with a single due date, so the problem is already NP-hard at #dd=1 — no FPT algorithm is possible in #dd alone unless P=NP." },
+        { "parameter": "numDD_numP", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "FPT parameterized by #distinct due dates plus #distinct processing times combined (their Theorem 2), via a fixed-dimension MICP formulation solved with Dadush et al.'s FPT algorithm for MICPs." },
+        { "parameter": "numDD_numW", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "FPT parameterized by #distinct due dates plus #distinct weights combined (their Theorem 2), by the same MICP technique." },
+        { "parameter": "numP_numW", "class": "FPT", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "FPT parameterized by #distinct processing times plus #distinct weights combined (their Theorem 2), via a different technique: an O(n+k)-integer-variable ILP relaxed to an MILP with O(k) integer variables, then rounded back to a feasible integral solution." },
+        { "parameter": "numP", "class": "XP", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "In XP parameterized by #distinct processing times alone: O(n^(#p+1) log n) via a dedicated dynamic program (their Theorem 3, §6). Whether this is actually FPT is explicitly left open in their conclusion." },
+        { "parameter": "numW", "class": "XP", "confidence": "verified",
+          "referenceKeys": ["HKPS18"],
+          "note": "In XP parameterized by #distinct weights alone: O(n^(#w+1) log n) via a dedicated dynamic program (their Theorem 3, §5). Whether this is actually FPT is explicitly left open in their conclusion." }
+      ]
     },
     {
       "id": "1-rj--sumWjUj",
       "notation": "1|rj|ΣwjUj",
       "alpha": "1", "beta": ["rj"], "gamma": "ΣwjUj",
       "name": "Single machine, general release times, weighted rejection",
+      "restrictions": {
+        "machines": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "unclaimed",
-      "classicalStatus": "No classical (parameter-free) claim recorded here — it is at least as hard as 1||ΣwjUj (weakly NP-hard), which it generalizes by allowing release times. Hermelin, Karhi, Pinedo & Shabtay give an FPT result for a specific pair of parameters (see parameterized results below).",
-      "overview": "The single-machine mega problem: general release times, general weights, no machine parallelism. Hermelin, Karhi, Pinedo & Shabtay (2018) show it becomes tractable once both the number of distinct due dates and the number of distinct processing times are bounded together — a genuinely parameterized result, not a classical complexity statement.",
+      "classicalStatus": "No direct citation of its own — no paper in this dataset studies this exact problem (Hermelin, Karhi, Pinedo & Shabtay's paper, previously cited here, turns out to have no release dates at all — moved to 1||ΣwjUj, the problem it actually studies). It is at least as hard as 1||ΣwjUj (weakly NP-hard, in fact para-NP-hard in #dd alone), which it generalizes by allowing release times.",
+      "overview": "The single-machine mega problem: general release times, general weights, no machine parallelism. No paper in this dataset targets this exact combination directly — Hermelin, Karhi, Pinedo & Shabtay (2018) study the no-release-time case (1||ΣwjUj) and explicitly flag the release-time extension as future work; van Bevern, Niedermeier & Suchý (2017) study release times but for feasibility, not this rejection objective. This node's status is entirely what it inherits from problems it generalizes.",
       "related": ["1--sumWjUj", "1-rj--sumUj", "P-rj--sumWjUj-MEGA"],
-      "results": [
-        { "parameter": "numDD_numP", "class": "FPT", "confidence": "verified",
-          "referenceKeys": ["HKPS18"],
-          "note": "FPT parameterized by the number of distinct due dates plus the number of distinct processing times, taken together as one combined parameter." }
-      ]
+      "results": []
     },
     {
       "id": "1-rj--sumUj",
       "notation": "1|rj|ΣUj",
       "alpha": "1", "beta": ["rj"], "gamma": "ΣUj",
       "name": "Single machine, general release times, unweighted rejection",
+      "restrictions": {
+        "machines": { "family": "value", "equals": 1 },
+        "weights": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "strongly-NP-hard",
       "classicalStatus": "Weakly NP-hard (Lenstra, Rinnooy Kan & Brucker 1977), even with only two distinct release dates and two distinct due dates; Heeger & Molter note in their introduction that the same reduction extends in a straightforward way to strongly NP-hard. Stated as background exposition, not a numbered theorem, but explicit in the source.",
       "overview": "The unweighted single-machine version of the mega problem, dropping only the weight axis. Sits directly below 1|rj|ΣwjUj (adding weights back) and above 1||ΣUj (dropping release times) in the map.",
@@ -391,6 +463,10 @@
       "notation": "P||ΣUj",
       "alpha": "P", "beta": [], "gamma": "ΣUj",
       "name": "Parallel machines, no release times, unweighted rejection",
+      "restrictions": {
+        "releaseTimes": { "family": "value", "equals": 0 },
+        "weights": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "strongly-NP-hard",
       "classicalStatus": "Strongly NP-hard even if all jobs share the same due date, since it generalizes Bin Packing (Garey & Johnson 1979).",
       "overview": "The unweighted, release-time-free parallel-machine version of the mega problem, dropping the release-time and weight axes at once. Sits directly below P|rj|ΣUj (adding release times back) and above 1||ΣUj (dropping machine parallelism) in the map.",
@@ -402,6 +478,9 @@
       "notation": "P|rj|ΣUj",
       "alpha": "P", "beta": ["rj"], "gamma": "ΣUj",
       "name": "Parallel machines, general release times, unweighted rejection",
+      "restrictions": {
+        "weights": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "unclaimed",
       "classicalStatus": "No direct citation of its own — but it strictly generalizes both 1|rj|ΣUj (strongly NP-hard) and P||ΣUj (strongly NP-hard), so it is at least strongly NP-hard by inheritance from either.",
       "overview": "This node exists mainly to hold the DAG together: it is what you get from 1||ΣUj by adding both machines and release times, and what the mega problem becomes once weights are dropped. Every uniform-processing-time node below is a further restriction of this one.",
@@ -413,6 +492,10 @@
       "notation": "P|pj=p,rj|ΣUj",
       "alpha": "P", "beta": ["pj=p", "rj"], "gamma": "ΣUj",
       "name": "Parallel machines, uniform processing time, general release times, unweighted rejection, no window bound",
+      "restrictions": {
+        "processingTimes": { "family": "cardinality", "k": 1 },
+        "weights": { "family": "value", "equals": 1 }
+      },
       "classicalClass": "NP-hard-unresolved",
       "classicalStatus": "NP-hard and W[2]-hard parameterized by the number of machines m (Heeger & Molter, arXiv:2404.14208, 2024, Theorem 3) — both proved by the same polynomial-time parameterized reduction from Hitting Set, since Hitting Set is itself both NP-hard and W[2]-hard-in-solution-size. Resolves a longstanding open problem (Kravchenko & Werner, J. Scheduling 2011, Note 2.1.19; Sgall, ESA 2012, Open Problem 2; Mnich & van Bevern, Computers & OR 2018, Open Problem 7). Weak-vs-strong classical status is not addressed by that citation.",
       "overview": "All processing times equal a common value p, due dates are otherwise unrestricted. Heeger & Molter (2024) settle a problem open since at least 2011: they give a single polynomial-time reduction from Hitting Set (parameterized by solution size k, using k machines) that simultaneously proves NP-hardness and W[2]-hardness in the number of machines m. On the positive side, refining the running-time analysis of a known XP algorithm (Baptiste et al.) gives FPT and XP results for several other parameterizations, and a new MILP-based algorithm gives FPT results parameterized by the number of distinct release or due dates. Those algorithmic results are stated by the paper for the weighted objective ΣwjUj, which is the more general problem this node (ΣUj) is the unweighted special case of — they apply here too, since an algorithm for the general problem also solves its special cases.",
@@ -440,6 +523,11 @@
       "notation": "P|pj=p,rj,dj−rj≤1.5pj|ΣUj",
       "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=1.5*pj"], "gamma": "ΣUj",
       "name": "Uniform processing time, window bounded multiplicatively (λ=1.5)",
+      "restrictions": {
+        "processingTimes": { "family": "cardinality", "k": 1 },
+        "weights": { "family": "value", "equals": 1 },
+        "window": { "family": "ratioBound", "c": 1.5 }
+      },
       "classicalClass": "NP-hard-unresolved",
       "classicalStatus": "NP-hard and W[2]-hard parameterized by m, as a direct corollary of Heeger & Molter's Theorem 3 reduction (arXiv:2404.14208, 2024): their construction fixes p=2n and gives every job a window of either exactly p (the Jℓ selection jobs) or p+n=1.5p (the Dℓ dummy jobs, per their Table 1), so every produced instance already satisfies dj−rj≤1.5·pj. Not a separately stated theorem in the paper — this is arithmetic from their own construction, not an independent citation.",
       "overview": "Same uniform-processing-time setting as P|pj=p,rj|ΣUj, but with the due-date window additionally bounded multiplicatively. Heeger & Molter don't state a window-bounded theorem, but their Hitting Set reduction happens to only ever produce windows up to 1.5·p (computed directly from their Table 1 with p=2n), so their NP-hardness and W[2]-hardness proof already covers this more restricted case for free.",
@@ -455,6 +543,11 @@
       "notation": "P|pj=p,rj,dj−rj≤pj+σ|ΣUj",
       "alpha": "P", "beta": ["pj=p", "rj", "dj-rj<=pj+sigma"], "gamma": "ΣUj",
       "name": "Uniform processing time, window bounded additively (σ)",
+      "restrictions": {
+        "processingTimes": { "family": "cardinality", "k": 1 },
+        "weights": { "family": "value", "equals": 1 },
+        "slack": { "family": "boundedValue", "c": "param" }
+      },
       "classicalClass": "open",
       "classicalStatus": "OPEN for this optimization (ΣUj) problem — the live open question this whole map was built around. The closely related FEASIBILITY problem (can all jobs be scheduled with no rejections at all, general processing times) is known FPT parameterized by σ+m (van Bevern, Niedermeier & Suchý 2017, Theorem 5.1) — since uniform processing time is a special case of general, feasibility here is therefore also FPT by σ+m as a free corollary. But an FPT feasibility algorithm does not automatically give an FPT optimization algorithm (jobs can be dropped here, changing the structure of the problem), and that paper stays scoped to the decision problem — it does not attempt the extension. So the natural building block this open question would need already exists; what's missing is specifically whether it extends to weighted rejection.",
       "overview": "The additive-slack sibling of the λ-bounded node: dj−rj≤pj+σ instead of dj−rj≤λpj. Whether this is FPT, W[2]-hard, or something else when parameterized by σ+m is not known for the optimization objective studied here — this is the specific open question that motivated building this map in the first place. Note table 1 of van Bevern, Niedermeier & Suchý (2017) also flags the combined parameter looseness+slack (λ+σ) as open for their feasibility problem — a different open combination from this one.",
@@ -470,6 +563,10 @@
       "notation": "P|rj,dj−rj≤pj+σ|ΣUj",
       "alpha": "P", "beta": ["rj", "dj-rj<=pj+sigma (sigma>=2 fixed)"], "gamma": "ΣUj",
       "name": "General processing times, window bounded additively (σ≥2 fixed), unweighted",
+      "restrictions": {
+        "weights": { "family": "value", "equals": 1 },
+        "slack": { "family": "boundedValue", "c": 2 }
+      },
       "classicalClass": "NP-hard-unresolved",
       "classicalStatus": "NP-hard — Cieliebak, Erlebach, Hennecke, Weber & Widmayer (2004), Theorem 13, prove the feasibility version (their SRDM problem: minimum machines to meet all deadlines) is NP-hard already at slack exactly 2 (δ_max=2), general processing times, via reduction from 3-SAT; instances with δ_max=2 are also valid instances of every δ_max≥2, so this covers σ≥2 generally. Getting from feasibility-hardness to hardness of the ΣUj optimization version here is a standard feasibility-to-optimization argument (checking whether the optimum equals 0 solves feasibility), not itself stated in that source. Weak/strong classical status is not addressed.",
       "overview": "The general-processing-time analogue of the uniform-p, σ-bounded node: same additive slack bound on the window, but processing times are no longer forced equal. Cieliebak et al. (2004) also show a matching positive result one slack level down (δ_max≤1 is polynomial-time solvable for feasibility, Theorem 1) and a related multiplicative-window hardness result (any fixed looseness ratio λ>1 is already NP-hard for feasibility, Theorem 14) — the surrounding picture this node sits inside.",
@@ -481,6 +578,9 @@
       "notation": "P|rj,dj=rj+pj|ΣwjUj",
       "alpha": "P", "beta": ["rj", "dj=rj+pj (zero slack / JIT)"], "gamma": "ΣwjUj",
       "name": "General processing times, zero slack (just-in-time), weighted rejection",
+      "restrictions": {
+        "slack": { "family": "value", "equals": 0 }
+      },
       "classicalClass": "P",
       "classicalStatus": "Polynomial — classical weighted interval scheduling.",
       "overview": "Pinning the due date to exactly rj+pj (zero slack) turns every job into a fixed interval [rj, dj] that must be scheduled entirely within its own window or not at all — classical weighted interval scheduling, solvable in polynomial time. This is also the node where ΣwjZj and ΣwjUj provably coincide (a job is either scheduled exactly on time or not scheduled at all, so 'not just-in-time' and 'rejected' mean the same thing), which is why a separate Zj-objective branch was not added here — it would collapse onto this node.",

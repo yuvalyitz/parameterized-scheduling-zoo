@@ -385,9 +385,22 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .map-card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
 
 /* Problem map (poset diagram) */
-.map-page { max-width: 1100px; margin: 0 auto; }
+.map-page { max-width: 1100px; margin: 0 auto; position: relative; }
 .map-page-header { text-align: center; margin-bottom: 1rem; }
 .map-page-header p { color: var(--muted); font-size: 0.9rem; max-width: 680px; margin: 0.3rem auto 0; }
+.tikz-export-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.tikz-export-btn:hover { border-color: var(--accent); color: var(--accent); }
 .map-canvas-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
