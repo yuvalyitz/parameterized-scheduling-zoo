@@ -240,6 +240,14 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   margin-bottom: 0.75rem;
 }
 .detail-field { margin-bottom: 0.9rem; }
+.param-tree-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: var(--panel-bg);
+}
+.param-tree-wrap svg text { font-family: inherit; }
 .detail-field h4 {
   margin: 0 0 0.25rem;
   font-size: 0.75rem;

@@ -12,13 +12,13 @@
     { "id": "unclaimed",         "label": "no direct claim (structural)",   "color": "#868e96", "fill": false, "border": "solid", "order": 5, "description": "No citation classifies this exact problem's classical (unparameterized) complexity; its status is only bounded indirectly via problems it generalizes or specializes. May still have parameterized results — see the problem's wiki page." }
   ],
   "complexityClasses": [
-    { "id": "P",           "label": "P",                 "color": "#2f9e44", "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
-    { "id": "FPT",         "label": "FPT",               "color": "#1971c2", "order": 1, "description": "Fixed-parameter tractable: solvable in f(k)·poly(n) time." },
-    { "id": "XP",          "label": "XP",                "color": "#f08c00", "order": 2, "description": "Solvable in n^f(k) time; not known to be FPT." },
-    { "id": "W1",          "label": "W[1]-hard",         "color": "#e8590c", "order": 3, "description": "W[1]-hard: unlikely to be FPT under standard assumptions." },
-    { "id": "W2",          "label": "W[2]-hard",         "color": "#d9480f", "order": 4, "description": "W[2]-hard: unlikely to be FPT (stronger than W[1])." },
-    { "id": "paraNP",      "label": "para-NP-hard",      "color": "#c92a2a", "order": 5, "description": "NP-hard even for a constant value of the parameter." },
-    { "id": "open",        "label": "open",              "color": "#868e96", "order": 6, "description": "Complexity status not known / not settled." }
+    { "id": "P",           "label": "P",                 "color": "#2f9e44", "fill": true,  "order": 0, "description": "Polynomial-time solvable outright (parameter irrelevant)." },
+    { "id": "FPT",         "label": "FPT",               "color": "#2f9e44", "fill": true,  "order": 1, "description": "Fixed-parameter tractable: solvable in f(k)·poly(n) time." },
+    { "id": "XP",          "label": "XP",                "color": "#f08c00", "fill": true,  "order": 2, "description": "Solvable in n^f(k) time; not known to be FPT." },
+    { "id": "W1",          "label": "W[1]-hard",         "color": "#f08c00", "fill": false, "order": 3, "description": "W[1]-hard: unlikely to be FPT under standard assumptions." },
+    { "id": "W2",          "label": "W[2]-hard",         "color": "#f08c00", "fill": false, "order": 4, "description": "W[2]-hard: unlikely to be FPT (stronger than W[1])." },
+    { "id": "paraNP",      "label": "para-NP-hard",      "color": "#c92a2a", "fill": true,  "order": 5, "description": "NP-hard even for a constant value of the parameter." },
+    { "id": "open",        "label": "open",              "color": "#868e96", "fill": false, "order": 6, "description": "Complexity status not known / not settled." }
   ],
   "axes": [
     { "id": "stages",         "label": "flow-shop stage count" },
@@ -29,6 +29,15 @@
     { "id": "uniform-p",      "label": "uniform vs. general processing times" },
     { "id": "window",         "label": "due-date window / slack bound" }
   ],
+  "parameterHierarchy": {
+    "note": "Edges mean 'from is bounded by a function of to' (from ≤ f(to)) — the same convention as problem-map edges: 'from' is the weaker/more general parameter, 'to' is the stronger/more restrictive one. Hardness inherits from the specific (to) end up to the general (from) end; FPT/XP do not transfer. Only edges that are plain arithmetic (one parameter trivially bounds another) are included — no invented structural relationships.",
+    "edges": [
+      { "from": "m",     "to": "m_plus_p" },
+      { "from": "pmax",  "to": "m_plus_p" },
+      { "from": "m",     "to": "sigma_plus_m" },
+      { "from": "numDD", "to": "numDD_numP" }
+    ]
+  },
   "parameters": [
     { "id": "m",        "symbol": "m",        "name": "number of machines",
       "gloss": "The number of machines in the scheduling instance, taken as a parameter instead of part of the input size. Many problems that are NP-hard for arbitrary m turn out to be FPT or remain hard when m is small and fixed." },

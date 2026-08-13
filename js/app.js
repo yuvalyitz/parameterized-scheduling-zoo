@@ -110,6 +110,16 @@
   function paramById(id) {
     return DATA.parameters.find((p) => p.id === id);
   }
+  // Inline style for a complexityClasses pill/badge, respecting its fill
+  // flag: FPT/XP/para-NP-hard are solid; W[1]/W[2]-hard/open are outline
+  // only, so "hard but not fully resolved" reads differently at a glance
+  // from "resolved, one way or the other."
+  function classPillStyle(cls) {
+    if (!cls) return "background:#868e96;color:#fff;border:2px solid #868e96";
+    return cls.fill
+      ? "background:" + cls.color + ";color:#111;border:2px solid " + cls.color
+      : "background:transparent;color:" + cls.color + ";border:2px solid " + cls.color;
+  }
   function problemById(id) {
     return DATA.problems.find((p) => p.id === id);
   }
@@ -317,7 +327,7 @@
           const cls = classById(result.class);
           const btn = document.createElement("button");
           btn.className = "badge";
-          btn.style.background = cls ? cls.color : "#868e96";
+          btn.style.cssText = classPillStyle(cls);
           btn.innerHTML =
             (cls ? cls.label : result.class) +
             (result.confidence && result.confidence !== "verified"
@@ -342,7 +352,7 @@
   function openDetail(problem, param, result, cls) {
     els.detailContent.innerHTML =
       '<h3>' + problem.notation + " — parameterized by " + param.symbol + "</h3>" +
-      '<div class="detail-class-badge" style="background:' + (cls ? cls.color : "#868e96") + '">' +
+      '<div class="detail-class-badge" style="' + classPillStyle(cls) + '">' +
       (cls ? cls.label : result.class) + "</div>" +
       detailField("Problem", problem.name) +
       detailField("Parameter", param.name) +
@@ -385,7 +395,7 @@
               escapeHtml(confidenceLabel(r.confidence)) + '"></span> <em style="color:var(--muted);font-size:0.8em">' +
               escapeHtml(r.confidence) + "</em>" : "") +
             "</p></div>" +
-            '<span class="class-pill" style="background:' + (cls ? cls.color : "#868e96") + '">' +
+            '<span class="class-pill" style="' + classPillStyle(cls) + '">' +
             (cls ? cls.label : r.class) + "</span>" +
             "</li>"
           );
@@ -419,6 +429,7 @@
       '<div class="wiki-status" style="margin-bottom:1.25rem"><b>Classical (unparameterized) status</b>' +
       buildClassicalBadgeHtml(p) + escapeHtml(p.classicalStatus) + "</div>" +
       (p.overview ? detailField("Overview", p.overview) : "") +
+      '<div class="detail-field"><h4>Parameter hierarchy</h4>' + buildParameterTreeHtml(p.id) + "</div>" +
       '<div class="detail-field"><h4>Parameterized results</h4>' + buildResultsListHtml(effectiveResultsForProblem(p.id)) + "</div>" +
       '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(p.id) + '">View full problem page →</a></p>';
     els.detailPanel.hidden = false;
@@ -659,6 +670,151 @@
     }
     const merged = computeEffectiveResults(map)[problemId] || {};
     return Object.keys(merged).map((k) => merged[k]);
+  }
+
+  // ---------- parameter hierarchy ----------
+  // Same "hardness flows from specific to general, FPT/XP don't" principle
+  // as the problem maps, applied to parameters instead of problems. An edge
+  // {from: A, to: B} means A ≤ f(B) — A is the weaker/more general
+  // parameter, B is the stronger/more restrictive one (e.g. m ≤ m+p, so
+  // m is general, m+p is specific). A problem's own direct/problem-
+  // inherited result for a parameter always wins; only missing parameters
+  // pull in hardness inherited from a more specific parameter's result on
+  // that same problem.
+  function paramHierarchyEdges() {
+    return (DATA.parameterHierarchy && DATA.parameterHierarchy.edges) || [];
+  }
+
+  function effectiveParamResultsForProblem(problemId) {
+    const direct = {};
+    effectiveResultsForProblem(problemId).forEach((r) => { direct[r.parameter] = r; });
+    const edges = paramHierarchyEdges();
+    const resolved = {};
+    const visiting = new Set();
+    function resolve(paramId) {
+      if (resolved[paramId] !== undefined) return resolved[paramId];
+      let result = direct[paramId] || null;
+      if (!visiting.has(paramId)) {
+        visiting.add(paramId);
+        let best = null;
+        edges.forEach((e) => {
+          if (e.from !== paramId) return;
+          const childResult = resolve(e.to);
+          if (!childResult || resultHardnessRank(childResult.class) === 0) return;
+          if (!best || resultHardnessRank(childResult.class) > resultHardnessRank(best.class)) best = childResult;
+        });
+        visiting.delete(paramId);
+        if (best && (!result || resultHardnessRank(best.class) > resultHardnessRank(result.class))) {
+          result = Object.assign({}, best, { parameter: paramId, inherited: true });
+        }
+      }
+      resolved[paramId] = result;
+      return result;
+    }
+    const allIds = new Set(Object.keys(direct));
+    edges.forEach((e) => { allIds.add(e.from); allIds.add(e.to); });
+    allIds.forEach(resolve);
+    return resolved;
+  }
+
+  // All parameters used by any problem in the same map as `problemId` —
+  // gives a stable tree per map, recolored per clicked problem.
+  function mapRelevantParameters(problemId) {
+    const map = findMapForProblem(problemId);
+    const ids = new Set();
+    if (map) {
+      map.nodes.forEach((n) => {
+        const p = problemById(n.problemId);
+        (p ? p.results : []).forEach((r) => ids.add(r.parameter));
+      });
+    } else {
+      const p = problemById(problemId);
+      (p ? p.results : []).forEach((r) => ids.add(r.parameter));
+    }
+    return ids;
+  }
+
+  const PARAM_TREE_LAYOUT = {
+    m:             { col: 1,   row: 0 },
+    pmax:          { col: 2.2, row: 0 },
+    numDD:         { col: 3.6, row: 0 },
+    numR:          { col: 4.8, row: 0 },
+    numW:          { col: 5.6, row: 0 },
+    numP:          { col: 6.4, row: 0 },
+    numSpeed:      { col: 7.2, row: 0 },
+    tw:            { col: 8,   row: 0 },
+    vc:            { col: 8.8, row: 0 },
+    sigma_plus_m:  { col: 0.5, row: 1 },
+    m_plus_p:      { col: 1.7, row: 1 },
+    numDD_numP:    { col: 3.6, row: 1 },
+  };
+  const PARAM_TREE_NODE_W = 74, PARAM_TREE_NODE_H = 26, PARAM_TREE_COL_W = 78, PARAM_TREE_ROW_H = 56, PARAM_TREE_MARGIN = 12;
+
+  function buildParameterTreeHtml(problemId) {
+    const relevant = mapRelevantParameters(problemId);
+    const edges = paramHierarchyEdges().filter((e) => relevant.has(e.from) || relevant.has(e.to));
+    edges.forEach((e) => { relevant.add(e.from); relevant.add(e.to); });
+    if (!relevant.size) return "";
+
+    const effective = effectiveParamResultsForProblem(problemId);
+    const nodeIds = Array.from(relevant).filter((id) => PARAM_TREE_LAYOUT[id]);
+    if (!nodeIds.length) return "";
+
+    const pos = {};
+    let maxCol = 0, maxRow = 0;
+    nodeIds.forEach((id) => {
+      const l = PARAM_TREE_LAYOUT[id];
+      const left = PARAM_TREE_MARGIN + (l.col - 1) * PARAM_TREE_COL_W;
+      const top = PARAM_TREE_MARGIN + l.row * PARAM_TREE_ROW_H;
+      pos[id] = { left, top, cx: left + PARAM_TREE_NODE_W / 2, cy: top + PARAM_TREE_NODE_H / 2 };
+      maxCol = Math.max(maxCol, l.col);
+      maxRow = Math.max(maxRow, l.row);
+    });
+    const width = PARAM_TREE_MARGIN * 2 + (maxCol - 1) * PARAM_TREE_COL_W + PARAM_TREE_NODE_W;
+    const height = PARAM_TREE_MARGIN * 2 + maxRow * PARAM_TREE_ROW_H + PARAM_TREE_NODE_H;
+
+    const arrowId = "param-tree-arrow";
+    const defs =
+      '<defs><marker id="' + arrowId + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+      '<path d="M0,0 L10,5 L0,10 z" fill="' + MAP_EDGE_COLOR + '" /></marker></defs>';
+
+    const linesSvg = edges
+      .map((e) => {
+        const a = pos[e.from], b = pos[e.to];
+        if (!a || !b) return "";
+        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, PARAM_TREE_NODE_W / 2, PARAM_TREE_NODE_H / 2, 4);
+        return '<line x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+          '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.25" marker-end="url(#' + arrowId + ')" />';
+      })
+      .join("");
+
+    const nodesSvg = nodeIds
+      .map((id) => {
+        const param = paramById(id);
+        const p = pos[id];
+        const r = effective[id];
+        const cls = r ? classById(r.class) : null;
+        const bg = cls && cls.fill ? cls.color : "transparent";
+        const border = cls ? cls.color : "#5c5f66";
+        const textColor = cls && cls.fill ? "#111" : "var(--fg)";
+        const title = (param ? param.name : id) + (r ? " — " + (cls ? cls.label : r.class) + (r.inherited ? " (inherited)" : "") : " — no result recorded");
+        return (
+          '<g>' +
+          '<title>' + escapeHtml(title) + "</title>" +
+          '<rect x="' + p.left + '" y="' + p.top + '" width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
+          '" rx="5" fill="' + bg + '" stroke="' + border + '" stroke-width="1.5" />' +
+          '<text x="' + p.cx + '" y="' + (p.cy + 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + textColor + '">' +
+          escapeHtml(param ? param.symbol : id) + "</text>" +
+          "</g>"
+        );
+      })
+      .join("");
+
+    return (
+      '<div class="param-tree-wrap"><svg width="' + width + '" height="' + height + '" style="min-width:' + width + 'px">' +
+      defs + linesSvg + nodesSvg +
+      "</svg></div>"
+    );
   }
 
   function mapNodeCenter(node, nodeW, nodeH, colStagger) {
