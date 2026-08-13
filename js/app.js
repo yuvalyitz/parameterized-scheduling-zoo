@@ -1115,8 +1115,11 @@
       })
       .filter(Boolean);
 
+    // Plain "->" with no >=... option: the default core-TikZ arrow tip,
+    // which needs nothing beyond \usepackage{tikz} -- no arrows.meta, no
+    // arrows library, nothing version-sensitive.
     const edgeLines = mapEdges(map).map(
-      (e) => "\\draw[-{Stealth[length=2mm]}, gray!70] (" + tikzSanitizeId(e.from) + ") -- (" + tikzSanitizeId(e.to) + ");"
+      (e) => "\\draw[->, gray!70] (" + tikzSanitizeId(e.from) + ") -- (" + tikzSanitizeId(e.to) + ");"
     );
 
     const colorDefs = Array.from(usedColors.entries()).map(
@@ -1125,8 +1128,8 @@
 
     return (
       "% " + map.title + " -- exported from The Parameterized Scheduling Zoo\n" +
-      "% Requires: \\usepackage{tikz} \\usetikzlibrary{arrows.meta}\n" +
-      "\\begin{tikzpicture}[>=Stealth]\n" +
+      "% Requires only: \\usepackage{tikz} -- no extra tikz libraries.\n" +
+      "\\begin{tikzpicture}\n" +
       colorDefs.map((l) => "  " + l).join("\n") + "\n" +
       nodeLines.map((l) => "  " + l).join("\n") + "\n" +
       edgeLines.map((l) => "  " + l).join("\n") + "\n" +
