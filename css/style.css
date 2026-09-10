@@ -61,17 +61,6 @@ body {
 .site-nav a:hover { color: var(--fg); }
 .site-nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-.banner {
-  max-width: 900px;
-  margin: 1rem auto;
-  padding: 0.75rem 1rem;
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: var(--muted);
-  text-align: center;
-}
 .conf-dot {
   display: inline-block;
   width: 0.6em; height: 0.6em;
@@ -87,6 +76,12 @@ main {
   margin: 0 auto;
   padding: 0 1.5rem 3rem;
   display: grid;
+  /* Without an explicit track, the single implicit column auto-sizes to
+     its widest child's content -- the same "fit-content ignores max-width"
+     problem as .map-page, just one level up, at the grid track itself.
+     minmax(0, 1fr) is the standard fix: the track can shrink below its
+     content's size instead of growing main past the viewport. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
 }
 
@@ -324,6 +319,8 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .result-row .result-body p { margin: 0.15rem 0; font-size: 0.87rem; }
 .result-row .result-body .cite-link { color: var(--accent); text-decoration: none; }
 .result-row .result-body .cite-link:hover { text-decoration: underline; }
+.inline-cite { color: var(--accent); text-decoration: underline; text-decoration-style: dotted; }
+.inline-cite:hover { text-decoration-style: solid; }
 .class-pill {
   display: inline-block;
   padding: 0.2rem 0.6rem;
@@ -348,6 +345,42 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .related-links a:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Glossary */
+/* Documentation pages -- prose, so a readable measure (~70 characters)
+   rather than the full page width the diagrams use. */
+.docs-page { max-width: 820px; margin: 0 auto; }
+.docs-section { margin-top: 2rem; }
+.docs-section h3 {
+  font-size: 1.2rem;
+  margin: 0 0 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.docs-section h4 { font-size: 1rem; margin: 1.8rem 0 0.4rem; }
+.docs-section p { line-height: 1.6; margin: 0 0 0.8rem; }
+.docs-section code {
+  background: var(--hover-bg, rgba(128,128,128,0.12));
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.9em;
+}
+.docs-example {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8rem;
+  color: var(--muted);
+}
+.docs-list { line-height: 1.6; padding-left: 1.1rem; }
+.docs-list li { margin-bottom: 0.5rem; }
+/* The type table is the one wide thing on the page; let it scroll inside
+   its own box rather than widening the prose column. */
+.docs-table-wrap { overflow-x: auto; margin: 1rem 0 0.5rem; }
+.docs-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.docs-table th, .docs-table td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.docs-table th { background: var(--hover-bg, rgba(128,128,128,0.12)); }
 .glossary-list { max-width: 820px; margin: 0 auto; display: grid; gap: 1.1rem; }
 .glossary-item h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
 .glossary-item .sym { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
@@ -369,7 +402,13 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.ref-doi { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: var(--accent); word-break: break-all; }
+.ref-doi-note { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: var(--muted); font-style: italic; }
 
+/* .view is the actual grid item under main (not .map-page, which is just
+   a normal block child of it) -- same min-width:auto default grid-item
+   behavior applies here, one level higher than where it was first fixed. */
+.view { min-width: 0; }
 .view h2.page-title { text-align: center; margin-bottom: 1.5rem; }
 
 /* Problem maps index */
@@ -391,13 +430,26 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 /* No max-width cap: the canvas inside is already sized exactly to its
    content (computed in JS), so let the page grow to match it instead of
    clipping to an arbitrary cap and forcing .map-canvas-wrap to scroll. */
-.map-page { width: fit-content; max-width: 100%; margin: 0 auto; position: relative; }
+/* min-width:0 overrides the grid item's default min-width:auto -- without
+   it, a wide child (the canvas) forces this item, and the whole page,
+   wider than the viewport regardless of max-width -- that's the actual
+   bug, not fit-content itself. */
+/* width:100% (not fit-content) -- the canvas inside now scales/centers
+   itself to fit via JS (fitMapCanvasToWidth in app.js), which assumes this
+   page fills the available column width; fit-content would instead let the
+   page shrink around a narrow diagram, throwing off that centering math. */
+.map-page { width: 100%; min-width: 0; margin: 0 auto; }
 .map-page-header { text-align: center; margin-bottom: 1rem; }
 .map-page-header p { color: var(--muted); font-size: 0.9rem; max-width: 680px; margin: 0.3rem auto 0; }
+/* .map-diagram is the positioning context for the TikZ button, kept as a
+   sibling of .map-canvas-wrap (not a child) so the button never scrolls
+   away when the canvas itself needs a horizontal scrollbar. */
+.map-diagram { position: relative; }
 .tikz-export-btn {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   color: var(--fg);
@@ -407,8 +459,56 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   cursor: pointer;
 }
 .tikz-export-btn:hover { border-color: var(--accent); color: var(--accent); }
+.auto-arrange-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 5.6rem;
+  z-index: 2;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.auto-arrange-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* Apply filter / Show all -- a flex row (like .map-history-controls on the
+   opposite side) so the two buttons auto-size next to each other instead
+   of needing their positions hand-tuned to their label widths. Reuses
+   .map-history-btn for the buttons themselves (same look, same :disabled
+   styling as Undo/Redo/Reset) -- which one is enabled says at a glance
+   whether the filter is currently on. */
+.sz-filter-controls { position: absolute; top: 0.5rem; right: 13rem; z-index: 2; display: flex; gap: 0.4rem; }
+/* Opposite corner from the tikz/auto-arrange/filter cluster (anchored to
+   the right) so this can never collide with anything over there, whatever
+   either side's label lengths happen to be. */
+.map-history-controls { position: absolute; top: 0.5rem; left: 0.5rem; z-index: 2; display: flex; gap: 0.4rem; }
+.map-history-btn {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.map-history-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.map-history-btn:disabled { opacity: 0.35; cursor: default; }
+/* Toggled on a node (and every edge touching it) to hide it in place,
+   without a full re-render -- see setSzNodeHidden/setMapNodeHidden.
+   !important because .map-node/.sz-node/.sz-edge each set their own
+   `display` at the same specificity (one class selector) further down this
+   file -- without it, source order lets THOSE win over this one instead of
+   the other way around, and a "hidden" node stays visible. */
+.node-hidden { display: none !important; }
 .map-canvas-wrap {
-  overflow-x: auto;
+  /* Oversized diagrams are shrunk to fit via a CSS transform in
+     fitMapCanvasToWidth() (app.js) rather than scrolled -- no horizontal
+     scrolling anywhere on this site, diagrams included. overflow:hidden
+     just guards against a transform-measurement edge case leaving a sliver
+     of unscaled overflow. */
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-bg);
@@ -422,6 +522,7 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   align-items: center;
   justify-content: center;
   text-align: center;
+  white-space: nowrap;
   border-radius: 6px;
   border: 2px solid transparent;
   padding: 0.25rem 0.35rem;
@@ -441,8 +542,271 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   .map-node { color: #0b0c0e; }
   .map-node.outline { color: var(--fg); background: var(--bg); }
 }
-.map-drag-hint { font-size: 0.75rem !important; color: var(--muted); opacity: 0.8; }
 .map-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; margin-top: 1.2rem; }
+
+/* Scheduling Zoo overview: same map-node/map-canvas machinery, much smaller
+   nodes and thinner edges since there are hundreds of them. */
+.sz-node {
+  padding: 0 4px;
+  border-radius: 4px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sz-node-dim { opacity: 0.12; }
+.sz-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  /* positioning context for the reset button, which is pulled out of the
+     flow so the alpha|beta|gamma group stays centred rather than being
+     shoved left by it */
+  position: relative;
+  padding-right: 8rem;
+}
+.sz-reset-filters-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.sz-filter {
+  /* A flex item that gives way, not width:100% -- at full width it claimed
+     the whole row on its own and pushed the three dropdowns onto a second
+     line. It now shrinks to share the row and only grows into space the
+     dropdowns don't need. */
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  max-width: 20rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+.sz-filter-select {
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+.ms-dropdown { position: relative; display: inline-block; }
+/* Graham's own field separators, drawn between the three dropdowns so
+   the filter row reads as alpha|beta|gamma rather than as three
+   unrelated controls that happen to sit next to each other. */
+.sz-field-sep {
+  align-self: center;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  user-select: none;
+}
+.ms-toggle {
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+  cursor: pointer;
+  /* Fixed width, not max-width: the label is rewritten as values are
+     switched on and off ("All objectives" -> "-Preemptive (pmtn)" -> "3
+     required"), and with an intrinsic width every one of those changes
+     resized the button and shoved its neighbours sideways. A fixed box
+     means the text changes inside a frame that never moves. */
+  width: 11.5rem;
+  padding-right: 1.5rem;
+  position: relative;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ms-toggle:hover { border-color: var(--accent, #4c8bf5); }
+/* Absolutely positioned (with matching padding-right above) so the caret
+   sits at the fixed right edge instead of riding at the end of the label
+   text, where a long selection would ellipsis it away. */
+.ms-toggle::after { content: "▾"; position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); }
+.ms-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  max-width: 340px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 0.3rem 0;
+}
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.ms-option:hover { background: var(--hover-bg, rgba(128,128,128,0.12)); }
+.ms-option-label { cursor: pointer; }
+/* Three-position switch per option: exclude (-) / ignore (dot) / require
+   (+). Each segment is directly clickable rather than one button cycling
+   through the states, so setting a value to a specific position is always
+   one click and never overshoots. The active segment is the only colored
+   one, so a glance down the list reads as "+ green = kept, - red = dropped,
+   everything else ignored". */
+.tri {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  /* The track is a visible dark grey rather than transparent, so the whole
+     control reads as a switch against the panel behind it instead of three
+     floating glyphs. Inactive segments simply show this track; only the
+     selected one is painted (grey in the middle, red left, green right). */
+  background: rgba(128, 128, 128, 0.3);
+}
+.tri-seg {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.2rem 0.36rem;
+  cursor: pointer;
+}
+.tri-seg:hover { background: rgba(128, 128, 128, 0.5); }
+.ms-option[data-state="in"] .tri-in,
+.ms-group[data-state="in"] > .ms-option .tri-in { background: #2c8a3f; color: #fff; }
+.ms-option[data-state="out"] .tri-out,
+.ms-group[data-state="out"] > .ms-option .tri-out { background: #c92a2a; color: #fff; }
+.ms-option[data-state="neutral"] .tri-neutral,
+.ms-group[data-state="neutral"] > .ms-option .tri-neutral { background: rgba(128, 128, 128, 0.62); color: var(--fg); }
+
+/* Settings picker: one collapsible group per beta field. The group's own
+   switch means "this constraint is present / absent at all"; expanding it
+   reveals that field's individual values as their own switches. Wider than
+   the plain value dropdowns because the group labels are full phrases. */
+/* Taller than the plain value panels: there are 14 groups plus the rare
+   expander, and at the shared 280px cap only about five were visible with
+   nothing on screen saying the rest were below the fold. */
+.ms-panel-settings { min-width: 21rem; max-width: 23rem; max-height: min(60vh, 30rem); }
+.ms-group + .ms-group { border-top: 1px solid var(--border); }
+/* The entire header row is the expand/collapse target (see the click
+   handler in wireSzSettingsDropdown) -- hence the pointer cursor on the
+   whole row rather than only on the caret glyph. */
+.ms-group-head { font-weight: 500; cursor: pointer; }
+.ms-group-head:hover { background: var(--hover-bg, rgba(128,128,128,0.12)); }
+.ms-caret {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.3rem;
+  pointer-events: none; /* the row handles the click; this is just the glyph */
+  transition: transform 0.12s;
+}
+.ms-caret[aria-expanded="true"] { transform: rotate(90deg); }
+/* A value group ("Online") has no sub-values, so it gets a blank spacer
+   where the caret would be -- keeping its label aligned with the groups
+   above and below rather than shifted left on its own. */
+.ms-caret-empty { display: inline-block; width: 0.75rem; }
+.ms-group-leaf { cursor: default; }
+.ms-group-leaf:hover { background: transparent; }
+.ms-group-label { flex: 1; }
+.ms-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+  margin-left: 0.4rem;
+}
+.ms-group-values { padding-left: 1.6rem; padding-bottom: 0.2rem; }
+/* A nested sub-group (Shop > Job counts > n=2) indents once more and
+   drops the divider lines, so the three levels read as a hierarchy
+   rather than as three flat lists that happen to be inset. */
+.ms-group-values .ms-group + .ms-group { border-top: 0; }
+.ms-group-values .ms-group-head { font-weight: 400; }
+.ms-group-values .ms-group-values { padding-left: 1.3rem; }
+.ms-value { padding: 0.2rem 0.7rem 0.2rem 0; font-weight: 400; }
+/* A value with no problems left under the current filter is dimmed rather
+   than removed -- "this exists but nothing here has it" is worth seeing. */
+.ms-zero { opacity: 0.4; }
+.ms-rare { border-top: 1px solid var(--border); padding-top: 0.2rem; }
+.ms-rare-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.35rem 0;
+  display: inline-block;
+}
+.sz-tool-btn {
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.sz-tool-btn:hover { border-color: var(--accent, #4c8bf5); }
+/* Always rendered (never conditionally shown/hidden), so it never shifts
+   .map-diagram's position above it -- unlike a live "N hidden" status line
+   would. Sits below the diagram, explaining the drag-to-hide gesture once,
+   in one fixed place. .map-hint-icon is a plain "i" for now -- a styling
+   placeholder for a real icon later. */
+.map-hint {
+  max-width: 720px;
+  margin: 0.8rem auto 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.map-hint-icon {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  line-height: 1.1em;
+  border-radius: 50%;
+  border: 1px solid var(--muted);
+  text-align: center;
+  font-size: 0.75em;
+  font-style: italic;
+  margin-right: 0.3em;
+}
+.sz-edge-dim { opacity: 0.06; }
+.sz-edge-hit { stroke: transparent; stroke-width: 11px; fill: none; cursor: pointer; }
+/* Keeps the line's own color (gray, or red for flagged) on hover -- only
+   thickens it and adds a soft neon-yellow glow around it. The arrowhead
+   (fill="context-stroke" on its marker, see arrowDef in app.js) always
+   matches whatever stroke color the line has, so it never needs a separate
+   hover marker -- it just glows along with the line automatically. */
+.sz-edge:hover .sz-edge-visible {
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 2px #f4ff00);
+}
+.sz-param-group {
+  margin: 0.6rem 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid #1c7ed6;
+}
+.sz-param-group h5 {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  color: #1c7ed6;
+}
 
 .map-excluded {
   max-width: 720px;
@@ -458,3 +822,45 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 }
 .map-excluded ul { margin: 0; padding-left: 1.1rem; }
 .map-excluded li { margin-bottom: 0.4rem; }
+
+/* width:100% (not a fixed max-width) so this matches .map-page and the
+   fitMapCanvasToWidth() budget it shares with the map view -- a narrower
+   cap here than what that function measures would let the graph overflow
+   its own container even while "fitting" the wrong (wider) one. */
+.design-page { width: 100%; margin: 0 auto; }
+.design-intro { max-width: 780px; margin: -0.5rem auto 1.5rem; color: var(--muted); font-size: 0.9rem; text-align: center; }
+.design-chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; min-height: 2.1rem; }
+.design-chip-empty { color: var(--muted); font-size: 0.82rem; font-style: italic; align-self: center; }
+.design-chip { font-size: 0.78rem; }
+.design-selected-label { text-align: center; font-size: 0.85rem; color: var(--muted); margin: 0.8rem 0 0.6rem; }
+.design-graph-node { cursor: pointer; }
+.design-graph-node.active { outline: 3px solid var(--accent); outline-offset: 2px; }
+.design-graph-node.delete-armed,
+.sz-node.delete-armed,
+.map-node.delete-armed { opacity: 0.4; }
+.map-canvas-wrap.delete-armed { border-color: #c92a2a; box-shadow: inset 0 0 0 2px #c92a2a; }
+.design-bin {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.85);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--panel-bg);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+  transition: opacity 0.12s, transform 0.12s, background 0.12s, border-color 0.12s;
+}
+.design-bin.visible { opacity: 1; transform: translateX(-50%) scale(1); }
+.design-bin.hover { background: #c92a2a; border-color: #c92a2a; transform: translateX(-50%) scale(1.15); }
+.design-exact { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.4rem; }
+.design-details { max-width: 780px; margin: 1.5rem auto 0; }
+.design-details ul { margin: 0.3rem 0 0.8rem; padding-left: 1.2rem; }
+.design-details li { margin-bottom: 0.25rem; }
