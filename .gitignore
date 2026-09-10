@@ -1,0 +1,4 @@
+.DS_Store
+__pycache__/
+# local Claude Code / preview config (machine-specific paths)
+.claude/

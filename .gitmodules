@@ -1,0 +1,3 @@
+[submodule "schedulingzoo"]
+	path = schedulingzoo
+	url = https://github.com/xtof-durr/schedulingzoo.git
