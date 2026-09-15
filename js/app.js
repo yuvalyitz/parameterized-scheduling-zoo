@@ -2,23 +2,8 @@
   "use strict";
 
   let DATA = null;
-  const state = {
-    alpha: new Set(),
-    beta: new Set(),
-    gamma: new Set(),
-    params: new Set(), // active parameter ids shown as columns
-  };
 
   const els = {
-    alphaRow: document.querySelector('[data-facet="alpha"]'),
-    betaRow: document.querySelector('[data-facet="beta"]'),
-    gammaRow: document.querySelector('[data-facet="gamma"]'),
-    paramToggle: document.getElementById("param-toggle"),
-    matrixHead: document.getElementById("matrix-head"),
-    matrixBody: document.getElementById("matrix-body"),
-    emptyState: document.getElementById("empty-state"),
-    legendItems: document.getElementById("legend-items"),
-    resetBtn: document.getElementById("reset-facets"),
     detailPanel: document.getElementById("detail-panel"),
     detailContent: document.getElementById("detail-content"),
     detailClose: document.getElementById("detail-close"),
@@ -26,27 +11,39 @@
     viewSearch: document.getElementById("view-search"),
     viewProblem: document.getElementById("view-problem"),
     viewMaps: document.getElementById("view-maps"),
+    viewZooMaps: document.getElementById("view-zoo-maps"),
     viewMap: document.getElementById("view-map"),
     viewDesign: document.getElementById("view-design"),
-    viewGlossary: document.getElementById("view-glossary"),
     viewDocs: document.getElementById("view-docs"),
-    viewReferences: document.getElementById("view-references"),
+    viewNext: document.getElementById("view-next"),
     viewSchedulingZoo: document.getElementById("view-schedulingzoo"),
     navLinks: document.querySelectorAll(".site-nav a"),
   };
 
-  const EMPTY_BETA_TOKEN = "∅";
   const VIEWS = {
     "/": els.viewSearch,
     "/maps": els.viewMaps,
+    "/zoo-maps": els.viewZooMaps,
     "/design": els.viewDesign,
-    "/glossary": els.viewGlossary,
     "/docs": els.viewDocs,
-    "/references": els.viewReferences,
+    "/next": els.viewNext,
     "/schedulingzoo": els.viewSchedulingZoo,
   };
 
-  let DATA_SZ = null; // lazily fetched -- data/schedulingzoo.json, ~400KB, not needed unless visited
+  let DATA_SZ = null; // data/schedulingzoo.json -- see loadSzData
+  // Fetched once and shared: both the Search matrix (the landing page) and
+  // the Scheduling Zoo overview are built from it. Declared up here rather
+  // than next to its users so nothing can reach it in its temporal dead zone.
+  let DATA_SZ_PROMISE = null;
+  function loadSzData() {
+    if (!DATA_SZ_PROMISE) {
+      DATA_SZ_PROMISE = fetch("data/schedulingzoo.json")
+        .then((r) => r.json())
+        .then((data) => { DATA_SZ = data; return data; })
+        .catch((err) => { DATA_SZ_PROMISE = null; throw err; });
+    }
+    return DATA_SZ_PROMISE;
+  }
   let SZ_EFFECTIVE = null; // lazily computed once DATA_SZ is loaded -- see computeEffectiveClassesForSz
   let SZ_FOCUS_IDS = null; // Set of ids to restrict the overview to (declutter), or null for the full graph
   let SZ_LAST_FILTERS = null; // filter input values to restore across a declutter/reset re-render
@@ -83,23 +80,17 @@
     .then((r) => r.json())
     .then((data) => {
       DATA = data;
-      DATA.parameters.forEach((p) => state.params.add(p.id));
-      buildFacets();
-      buildParamToggle();
-      buildLegend();
-      renderMatrix();
       window.addEventListener("hashchange", route);
       window.addEventListener("resize", () => {
         if (!els.viewMap.hidden) fitMapCanvasToWidth(els.viewMap);
-        if (!els.viewDesign.hidden) fitMapCanvasToWidth(els.viewDesign);
+        if (!els.viewDesign.hidden) { fitMapCanvasToWidth(els.viewDesign); refreshDesignerResults(); }
         if (!els.viewSchedulingZoo.hidden) fitMapCanvasToWidth(els.viewSchedulingZoo);
       });
       route();
     })
     .catch((err) => {
-      els.matrixBody.innerHTML =
-        '<tr><td style="padding:1rem;color:#c92a2a">Failed to load data/problems.json: ' +
-        String(err) + "</td></tr>";
+      els.viewSearch.innerHTML =
+        '<p style="padding:1rem;color:#c92a2a">Failed to load data/problems.json: ' + escapeHtml(String(err)) + "</p>";
     });
 
   // ---------- routing ----------
@@ -118,6 +109,13 @@
     let matched = null;
     const problemMatch = /^\/problem\/(.+)$/.exec(path);
     const mapMatch = /^\/map\/(.+)$/.exec(path);
+    // #/docs/<section-id>: the Documentation page, scrolled to that section
+    // (a plain #anchor would be read as a route of its own).
+    // #/next/<section-id> works the same way for What's Coming Next.
+    const docsMatch = /^\/(docs|next)\/(.+)$/.exec(path);
+    // #/design/<map-id> opens a saved problem map in the designer;
+    // #/design/new starts an empty one.
+    const designMatch = /^\/design\/(.+)$/.exec(path);
 
     if (problemMatch) {
       renderProblemPage(decodeURIComponent(problemMatch[1]));
@@ -127,17 +125,37 @@
       renderMap(decodeURIComponent(mapMatch[1]));
       els.viewMap.hidden = false;
       matched = "/maps";
+    } else if (designMatch) {
+      els.viewDesign.hidden = false;
+      const mapId = decodeURIComponent(designMatch[1]);
+      els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading…</p></div>';
+      loadSzData().then(() => { openDesignerMap(mapId); renderDesign(); });
+      matched = "/design";
+    } else if (docsMatch) {
+      const isNext = docsMatch[1] === "next";
+      (isNext ? els.viewNext : els.viewDocs).hidden = false;
+      if (isNext) renderNext();
+      else renderDocs();
+      matched = "/" + docsMatch[1];
+      els.navLinks.forEach((a) => a.classList.toggle("active", a.dataset.route === matched));
+      closeDetail();
+      const target = document.getElementById(decodeURIComponent(docsMatch[2]));
+      if (target) target.scrollIntoView({ block: "start" });
+      else window.scrollTo(0, 0);
+      return;
     } else if (VIEWS[path]) {
       VIEWS[path].hidden = false;
-      if (path === "/glossary") renderGlossary();
+      if (path === "/") renderSearch();
       if (path === "/docs") renderDocs();
-      if (path === "/references") renderReferences();
+      if (path === "/next") renderNext();
       if (path === "/maps") renderMapsIndex();
+      if (path === "/zoo-maps") renderZooMapsIndex();
       if (path === "/design") renderDesign();
       if (path === "/schedulingzoo") renderSchedulingZoo();
       matched = path;
     } else {
       els.viewSearch.hidden = false;
+      renderSearch();
       matched = "/";
     }
 
@@ -214,24 +232,24 @@
     return r ? r.text : key;
   }
   // The paper's own DOI (or arXiv URL, when it has no DOI) if we have one;
-  // otherwise falls back to the References page anchor for that key.
+  // otherwise null, and the citation is shown as plain text with the full
+  // reference in its tooltip.
   function refUrl(key) {
     const r = DATA.references[key];
-    if (!r) return "#/references";
+    if (!r) return null;
     if (r.doi) return "https://doi.org/" + r.doi;
     if (r.url) return r.url;
-    return "#/references";
+    return null;
   }
   function citeLinks(keys) {
     if (!keys || !keys.length) return "";
     return keys
       .map((k) => {
         const url = refUrl(k);
-        const external = url !== "#/references";
-        return (
-          '<a class="cite-link" href="' + escapeHtml(url) + '"' +
-          (external ? ' target="_blank" rel="noopener"' : "") + ">[" + escapeHtml(k) + "]</a>"
-        );
+        return url
+          ? '<a class="cite-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' +
+            escapeHtml(refText(k)) + '">[' + escapeHtml(k) + "]</a>"
+          : '<span class="cite-link" title="' + escapeHtml(refText(k)) + '">[' + escapeHtml(k) + "]</span>";
       })
       .join(" ");
   }
@@ -246,11 +264,9 @@
     const escaped = escapeHtml(text || "");
     return escaped.replace(/\[\[(\w+):([^\]]+)\]\]/g, (_, key, label) => {
       const url = refUrl(key);
-      const external = url !== "#/references";
-      return (
-        '<a class="inline-cite" href="' + escapeHtml(url) + '"' +
-        (external ? ' target="_blank" rel="noopener"' : "") + ">" + label + "</a>"
-      );
+      return url
+        ? '<a class="inline-cite" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + label + "</a>"
+        : '<span class="inline-cite" title="' + escapeHtml(refText(key)) + '">' + label + "</span>";
     });
   }
   // For plain-text contexts that can't hold markup (an HTML attribute like
@@ -271,206 +287,303 @@
 
   // ---------- search / matrix view ----------
 
-  function buildFacets() {
-    const alphas = uniq(DATA.problems.map((p) => p.alpha));
-    const gammas = uniq(DATA.problems.map((p) => p.gamma));
-    const betas = uniq(
-      DATA.problems.flatMap((p) => (p.beta.length ? p.beta : [EMPTY_BETA_TOKEN]))
-    );
+  // The landing page: every problem in The Scheduling Zoo's bibliography
+  // (DATA_SZ, the same data as the overview map) as a problems x parameters
+  // matrix -- classical status first, then one column per combined
+  // parameter a result is stated for ("m", "#d+#p+#r"). Filtered with the
+  // same alpha|beta|gamma controls as the overview, but live: a table is
+  // cheap to redraw, whereas the map needs an explicit Apply because it
+  // re-runs its whole layout. Built once per page load, so the filters
+  // survive switching tabs.
+  let SEARCH_BUILT = false;
+  const SZ_MACHINE_ENV_ORDER = ["1", "P", "Q", "R", "O", "F", "J"];
 
-    renderChipRow(els.alphaRow, alphas, state.alpha, renderMatrix);
-    renderChipRow(els.betaRow, betas, state.beta, renderMatrix);
-    renderChipRow(els.gammaRow, gammas, state.gamma, renderMatrix);
+  // Machine-environment and objective options for a filter bar, counted
+  // over the full corpus and ordered most common first. Shared by Search
+  // and the overview so both bars always offer the same values.
+  function szFilterOptions() {
+    const objectiveCounts = {};
+    DATA_SZ.nodes.forEach((n) => {
+      const o = canonicalSzObjective(n.objective);
+      if (o) objectiveCounts[o] = (objectiveCounts[o] || 0) + 1;
+    });
+    const objectiveOptions = Object.keys(objectiveCounts)
+      .map((o) => ({ value: o, label: o, count: objectiveCounts[o] }))
+      .sort((a, b) => b.count - a.count);
+
+    // Short dropdown labels + full hover text straight from schedzoo's own
+    // notation.xml <choice explanation=...> for the "type" field -- see
+    // machineEnvExplanations in data/schedulingzoo.json.
+    const machineEnvExpl = DATA_SZ.machineEnvExplanations || {};
+    const machineEnvCounts = {};
+    DATA_SZ.nodes.forEach((n) => {
+      if (n.machineEnv) machineEnvCounts[n.machineEnv] = (machineEnvCounts[n.machineEnv] || 0) + 1;
+    });
+    const machineEnvOptions = Object.keys(machineEnvCounts)
+      .map((v) => ({
+        value: v,
+        label: SZ_MACHINE_ENV_LABELS[v] || v,
+        title: machineEnvExpl[v] || "",
+        count: machineEnvCounts[v],
+      }))
+      .sort((a, b) => b.count - a.count);
+    return { machineEnvOptions, objectiveOptions };
   }
 
-  function uniq(arr) {
-    return Array.from(new Set(arr)).sort();
+  // One cited result: its bound text, then author (year) -- title, linked
+  // when schedzoo has a URL/DOI. Shared by the problem panel and Search.
+  function szCitationHtml(r) {
+    const cite = escapeHtml(r.author || "") + (r.year ? " (" + escapeHtml(r.year) + ")" : "");
+    const titleHtml = r.url
+      ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + escapeHtml(r.title || "") + "</a>"
+      : escapeHtml(r.title || "");
+    return "<p style='margin:0 0 0.2rem'>" + escapeHtml(r.bound) + "</p>" +
+      "<p style='margin:0;color:var(--muted);font-size:0.85rem'>" + cite + (r.title ? " — " + titleHtml : "") + "</p>";
+  }
+  function szResultLi(r) {
+    return "<li>" + szCitationHtml(r) + "</li>";
   }
 
-  function renderChipRow(container, values, activeSet, onChange) {
-    container.innerHTML = "";
-    values.forEach((v) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "chip";
-      chip.textContent = v;
-      chip.setAttribute("aria-pressed", "false");
-      chip.addEventListener("click", () => {
-        if (activeSet.has(v)) {
-          activeSet.delete(v);
-          chip.classList.remove("active");
-          chip.setAttribute("aria-pressed", "false");
-        } else {
-          activeSet.add(v);
-          chip.classList.add("active");
-          chip.setAttribute("aria-pressed", "true");
-        }
-        onChange();
+  function renderSearch() {
+    if (SEARCH_BUILT) return;
+    if (!DATA_SZ) {
+      els.viewSearch.innerHTML = '<p class="design-intro">Loading The Scheduling Zoo data…</p>';
+      loadSzData()
+        .then(() => renderSearch())
+        .catch((err) => {
+          els.viewSearch.innerHTML =
+            '<p style="color:#c92a2a">Failed to load data/schedulingzoo.json: ' + escapeHtml(String(err)) + "</p>";
+        });
+      return;
+    }
+    SEARCH_BUILT = true;
+    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    const root = els.viewSearch;
+
+    // A stable, readable row order: machine environment, then notation.
+    const envRank = (e) => {
+      const i = SZ_MACHINE_ENV_ORDER.indexOf(e);
+      return i === -1 ? SZ_MACHINE_ENV_ORDER.length : i;
+    };
+    const nodes = DATA_SZ.nodes.slice().sort((a, b) =>
+      envRank(a.machineEnv) - envRank(b.machineEnv) || a.notation.localeCompare(b.notation));
+
+    // Each problem's parameterized results grouped by canonical label, once
+    // ("#p+#d+#w" and "#p+#w+#d" are the same column).
+    const resultsByLabel = new Map();
+    const paramCounts = {};
+    nodes.forEach((n) => {
+      const byLabel = {};
+      n.params.forEach((r) => {
+        const l = canonicalParamLabel(r.param);
+        (byLabel[l] = byLabel[l] || []).push(r);
       });
-      container.appendChild(chip);
+      Object.keys(byLabel).forEach((l) => { paramCounts[l] = (paramCounts[l] || 0) + 1; });
+      resultsByLabel.set(n.id, byLabel);
     });
-  }
+    const allParams = Object.keys(paramCounts).sort((a, b) => paramCounts[b] - paramCounts[a] || a.localeCompare(b));
+    const shownParams = new Set(allParams);
 
-  function buildParamToggle() {
-    els.paramToggle.innerHTML = "";
-    DATA.parameters.forEach((p) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "chip active";
-      chip.textContent = p.symbol;
-      chip.title = p.name;
-      chip.setAttribute("aria-pressed", "true");
-      chip.addEventListener("click", () => {
-        if (state.params.has(p.id)) {
-          state.params.delete(p.id);
-          chip.classList.remove("active");
-          chip.setAttribute("aria-pressed", "false");
-        } else {
-          state.params.add(p.id);
-          chip.classList.add("active");
-          chip.setAttribute("aria-pressed", "true");
-        }
-        renderMatrix();
-      });
-      els.paramToggle.appendChild(chip);
-    });
-  }
+    const swatch = (c) =>
+      '<span class="legend-swatch" style="background:' +
+      (c.opacity ? mixWithPanelBg(c.color, c.opacity) : c.fill ? c.color : "transparent") +
+      ";border:2px " + (c.border || "solid") + " " + c.color + '"></span>';
+    const legendItem = (c, label, title) =>
+      '<div class="legend-item"' + (title ? ' title="' + escapeHtml(title) + '"' : "") + ">" +
+      swatch(c) + "<span>" + escapeHtml(label) + "</span></div>";
+    const usedClassical = new Set(nodes.map((n) => SZ_EFFECTIVE[n.id]));
+    const usedParam = new Set();
+    nodes.forEach((n) => n.params.forEach((r) => { if (r.complexityClass) usedParam.add(r.complexityClass); }));
+    const classicalLegend = DATA.classicalClasses
+      .filter((c) => usedClassical.has(c.id))
+      .map((c) => legendItem(c, c.id === "unclaimed" ? "open" : c.label))
+      .join("");
+    const paramLegend = DATA.complexityClasses
+      .filter((c) => usedParam.has(c.id))
+      .map((c) => legendItem(c, c.label, c.description))
+      .join("");
 
-  function buildLegend() {
-    els.legendItems.innerHTML = "";
-    DATA.complexityClasses
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .forEach((c) => {
-        const item = document.createElement("div");
-        item.className = "legend-item";
-        item.innerHTML =
-          '<span class="legend-swatch" style="background:' + c.color + '"></span>' +
-          "<span>" + c.label + "</span>";
-        item.title = c.description;
-        els.legendItems.appendChild(item);
-      });
-  }
+    const opts = szFilterOptions();
+    root.innerHTML =
+      '<p class="design-intro">Every problem in <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">' +
+      "The Scheduling Zoo</a>'s bibliography, with its classical status and every parameterized result recorded for " +
+      "it. Imported as-is, not independently verified by this site -- click a problem or a result for its " +
+      'citations. The same problems drawn as a reduction graph are in the <a href="#/schedulingzoo">Scheduling Zoo</a> tab.</p>' +
+      '<div class="sz-filters">' +
+      '<input type="text" id="search-filter" class="sz-filter" placeholder="Search, e.g. 1 rj Uj, preemptive, setup, flow shop…">' +
+      buildMsDropdownHtml("search-ms-machine-env", "Machine Environment", opts.machineEnvOptions) +
+      '<span class="sz-field-sep">|</span>' +
+      buildSzSettingsHtml("search-settings", szSettingGroups()) +
+      '<span class="sz-field-sep">|</span>' +
+      buildMsDropdownHtml("search-ms-objective", "Objective", opts.objectiveOptions) +
+      '<button type="button" id="search-reset-btn" class="map-history-btn sz-reset-filters-btn"' +
+      ' title="Clear the text box and every switch, and show every parameter again">↺ Reset filters</button>' +
+      "</div>" +
+      '<div class="search-params"><span class="search-params-label">Parameters shown</span>' +
+      allParams
+        .map((l) =>
+          '<button type="button" class="chip active" aria-pressed="true" data-param="' + escapeHtml(l) + '" title="' +
+          escapeHtml(paramCounts[l] + " problem" + (paramCounts[l] === 1 ? "" : "s") + " with a result for " + l) + '">' +
+          escapeHtml(l) + "</button>")
+        .join("") +
+      "</div>" +
+      '<div class="search-status"><span id="search-count"></span>' +
+      '<label class="search-only-param"><input type="checkbox" id="search-only-param" checked> ' +
+      "Only problems with a parameterized result</label></div>" +
+      '<div class="matrix-wrap"><table class="matrix search-matrix">' +
+      '<thead><tr id="search-matrix-head"></tr></thead><tbody id="search-matrix-body"></tbody></table>' +
+      '<p id="search-empty" class="empty-state" hidden></p></div>' +
+      '<div class="legend search-legend"><h2>Legend</h2>' +
+      '<div class="legend-items"><span class="search-legend-label">Classical</span>' + classicalLegend +
+      '<span class="search-legend-label">• = inherited through a reduction edge, not cited directly</span></div>' +
+      '<div class="legend-items"><span class="search-legend-label">Parameterized</span>' + paramLegend +
+      '<span class="search-legend-label">×n = n cited results, strongest shown</span></div>' +
+      "</div>";
 
-  els.resetBtn.addEventListener("click", () => {
-    state.alpha.clear();
-    state.beta.clear();
-    state.gamma.clear();
-    document.querySelectorAll(".chip-row .chip.active").forEach((c) => {
-      if (c.parentElement !== els.paramToggle) {
-        c.classList.remove("active");
-        c.setAttribute("aria-pressed", "false");
-      }
-    });
-    renderMatrix();
-  });
+    const filterInput = root.querySelector("#search-filter");
+    const onlyParam = root.querySelector("#search-only-param");
+    const machineEnvMs = wireMsDropdown("search-ms-machine-env", root, "Machine Environment", update, (n) => n.machineEnv || "");
+    const objectiveMs = wireMsDropdown("search-ms-objective", root, "Objective", update, (n) => canonicalSzObjective(n.objective));
+    const settingsMs = wireSzSettingsDropdown("search-settings", root, update);
 
-  function filteredProblems() {
-    return DATA.problems.filter((p) => {
-      if (state.alpha.size && !state.alpha.has(p.alpha)) return false;
-      if (state.gamma.size && !state.gamma.has(p.gamma)) return false;
-      if (state.beta.size) {
-        const tokens = p.beta.length ? p.beta : [EMPTY_BETA_TOKEN];
-        const hit = tokens.some((t) => state.beta.has(t));
-        if (!hit) return false;
-      }
-      return true;
-    });
-  }
-
-  function activeParamsForProblems(problems) {
-    const used = new Set();
-    problems.forEach((p) => p.results.forEach((r) => used.add(r.parameter)));
-    return DATA.parameters.filter((p) => state.params.has(p.id) && used.has(p.id));
-  }
-
-  function renderMatrix() {
-    const problems = filteredProblems();
-    const params = activeParamsForProblems(problems);
-
-    els.emptyState.hidden = problems.length > 0;
-    els.matrixHead.innerHTML = "";
-    els.matrixBody.innerHTML = "";
-
-    if (!problems.length) return;
-
-    const thProblem = document.createElement("th");
-    thProblem.className = "problem-col";
-    thProblem.textContent = "Problem (α|β|γ)";
-    els.matrixHead.appendChild(thProblem);
-
-    params.forEach((p) => {
-      const th = document.createElement("th");
-      th.textContent = p.symbol;
-      th.title = p.name;
-      els.matrixHead.appendChild(th);
-    });
-
-    if (!params.length) {
-      const th = document.createElement("th");
-      th.textContent = "(no parameters selected)";
-      els.matrixHead.appendChild(th);
+    function update() {
+      const q = filterInput.value.trim().toLowerCase();
+      const envSel = machineEnvMs.getSelected();
+      const objSel = objectiveMs.getSelected();
+      const setSel = settingsMs.getSelected();
+      const base = nodes.filter((n) =>
+        szNodeMatchesQuery(n, q) &&
+        msSelectionAccepts(envSel, n.machineEnv || "") &&
+        msSelectionAccepts(objSel, canonicalSzObjective(n.objective)) &&
+        szNodeMatchesSettings(n, setSel));
+      const rows = onlyParam.checked
+        ? base.filter((n) => Object.keys(resultsByLabel.get(n.id)).some((l) => shownParams.has(l)))
+        : base;
+      // The dropdown counts describe the rows actually listed, the same way
+      // the overview's counts describe what its filter selects.
+      const ids = new Set(rows.map((n) => n.id));
+      machineEnvMs.refreshCounts(ids);
+      objectiveMs.refreshCounts(ids);
+      settingsMs.refreshCounts(ids);
+      renderRows(rows, base.length);
     }
 
-    problems.forEach((p) => {
-      const tr = document.createElement("tr");
+    function renderRows(rows, baseCount) {
+      const empty = root.querySelector("#search-empty");
+      empty.hidden = rows.length > 0;
+      empty.textContent = onlyParam.checked && baseCount
+        ? baseCount + (baseCount === 1 ? " problem matches" : " problems match") + " these filters, but none has a " +
+          "parameterized result -- untick \"Only problems with a parameterized result\" to list them."
+        : "No problems match the current filters.";
+      root.querySelector("#search-count").textContent =
+        "Showing " + rows.length + " of " + DATA_SZ.nodes.length + " problems";
 
-      const tdProblem = document.createElement("td");
-      tdProblem.className = "problem-cell";
-      tdProblem.innerHTML =
-        '<a class="notation" href="#/problem/' + encodeURIComponent(p.id) + '">' + escapeHtml(p.notation) + "</a>" +
-        '<div class="pname">' + escapeHtml(p.name) + "</div>" +
-        '<div class="pname" style="margin-top:.3rem">' + linkifyCitations(p.classicalStatus) + "</div>";
-      tr.appendChild(tdProblem);
+      // Columns: parameters that are switched on AND have a result in at
+      // least one listed row -- no column of nothing but dashes.
+      const present = new Set();
+      rows.forEach((n) => Object.keys(resultsByLabel.get(n.id)).forEach((l) => present.add(l)));
+      const cols = allParams.filter((l) => shownParams.has(l) && present.has(l));
+      root.querySelector("#search-matrix-head").innerHTML = rows.length
+        ? '<th class="problem-col">Problem (α|β|γ)</th><th>Classical</th>' +
+          cols.map((l) => '<th title="' + escapeHtml("parameterized by " + l) + '">' + escapeHtml(l) + "</th>").join("")
+        : "";
 
-      params.forEach((param) => {
-        const td = document.createElement("td");
-        td.className = "result-cell";
-        const result = p.results.find((r) => r.parameter === param.id);
-        if (!result) {
-          const span = document.createElement("div");
-          span.className = "badge na";
-          span.textContent = "—";
-          td.appendChild(span);
-        } else {
-          const cls = classById(result.class);
-          const btn = document.createElement("button");
-          btn.className = "badge";
-          btn.style.cssText = classPillStyle(cls, result);
-          btn.innerHTML =
-            (cls ? cls.label : result.class) +
-            (result.confidence && result.confidence !== "verified"
-              ? '<span class="conf-flag" title="' + escapeHtml(confidenceLabel(result.confidence)) + '">•</span>'
-              : "");
-          btn.addEventListener("click", () => openDetail(p, param, result, cls));
-          td.appendChild(btn);
-        }
-        tr.appendChild(td);
-      });
+      root.querySelector("#search-matrix-body").innerHTML = rows
+        .map((n) => {
+          const eff = SZ_EFFECTIVE[n.id];
+          const cc = classicalClassById(eff);
+          const open = !eff || eff === "unclaimed";
+          const direct = n.classicalClass && n.classicalClass !== "unclaimed";
+          const ccLabel = open ? "open" : cc ? cc.label : eff;
+          const ccTitle = direct
+            ? "Cited directly -- click for the citations"
+            : open
+              ? "No classical claim, direct or inherited"
+              : "Inherited: generalizes a problem classified " + ccLabel;
+          const byLabel = resultsByLabel.get(n.id);
+          return "<tr>" +
+            '<td class="problem-cell"><button type="button" class="search-problem-link" data-sz-id="' +
+            escapeHtml(n.id) + '">' + escapeHtml(n.notation) + "</button></td>" +
+            '<td class="result-cell"><button type="button" class="badge" data-sz-id="' + escapeHtml(n.id) +
+            '" style="' + classPillStyle(cc) + '" title="' + escapeHtml(ccTitle) +
+            '" aria-label="' + escapeHtml("Classical: " + ccLabel + ". " + ccTitle) + '">' + escapeHtml(ccLabel) +
+            (!direct && !open ? '<span class="conf-flag">•</span>' : "") + "</button></td>" +
+            cols
+              .map((l) => {
+                const rs = byLabel[l];
+                if (!rs) return '<td class="result-cell"><div class="badge na">—</div></td>';
+                const best = bestParamComplexityClass(rs);
+                const pc = best ? classById(best) : null;
+                return '<td class="result-cell"><button type="button" class="badge" data-sz-id="' + escapeHtml(n.id) +
+                  '" data-param="' + escapeHtml(l) + '" style="' +
+                  (pc ? classPillStyle(pc) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
+                  '" title="' + escapeHtml(rs.length + " cited result" + (rs.length === 1 ? "" : "s") + " -- click for details") +
+                  // The title alone would become the accessible name, which
+                  // never says the class the cell is showing.
+                  '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + " for " + l + ", " +
+                    rs.length + " cited result" + (rs.length === 1 ? "" : "s")) +
+                  '">' + escapeHtml(pc ? pc.label : "other") +
+                  (rs.length > 1 ? '<span class="conf-flag">×' + rs.length + "</span>" : "") + "</button></td>";
+              })
+              .join("") +
+            "</tr>";
+        })
+        .join("");
+    }
 
-      if (!params.length) {
-        const td = document.createElement("td");
-        td.textContent = "";
-        tr.appendChild(td);
-      }
-
-      els.matrixBody.appendChild(tr);
+    filterInput.addEventListener("input", update);
+    onlyParam.addEventListener("change", update);
+    root.querySelector(".search-params").addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      const l = chip.dataset.param;
+      if (shownParams.has(l)) shownParams.delete(l);
+      else shownParams.add(l);
+      chip.classList.toggle("active", shownParams.has(l));
+      chip.setAttribute("aria-pressed", shownParams.has(l) ? "true" : "false");
+      update();
+    });
+    root.querySelector("#search-matrix-body").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-sz-id]");
+      if (!el) return;
+      if (el.dataset.param) openSzParamResultsPanel(el.dataset.szId, el.dataset.param);
+      else openSchedulingZooPanel(el.dataset.szId);
+    });
+    // Rebuilding is the simplest complete reset: every switch, the text
+    // box, the parameter chips and the checkbox all come back at default.
+    root.querySelector("#search-reset-btn").addEventListener("click", () => {
+      SEARCH_BUILT = false;
+      renderSearch();
     });
   }
 
-  function openDetail(problem, param, result, cls) {
+  // One problem's results for ONE parameter (a Search matrix cell): the
+  // class shown in the cell, what it means, and every citation behind it.
+  function openSzParamResultsPanel(nodeId, label) {
+    const n = DATA_SZ.nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    const rs = n.params.filter((r) => canonicalParamLabel(r.param) === label);
+    const best = bestParamComplexityClass(rs);
+    const pc = best ? classById(best) : null;
+    const pill = (c) => '<span class="class-pill" style="' + classPillStyle(c) + '">' + escapeHtml(c.label) + "</span>";
     els.detailContent.innerHTML =
-      '<h3>' + problem.notation + " — parameterized by " + param.symbol + "</h3>" +
-      '<div class="detail-class-badge" style="' + classPillStyle(cls, result) + '">' +
-      (cls ? cls.label : result.class) + "</div>" +
-      detailField("Problem", problem.name) +
-      detailField("Parameter", param.name) +
-      detailFieldHtml("Classical (unparameterized) status", linkifyCitations(problem.classicalStatus)) +
-      detailField("Result", cls ? cls.description : "") +
-      detailField("Note", result.note || "") +
-      detailFieldHtml("Reference", citeLinks(result.referenceKeys) || "—") +
-      detailField("Confidence", confidenceLabel(result.confidence)) +
-      '<p style="margin-top:1rem"><a class="wiki-back" href="#/problem/' + encodeURIComponent(problem.id) + '">View full problem page →</a></p>';
+      "<h3>" + escapeHtml(n.notation) + " — parameterized by " + escapeHtml(label) + "</h3>" +
+      (pc
+        ? '<div class="detail-class-badge" style="' + classPillStyle(pc) + '">' + escapeHtml(pc.label) + "</div>" +
+          detailField("What this means", pc.description) +
+          (rs.length > 1
+            ? detailField("Why this class", "It is the strongest of the cited results below: a hardness result wins over a positive one, and within each kind the strongest statement wins.")
+            : "")
+        : detailField("Classification", "None of the cited results below is an FPT, XP, W-hardness or para-NP-hardness statement this site recognizes (for example a fine-grained running-time bound), so no class is shown.")) +
+      '<div class="detail-field"><h4>Cited result' + (rs.length === 1 ? "" : "s") + " (from The Scheduling Zoo)</h4>" +
+      '<ul class="result-list">' +
+      rs.map((r) => {
+        const c = r.complexityClass ? classById(r.complexityClass) : null;
+        return "<li>" + (c ? "<p style='margin:0 0 0.3rem'>" + pill(c) + "</p>" : "") + szCitationHtml(r) + "</li>";
+      }).join("") +
+      "</ul></div>" +
+      '<p style="margin-top:1rem"><a class="wiki-back" href="javascript:void(0)" id="search-open-problem">Every result for this problem →</a></p>';
+    els.detailContent.querySelector("#search-open-problem").addEventListener("click", () => openSchedulingZooPanel(n.id));
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
     setPanelMinWidth(0);
@@ -530,8 +643,7 @@
 
   // Opens the shared side panel for a problem (used by the problem maps so
   // clicking a node reviews its parameterized results without leaving the
-  // map). Distinct from openDetail(), which is scoped to a single
-  // parameter's result from the search matrix.
+  // map).
   function openProblemPanel(problemId) {
     const p = problemById(problemId);
     if (!p) return;
@@ -554,8 +666,8 @@
   // Widens the shared side panel (via the --content-min-width custom
   // property, see style.css) just enough that a wide diagram inside it
   // never needs its own horizontal scrollbar; resets to the default
-  // 420px-ish width for panels with no such content (e.g. openDetail()'s
-  // single-result view from the search matrix).
+  // 420px-ish width for panels with no such content (e.g. the Search
+  // matrix's single-parameter view).
   function setPanelMinWidth(contentWidth) {
     // .detail-panel padding (1.5rem*2=48px) + .param-tree-wrap's own padding
     // (0.5rem*2=16px) + its 1px border on each side, so the SVG never
@@ -586,7 +698,7 @@
     const p = problemById(id);
     if (!p) {
       els.viewProblem.innerHTML =
-        '<div class="wiki-page"><a class="wiki-back" href="#/">&larr; Back to search</a><p>Unknown problem: ' +
+        '<div class="wiki-page"><a class="wiki-back" href="#/maps">&larr; Back to problem maps</a><p>Unknown problem: ' +
         escapeHtml(id) + "</p></div>";
       return;
     }
@@ -610,7 +722,7 @@
 
     els.viewProblem.innerHTML =
       '<div class="wiki-page">' +
-      '<a class="wiki-back" href="#/">&larr; Back to search</a>' +
+      '<a class="wiki-back" href="#/maps">&larr; Back to problem maps</a>' +
       "<h2>" + p.notation + "</h2>" +
       '<p class="wiki-alphabetagamma">' + p.name + "</p>" +
       '<div class="wiki-status"><b>Classical (unparameterized) status</b>' + ccBadge + linkifyCitations(p.classicalStatus) + "</div>" +
@@ -620,11 +732,10 @@
       "</div>";
   }
 
-  // ---------- glossary ----------
+  // ---------- documentation ----------
 
   // Static reference pages about how this site's own model works -- as
-  // opposed to the Glossary (what the complexity classes and parameters
-  // mean) or References (the literature). Written as literal markup rather
+  // opposed to References (the literature). Written as literal markup rather
   // than driven off a data file: this is prose about the model itself, and
   // it should be edited the way prose is, not squeezed into a JSON schema.
   function renderDocs() {
@@ -632,7 +743,8 @@
       '<div class="docs-page">' +
       '<h2 class="page-title">Documentation</h2>' +
       '<p class="design-intro">How to read the graphs on this site -- what an arrow actually claims, ' +
-      "and how far that claim reaches.</p>" +
+      "and how far that claim reaches -- and how the data from The Scheduling Zoo is read and combined.</p>" +
+      '<nav class="docs-toc" aria-label="Contents"></nav>' +
 
       '<section class="docs-section" id="docs-arrow-rules">' +
       "<h3>Arrow rule types</h3>" +
@@ -767,38 +879,319 @@
       "that exists, the honest position is the current one: propagate classical hardness freely, propagate " +
       "parameterized hardness only where the arrow is known to be a plain restriction.</p>" +
       "</section>" +
+
+      '<section class="docs-section" id="docs-scheduling-zoo-data">' +
+      "<h3>Data from The Scheduling Zoo</h3>" +
+      "<p>The Search tab and the Scheduling Zoo map are built from " +
+      '<a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">The Scheduling Zoo</a> ' +
+      "(schedulingzoo.lip6.fr, by Christoph Dürr and contributors, MIT License). It keeps every result as a " +
+      "BibTeX entry whose annotation lists problems in α|β|γ notation with a bound, such as <code>is in P</code> " +
+      "or <code>is strongly NP-hard</code>, plus a file, <code>notation.xml</code>, defining each field's values " +
+      "and the reduction rules between them. This site runs The Scheduling Zoo's own parser on those files, " +
+      "unmodified, and converts its output into problems and arrows.</p>" +
+
+      "<h4>How it stores parameterized results</h4>" +
+      "<p>A parameterized result is the problem followed by its parameters in brackets, several parameters " +
+      "separated by semicolons (plain text here):</p>" +
+      '<p class="docs-example"><code>P2|rj|Lmax [pw(I)]</code> is para-NP-complete<br>' +
+      "<code>P|Mj;prec;rj;l|Cmax [pw(I);pmax]</code> is fixed parameter tractable</p>" +
+      "<p>The parser reads the bracket as extra fields of the same problem, so <code>X</code> and " +
+      "<code>X [k]</code> come out as two unrelated problems: the parameterized one has no arrows to its base " +
+      "problem and gets a color of its own.</p>" +
+
+      "<h4>How this site combines them</h4>" +
+      '<ul class="docs-list">' +
+      "<li><b>One node per problem.</b> Every <code>X [k]</code> result is attached to the base problem " +
+      "<code>X</code> as one of its parameterized results, and the parameter fields are ignored when arrows are " +
+      "computed, so arrows only ever connect base problems.</li>" +
+      "<li><b>Combined parameters.</b> <code>[pw(I);pmax]</code> is shown as <code>pmax+pw(I)</code>: all of " +
+      "them bounded at once. The same set in a different order -- <code>#p+#w+#d</code> and " +
+      "<code>#p+#d+#w</code> are both cited for <code>1|rj|ΣwjUj</code> -- counts as one parameter.</li>" +
+      "<li><b>Same problem, different spelling.</b> Problems whose settings are only listed in a different " +
+      "order, like <code>P|pj=p;rj|…</code> and <code>P|rj;pj=p|…</code>, are merged into one node.</li>" +
+      "<li><b>Nested parameters.</b> In a problem's panel, a parameter set that contains another is drawn " +
+      "beneath it: <code>#d+#r</code> above <code>#d+#p+#r</code>.</li>" +
+      "</ul>" +
+
+      "<h4>How results are classified</h4>" +
+      "<p>The Scheduling Zoo itself only marks a result as positive or negative. This site reads the wording of " +
+      "each bound instead, recognizing only its standard phrases:</p>" +
+      '<ul class="docs-list">' +
+      "<li><b>Classical</b> (no bracket): <code>is strongly NP-hard</code> → strongly NP-hard; " +
+      "<code>is NP-hard</code> together with <code>is in Ppseudo</code> → pseudo-polynomial time solvable; " +
+      "<code>is NP-hard</code> alone → at least weakly NP-hard; <code>is in P</code> or a stated polynomial " +
+      "running time → P. NP-complete counts as NP-hard, hardness wins when both kinds are cited, and a problem " +
+      "with none of these phrases is open.</li>" +
+      "<li><b>Parameterized</b> (bracket): <code>is fixed parameter tractable</code> → FPT; " +
+      "<code>is in P</code> or <code>is in Ppseudo</code> → XP, read as solvable for every fixed value of the " +
+      "parameter, which does not make it FPT; <code>W[1]-hard</code> / <code>W[2]-hard</code> → W[1]- / " +
+      "W[2]-hard; <code>para-NP-hard</code> or <code>is NP-hard</code> → para-NP-hard, i.e. hard even for a " +
+      "constant value. Other bounds, such as ETH-based running-time lower bounds or approximation ratios, are " +
+      "listed as text without a class.</li>" +
+      "<li><b>Several results for one parameter.</b> The strongest is shown: para-NP-hard, then W[2]-hard, " +
+      "W[1]-hard, FPT, XP.</li>" +
+      "</ul>" +
+
+      "<h4>Inherited hardness</h4>" +
+      "<p>A problem with no classical result of its own takes the hardness of any special case of it -- any " +
+      "problem its arrows reach -- that is proven hard. Strongly NP-hard carries over as it is; " +
+      "pseudo-polynomial carries over only as at least weakly NP-hard, since its algorithm need not extend to the " +
+      "more general problem; P never carries over. A problem's panel says when its class is inherited. " +
+      "Parameterized results are not carried along these arrows at all: that needs the arrow to be a plain " +
+      "restriction (see Arrow rule types above), and The Scheduling Zoo's rules don't record which kind each " +
+      "one is.</p>" +
+
+      "<h4>Where this site reads the data differently</h4>" +
+      "<p>Two reduction rules are corrected (setup times under a single server, and multiprocessor tasks on " +
+      "parallel machines), one is added (machine counts), two conditions of the problem-builder form are " +
+      "corrected, and one typo is tolerated. Each is explained, with its " +
+      "evidence, " +
+      'under <a href="#/docs/docs-anomalies">Known data anomalies</a> below. The Scheduling ' +
+      "Zoo's own files are never edited.</p>" +
+      "</section>" +
+      szAnomaliesSectionHtml() +
       "</div>";
+    buildDocsToc(els.viewDocs);
   }
 
-  function renderGlossary() {
-    els.viewGlossary.innerHTML =
-      '<h2 class="page-title">Glossary</h2><div class="glossary-list">' +
-      '<div class="glossary-item"><h3>Complexity classes</h3></div>' +
-      DATA.complexityClasses
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map(
-          (c) =>
-            '<div class="glossary-item"><h3>' + c.label + "</h3><p>" + escapeHtml(c.description) + "</p></div>"
-        )
-        .join("") +
-      '<div class="glossary-item"><h3>Parameters</h3></div>' +
-      DATA.parameters
-        .map(
-          (p) =>
-            '<div class="glossary-item"><h3>' + p.name + ' <span class="sym">(' + p.symbol + ")</span></h3><p>" +
-            escapeHtml(p.gloss || "") +
-            "</p></div>"
-        )
-        .join("") +
+  // Contents for a page of prose (Documentation, What's Coming Next), built
+  // from its own headings: every section (h3) and its subsections (h4), each
+  // linked as #/<route>/<id>.
+  function buildDocsToc(root, route) {
+    route = route || "docs";
+    const toc = root.querySelector(".docs-toc");
+    if (!toc) return;
+    const used = new Set();
+    const idFor = (el) => {
+      if (el.id) return el.id;
+      let base = route + "-" + el.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+      let id = base, n = 2;
+      while (used.has(id) || document.getElementById(id)) id = base + "-" + n++;
+      el.id = id;
+      return id;
+    };
+    const link = (el) => '<a href="#/' + route + "/" + encodeURIComponent(idFor(el)) + '">' + escapeHtml(el.textContent) + "</a>";
+    toc.innerHTML = "<h3>Contents</h3><ol>" +
+      Array.from(root.querySelectorAll(".docs-section")).map((sec) => {
+        const h3 = sec.querySelector("h3");
+        if (!h3) return "";
+        if (!h3.id) h3.id = sec.id;
+        used.add(h3.id);
+        const subs = Array.from(sec.querySelectorAll("h4"));
+        return "<li>" + link(h3) + (subs.length ? "<ol>" + subs.map((h) => { const l = link(h); used.add(h.id); return "<li>" + l + "</li>"; }).join("") + "</ol>" : "") + "</li>";
+      }).join("") + "</ol>";
+  }
+
+  // Known data anomalies in The Scheduling Zoo, and how this site reads
+  // around them -- one subsection per note, so each gets a Contents entry.
+  function szAnomaliesSectionHtml() {
+    if (!SZ_FLAGGED_EDGES.length && !SZ_DATA_NOTES.length) return "";
+    const byId = {};
+    if (DATA_SZ) DATA_SZ.nodes.forEach((n) => { byId[n.id] = n; });
+    return '<section class="docs-section" id="docs-anomalies">' +
+      "<h3>Known data anomalies in The Scheduling Zoo</h3>" +
+      "<p>Things we spot-checked and found inconsistent, or noteworthy gaps, in The Scheduling Zoo's own data." +
+      (SZ_FLAGGED_EDGES.length ? " Arrows we only flag are drawn red and dashed on the Scheduling Zoo map." : "") +
+      " Its source files are left exactly as-is. Four things change how we read them: a single confirmed typo our " +
+      "classifier tolerates, two conditions of the problem-builder form, and two reduction rules we replace with " +
+      "corrected versions -- setup times under a single server, and multiprocessor tasks on parallel machines. " +
+      "Arrows that exist only because of a rule of ours look like any other arrow; clicking one says which rule " +
+      "added it.</p>" +
+      SZ_FLAGGED_EDGES.map((f) => {
+        const from = byId[f.from], to = byId[f.to];
+        return "<h4>Flagged: " + escapeHtml(from ? from.notation : f.from) + " → " + escapeHtml(to ? to.notation : f.to) + "</h4>" +
+          "<p>" + escapeHtml(f.note) + "</p>";
+      }).join("") +
+      SZ_DATA_NOTES.map((n) => "<h4>" + escapeHtml(n.title) + "</h4><p>" + escapeHtml(n.body) + "</p>").join("") +
+      "</section>";
+  }
+
+  // ---------- what's coming next ----------
+
+  // The roadmap: long-term goals, then the extensions we plan. Prose, so
+  // written as markup like Documentation, with the same contents box.
+  function renderNext() {
+    const code = (s) => "<code>" + s + "</code>";
+    els.viewNext.innerHTML =
+      '<div class="docs-page">' +
+      "<h2 class=\"page-title\">What's Coming Next</h2>" +
+      '<p class="design-intro">Where this project is heading: the goal behind it, and the extensions we plan. ' +
+      "None of this exists on the site yet.</p>" +
+      '<nav class="docs-toc" aria-label="Contents"></nav>' +
+
+      '<section class="docs-section" id="next-goals">' +
+      "<h3>Long-term goal: persisting domain knowledge and making it easy to reach</h3>" +
+      "<p>What the scheduling community knows about the complexity of its problems is spread over decades of " +
+      "papers, surveys and tables, and much of it lives only in the heads of the people who proved it: which " +
+      "reductions are folklore, which results quietly depend on a restriction, which questions are still open. " +
+      "The Scheduling Zoo made a large part of that searchable. We want to go further in two directions.</p>" +
+      "<h4>Persisting it</h4>" +
+      "<p>Knowledge that is written down once and checked keeps its value. That means keeping every result " +
+      "tied to its source, every reduction tied to a statement of what it preserves, and every correction to the " +
+      "record visible rather than silently applied -- the way the anomaly notes in the Documentation already work. " +
+      "Problem maps are the first piece of this built here, and today they only live in one browser. The next " +
+      "step is to keep them as files in the repository, so a map becomes a reviewable, citable contribution with " +
+      "a history, and to offer JSON export and import for anyone working offline.</p>" +
+      "<h4>Making it easy to reach</h4>" +
+      "<p>A researcher should get from a question -- is this variant hard? for which parameter? what is the " +
+      "closest known result? -- to the answer and its citation in a few clicks, without first learning a " +
+      "notation or reading the survey it came from. The search, the filters and the maps on this site are the " +
+      "start of that; every extension below is judged by whether it keeps that path short.</p>" +
+      "</section>" +
+
+      '<section class="docs-section" id="next-models">' +
+      "<h3>Scheduling is a zoo; this site is a simplification of it</h3>" +
+      "<p>Everything here is squeezed into Graham's three fields: one machine environment, a list of settings, " +
+      "one objective. That already covers a great deal, but the problems people actually study keep escaping it, " +
+      "and today they are either left out or forced into a string that loses what makes them different.</p>" +
+      "<h4>Richer machine environments</h4>" +
+      "<p>Hybrid and flexible shops such as " + code("F(1,m)") + " -- one machine at the first stage, " +
+      code("m") + " parallel machines at the second -- have no place in The Scheduling Zoo's notation, which is " +
+      "why the Just-in-Time map lives in our own data. We want environments described by their structure " +
+      "(stages, machines per stage, eligibility) rather than by a fixed list of letters, so that such problems " +
+      "take part in search, filters and arrows like any other.</p>" +
+      "<h4>More than one objective, and more than one kind of input</h4>" +
+      "<p>Bicriteria and Pareto problems, weighted combinations of objectives, stochastic and robust " +
+      "scheduling, energy and resource constraints, and scenario-based inputs all change what a " +
+      "\"problem\" is. Supporting them means storing problems as structured records whose fields can be " +
+      "added without breaking the old ones, instead of as notation strings.</p>" +
+      "<h4>Problems as data, not strings</h4>" +
+      "<p>Most of the effort behind this site went into reading strings: sorting settings to recognise the same " +
+      "problem written twice, and checking which combinations are even well-formed. A structured model with " +
+      "explicit fields, value orders and validity rules makes those questions answerable directly, and makes the " +
+      "reduction rules part of the data instead of a separate file to keep in sync.</p>" +
+      "</section>" +
+
+      '<section class="docs-section" id="next-parameterized-reductions">' +
+      "<h3>Parameterized reductions</h3>" +
+      "<p>An arrow on these maps says that one problem is a special case of another, which is enough to carry " +
+      "classical NP-hardness. It is not enough to carry parameterized results. A W[1]-hardness result for a " +
+      "parameter travels along an arrow only if the reduction keeps that parameter bounded, and an FPT " +
+      "algorithm travels the other way only under the same condition. Documentation → Arrow rule types explains " +
+      "why the question has no single answer per arrow.</p>" +
+      "<h4>What we plan to record</h4>" +
+      "<p>For every reduction, for which parameters it is safe, and in what sense: the parameter keeps its " +
+      "value; it is bounded by a function of the original parameter; or it becomes unbounded. The Problem Map " +
+      "Designer already asks a first, deliberately coarse version of this question when an arrow is drawn. " +
+      "The full model needs to be per parameter, and needs to follow the parameter hierarchy -- a reduction " +
+      "that is safe for " + code("#p") + " is also safe for every parameter that bounds " + code("#p") + ".</p>" +
+      "<h4>What it enables</h4>" +
+      "<p>With that recorded, parameterized hardness and tractability can be propagated across a map the way " +
+      "classical hardness already is, each inferred result showing the chain of reductions it rests on. Gaps " +
+      "become visible too: a problem whose neighbours are W[1]-hard for a parameter along safe arrows, but which " +
+      "has no result of its own, is a natural open question.</p>" +
+      "</section>" +
+
+      '<section class="docs-section" id="next-approximation">' +
+      "<h3>Approximation hardness</h3>" +
+      "<p>The Scheduling Zoo already contains approximation results -- ratios achieved, inapproximability " +
+      "bounds, PTAS and EPTAS results -- which this site currently shows as text without a class. They deserve " +
+      "their own view.</p>" +
+      "<h4>How to visualise it</h4>" +
+      "<p>Unlike P versus NP-hard, approximability is not a single label but an interval: the best ratio " +
+      "achieved, and the best ratio ruled out. We plan a separate lens on the same maps that draws that " +
+      "interval on every node, closing to a single point where the answer is known and highlighting where the " +
+      "gap is widest. Scheme-type results (FPTAS, EPTAS, PTAS, APX-hard) fit the same scale as its end points.</p>" +
+      "<h4>Which arrows carry it</h4>" +
+      "<p>Not every reduction preserves approximation: a special case inherits algorithms with their ratio, " +
+      "but hardness of approximation needs approximation-preserving reductions (L-, AP- or PTAS-reductions). " +
+      "Arrows will record which kind they are, in the same way as for parameters, and the lens will only carry " +
+      "bounds along the arrows that support them.</p>" +
+      "</section>" +
+
+      '<section class="docs-section" id="next-online">' +
+      "<h3>Competitive ratio: online hardness</h3>" +
+      "<p>Online problems -- jobs revealed over time, decisions that cannot be revised -- are measured by their " +
+      "competitive ratio rather than by running time. The Scheduling Zoo lists them (the " + code("online-rj") +
+      " problems), but a single colour cannot say anything useful about them.</p>" +
+      "<h4>What to show</h4>" +
+      "<p>The same interval idea as for approximation: the best competitive ratio achieved and the best lower " +
+      "bound, kept separately for deterministic and randomised algorithms, since they often differ. A lower " +
+      "bound proved by an adversary on a special case holds for the general problem too, so these bounds can be " +
+      "propagated along arrows -- as long as the arrow keeps the online model itself, which the arrow's " +
+      "description will have to say.</p>" +
+      "</section>" +
+
+      '<section class="docs-section" id="next-lean">' +
+      "<h3>Lean 4: stating and verifying reductions</h3>" +
+      "<p>Every arrow on these maps is a claim. Most are obvious, some are subtle, and a few -- as the anomaly " +
+      "notes show -- turned out to be wrong in widely used data. A proof assistant can remove the doubt.</p>" +
+      "<h4>Statements</h4>" +
+      "<p>We plan to express scheduling problems and reductions in Lean 4: a problem as a type of instances with " +
+      "a feasibility predicate and an objective, a reduction as a function between instance types together with " +
+      "the theorem that it preserves the answer. The properties this page is about become further theorems " +
+      "about the same function -- that it runs in polynomial time, that it keeps numbers polynomially bounded, " +
+      "that it keeps a given parameter bounded.</p>" +
+      "<h4>Verification on the site</h4>" +
+      "<p>Arrows backed by a checked proof would carry a verified mark and link to it, and proofs would be " +
+      "re-checked automatically whenever the repository changes. Value restrictions -- the large majority of " +
+      "arrows -- should be close to mechanical to state, so the aim is to cover them wholesale first and treat " +
+      "encoding reductions one by one.</p>" +
+      "</section>" +
       "</div>";
+    buildDocsToc(els.viewNext, "next");
   }
 
   // ---------- problem maps (generalization poset diagrams) ----------
 
+  // ---------- saved problem maps (built from The Scheduling Zoo data) ----------
+  // Kept in this browser's localStorage for now -- see the Problem Maps
+  // page. A map is { id, title, createdAt, updatedAt, problemIds,
+  // positions: {id: {left, top}}, drafts: {id: draft problem}, notations }.
+  const SAVED_MAPS_KEY = "psz.problemMaps.v1";
+  function loadSavedMaps() {
+    try {
+      const list = JSON.parse(localStorage.getItem(SAVED_MAPS_KEY) || "[]");
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function storeSavedMaps(list) {
+    try {
+      localStorage.setItem(SAVED_MAPS_KEY, JSON.stringify(list));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderZooMapsIndex() {
+    const maps = loadSavedMaps().slice().sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    const when = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); };
+    els.viewZooMaps.innerHTML =
+      '<h2 class="page-title">Problem Maps</h2>' +
+      '<p class="design-intro">Maps of problems from The Scheduling Zoo, built in the Problem Map Designer or saved ' +
+      "from the Scheduling Zoo map. They are stored in this browser only for now.</p>" +
+      '<div class="map-list">' +
+      '<a class="map-card map-card-new" href="#/design/new"><h3>+ Create a New Problem Map</h3>' +
+      "<p>Opens the Problem Map Designer with an empty map.</p></a>" +
+      maps.map((m) => {
+        const n = (m.problemIds || []).length;
+        const preview = (m.notations || []).slice(0, 4).join(", ") + (n > 4 ? ", …" : "");
+        return '<div class="map-card map-card-saved">' +
+          '<a class="map-card-link" href="#/design/' + encodeURIComponent(m.id) + '">' +
+          "<h3>" + escapeHtml(m.title || "Untitled problem map") + "</h3>" +
+          "<p>" + n + " problem" + (n === 1 ? "" : "s") + (m.updatedAt ? " · saved " + escapeHtml(when(m.updatedAt)) : "") +
+          (preview ? "<br>" + escapeHtml(preview) : "") + "</p></a>" +
+          '<button type="button" class="map-history-btn map-card-delete" data-delete-map="' + escapeHtml(m.id) + '">Delete</button>' +
+          "</div>";
+      }).join("") +
+      "</div>" +
+      (maps.length ? "" : '<p class="design-intro" style="margin-top:1rem">No saved maps yet.</p>');
+    els.viewZooMaps.querySelectorAll("[data-delete-map]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const m = loadSavedMaps().find((x) => x.id === btn.dataset.deleteMap);
+        if (!m || !window.confirm("Delete “" + (m.title || "Untitled problem map") + "”? This can't be undone.")) return;
+        storeSavedMaps(loadSavedMaps().filter((x) => x.id !== m.id));
+        renderZooMapsIndex();
+      });
+    });
+  }
+
   function renderMapsIndex() {
     els.viewMaps.innerHTML =
-      '<h2 class="page-title">Problem maps</h2><div class="map-list">' +
+      '<h2 class="page-title">Problem Maps [WIP]</h2><div class="map-list">' +
       DATA.maps
         .map(
           (m) =>
@@ -990,27 +1383,14 @@
   const SZ_FONT_PX = 10.5;
   const SZ_MIN_NODE_W = 60, SZ_MAX_NODE_W = 260;
 
-  // Generalization edges in schedzoo's own reduction graph that we've
-  // manually spot-checked and found internally inconsistent with schedzoo's
-  // OWN cited results -- flagged, not corrected (schedzoo's data stays
-  // exactly as they have it; see the note at the bottom of this view).
-  // Each entry's `from`/`to` are raw schedzoo ids (DATA_SZ.nodes[].id).
-  const SZ_FLAGGED_EDGES = [
-    {
-      from: "P2|fix_j|C_{\\max}",
-      to: "P2||C_{\\max}",
-      note:
-        "schedzoo's notation.xml declares <reduction from=\"\" to=\"fix_j\" /> for the \"machine sets\" field, " +
-        "i.e. plain P2||Cmax is claimed a special case of P2|fixj|Cmax. But P2|fixj|Cmax is cited P (Hoogeveen & " +
-        "van de Velde, 1994) while P2||Cmax is cited NP-hard (Lenstra & Rinnooy Kan, 1977 -- P2||Cmax is exactly " +
-        "Partition, about as settled as scheduling theory gets). If the generalization claim were right, P2||Cmax " +
-        "would have to inherit the P2|fixj|Cmax algorithm and be in P too -- it doesn't. Neither direction actually " +
-        "holds as a simple field-substitution reduction: fix_j fixes each job's machine(s) as GIVEN input (no " +
-        "scheduler choice), while plain scheduling requires the scheduler to freely choose -- reducing one to the " +
-        "other would mean already knowing the answer. Looks like an authoring error in notation.xml's reduction " +
-        "graph, not a citation error on either end.",
-    },
-  ];
+  // Generalization edges in The Scheduling Zoo's own reduction graph that
+  // we've spot-checked and found inconsistent with its OWN cited results,
+  // and flag rather than correct: red/dashed on the map, listed at the
+  // bottom of the view. Each entry's `from`/`to` are raw ids
+  // (DATA_SZ.nodes[].id). Empty for now -- the only such edge,
+  // P2|fixj|Cmax -> P2||Cmax, came from a rule we now correct (see
+  // SZ_FIXJ_SHOP_NOTE), so it is no longer drawn.
+  const SZ_FLAGGED_EDGES = [];
   function szFlaggedEdgeFor(from, to) {
     return SZ_FLAGGED_EDGES.find((f) => f.from === from && f.to === to);
   }
@@ -1019,16 +1399,16 @@
   // below it -- one source of truth for why OUR_MACHINE_COUNT_RULES (see
   // convert_for_pzoo.py) is sound.
   const SZ_MACHINE_COUNT_RULE_NOTE =
-    "schedzoo's own \"number of machines\" field has zero reduction rules (see the data note below) -- so we " +
-    "added our own: m reduces to m+1 (1->2->3->4->5->arbitrary), layered on TOP of schedzoo's data, never " +
+    "The Scheduling Zoo's own \"number of machines\" field has zero reduction rules (see Known data anomalies in the Documentation) -- so we " +
+    "added our own: m reduces to m+1 (1->2->3->4->5->arbitrary), layered on TOP of The Scheduling Zoo's data, never " +
     "replacing anything they declared. Sound for every objective in this corpus regardless of machine " +
     "environment: for P/Q/R, an m-machine schedule stays valid with an extra machine simply left unused; for " +
     "O/F/J (where machine count = operations per job), pad every job with one zero-duration operation on the " +
     "extra machine -- neither changes any completion time, so the optimum can only get better or stay the same " +
     "with more machines, never worse, for any regular objective (Cmax, sums of completion/tardiness/flow times, " +
     "Lmax, throughput -- all of them). Restricted to fire ONLY when machine count is the sole differing field " +
-    "(never combined with any other simultaneous relaxation) -- see the next data note for why. This edge is " +
-    "marked green specifically because it exists ONLY due to this added rule -- checked against schedzoo's own " +
+    "(never combined with any other simultaneous relaxation) -- see the next data note for why. An edge is " +
+    "counted as added by this site only when it exists ONLY due to this rule -- checked against The Scheduling Zoo's own " +
     "original rules first, edge by edge, so a pair already implied by their own data is never wrongly claimed " +
     "as ours.";
 
@@ -1040,11 +1420,11 @@
     "(s=0). Under S1 -- one server performs every setup, and setups cannot overlap -- it has to mean ARBITRARY " +
     "setup times: zero setups would make the server constrain nothing, so S1 would be pointless. The " +
     "citations agree: Brucker, Knust & Wang (2005) prove F2;S1|pij=p|Cmax NP-hard, which zero setups would " +
-    "make trivial. schedzoo's notation.xml labels that value \"no setup\" and declares \"\" -> sij=1 -> sij=s " +
+    "make trivial. The Scheduling Zoo's notation.xml labels that value \"no setup\" and declares \"\" -> sij=1 -> sij=s " +
     "(the same for sj), which makes arbitrary setups the most RESTRICTED case. That put 19 wrong edges in their " +
     "graph, 14 of them placing a problem cited P above one cited NP-hard (the F2;S1 cluster we used to flag " +
     "edge by edge). It is also what broke our machine-count rule whenever it combined with another field: 27 " +
-    "contradictions, every one involving S1. Our correction, in our converter only (schedzoo's files are " +
+    "contradictions, every one involving S1. Our correction, in our converter only (The Scheduling Zoo's files are " +
     "untouched): drop the four \"\" -> s rules and chain s=1 -> s=s -> arbitrary, gated on S1 -- a two-field " +
     "(server, setup times) rule, so it never fires for a problem without a server. Result: those 19 edges " +
     "are gone, none added, no S1 contradiction remains, and the combined machine-count edges now contradict " +
@@ -1053,6 +1433,39 @@
     "<reduction from=\"S1;s_{ij}=s\" to=\"S1;not setup times\"/> (both spelled out: extend_complex_reduction " +
     "never actually composes rules, its recursive calls are never iterated), likewise for s_j, and relabel " +
     "the empty choice \"arbitrary setup times\".";
+
+  // Shared between the fix_j data note and the panel of any edge that exists
+  // only because of our shop-only fix_j rule (OUR_SHOP_FIX_J_RULES in
+  // convert_for_pzoo.py). On today's data that rule only removes edges.
+  const SZ_FIXJ_SHOP_NOTE =
+    "The Scheduling Zoo's notation.xml declares <reduction from=\"\" to=\"fix_j\"/>: a problem with no machine-set " +
+    "constraint is a special case of the same problem where every job needs a given set of machines at once " +
+    "(fixj, multiprocessor tasks). Whether that holds depends on the machine environment. In a shop (O, F, J) " +
+    "every operation's machine is already part of the input -- \"operation Oij must be processed on machine i\" " +
+    "-- so the plain shop is fixj with every set of size one, and the rule holds. On parallel machines (P, Q, R) " +
+    "an empty field means the scheduler chooses one machine per job, while fixj makes the machines part of the " +
+    "input: no choice of sets reproduces that choice without solving the problem (for P2||Cmax, picking the " +
+    "right sets is solving Partition), and a job holding several machines at once has no counterpart the other " +
+    "way. The citations show the break: P2|fixj|Cmax is in P (Hoogeveen, van de Velde & Veltman 1994, p. 261: " +
+    "run the tasks needing both machines first, then each machine's own tasks back to back), yet the rule drew " +
+    "it as generalizing P2||Cmax, which is NP-hard. On the map the rule drew 7 relations on parallel machines, " +
+    "all false -- that one clashed with a citation, the other six sit between hard problems where nothing " +
+    "showed -- while all of its shop relations are true. Our correction, in our converter only (The Scheduling " +
+    "Zoo's files are untouched): drop the one-field rule and keep it for shops only, as a two-field (machine " +
+    "sets, type) rule. Result: the 7 parallel-machine relations, including the arrow we used to flag red, are " +
+    "gone; nothing is added; every shop relation is still on the map; and no arrow now puts a problem cited P " +
+    "above one cited NP-hard. Suggested upstream fix: replace <reduction from=\"\" to=\"fix_j\"/> with " +
+    "<reduction from=\"O;not machine sets\" to=\"O;fix_j\"/>, the same for F and J, and " +
+    "<reduction from=\"F;not machine sets\" to=\"J;fix_j\"/> (spelled out, as extend_complex_reduction never " +
+    "composes rules). Run through The Scheduling Zoo's own parser, that gives exactly the same graph as our " +
+    "correction.";
+
+  // Which of our notes explains a green (added-by-this-site) edge.
+  function szAddedEdgeNote(edge) {
+    if (edge.addedBy === "s1-setup") return SZ_S1_SETUP_NOTE;
+    if (edge.addedBy === "fixj-shop") return SZ_FIXJ_SHOP_NOTE;
+    return SZ_MACHINE_COUNT_RULE_NOTE;
+  }
 
   // General notes about schedzoo's own data that don't attach to one
   // specific edge (so there's nothing to mark red/dashed on the graph) --
@@ -1063,10 +1476,10 @@
     {
       title: "Typo silently tolerated: \"in in $P$\" for P|pj=p;rj|Lmax",
       body:
-        "Simons:83's citation for P|pj=p;rj|Lmax literally reads \"in in $P$\" in schedzoo's own bib file -- a " +
+        "Simons:83's citation for P|pj=p;rj|Lmax literally reads \"in in $P$\" in The Scheduling Zoo's own bib file -- a " +
         "doubled word, not \"is in $P$\" like its three sibling citations from the very same paper. Confirmed " +
         "it's the only citation in the whole corpus starting with \"in \". Our classifier now recognizes this " +
-        "specific typo (checked it can't match anything else), so the node shows P as intended -- schedzoo's " +
+        "specific typo (checked it can't match anything else), so the node shows P as intended -- The Scheduling Zoo's " +
         "source text itself is untouched.",
     },
     {
@@ -1074,7 +1487,7 @@
       body:
         "Checked both fields that could carry this. The \"type\" field (alpha: 1/P/Q/R/O/F/J) does have " +
         "reduction rules -- but only among the multi-machine environments themselves (P->Q->R, F->J); none " +
-        "mention \"1\" at all. That's because schedzoo's own parser never actually assigns type=\"1\" to a " +
+        "mention \"1\" at all. That's because The Scheduling Zoo's own parser never actually assigns type=\"1\" to a " +
         "parsed single-machine problem -- it assigns type=\"P\" (same as ordinary parallel-machine problems) " +
         "plus a separate \"number of machines\"=\"1\". And THAT field's simple_reductions set is completely " +
         "empty -- no rule for m=1, m=2, m=3, ... being a special case of arbitrary m at all. (One narrow " +
@@ -1083,15 +1496,33 @@
         "absent one. Result: problems that differ ONLY in machine count essentially never get a generalization " +
         "edge in this graph -- e.g. 1||ΣUj has no edge to P||ΣUj, even though m=1 is obviously a special case " +
         "of arbitrary m. Not a hand-authored graph (edges genuinely are computed from declared rules, per the " +
-        "\"why so few edges\" question earlier) -- just a dimension schedzoo's own reduction data barely covers.",
+        "\"why so few edges\" question earlier) -- just a dimension The Scheduling Zoo's own reduction data barely covers.",
     },
     {
-      title: "We added a reduction rule to fill that gap -- new edges shown green",
+      title: "We added a reduction rule to fill that gap",
       body: SZ_MACHINE_COUNT_RULE_NOTE,
     },
     {
-      title: "Setup times under a single server (S1): schedzoo's reduction rule points the wrong way -- corrected here",
+      title: "Setup times under a single server (S1): The Scheduling Zoo's reduction rule points the wrong way -- corrected here",
       body: SZ_S1_SETUP_NOTE,
+    },
+    {
+      title: "Two of The Scheduling Zoo's form conditions corrected when checking new problems",
+      body:
+        "The Problem Map Designer only offers to add a new problem when it is well-formed by The Scheduling " +
+        "Zoo's own problem-builder form in notation.xml: one value per field, and every field and value only " +
+        "where its \"requires\" condition holds. Running all 719 problems of the corpus through those conditions " +
+        "rejected 95 of them, for two reasons. First, the unit and equal processing times pij=1 and pij=p require " +
+        "\"R or J or O\", leaving out F, although 76 and 18 flow-shop problems use them and notation.xml's own " +
+        "flow-shop explanation writes processing times as pij. Second, its evaluator splits a condition on spaces " +
+        "only, so \"(P\" in \"advanced and (P or Q or 1)\" is read as an unknown word and pj∈{1,2} is never offered. " +
+        "We read the first as \"R or J or O or F\" and space out the parentheses; with both, all 719 problems are " +
+        "well-formed. Suggested upstream fix: add \"or F\" to those two conditions and write " +
+        "\"advanced and ( P or Q or 1 )\".",
+    },
+    {
+      title: "Multiprocessor tasks (fixj) on parallel machines: The Scheduling Zoo's reduction rule only holds for shops -- corrected here",
+      body: SZ_FIXJ_SHOP_NOTE,
     },
   ];
 
@@ -1101,7 +1532,7 @@
   // for the click-through panel (openSchedulingZooEdgePanel) -- a hover
   // tooltip has to stay short.
   function szEdgeSummary(edge, flagged) {
-    const prefix = flagged ? "⚠ FLAGGED (see note below) — " : edge.addedByUs ? "✚ ADDED BY US (see note below) — " : "";
+    const prefix = flagged ? "⚠ FLAGGED (click for details) — " : edge.addedByUs ? "✚ ADDED BY US (click for details) — " : "";
     const diffs = edge.diffs || [];
     if (!diffs.length) return prefix + "generalizes (no field differs -- merged duplicate?)";
     if (diffs.length === 1) {
@@ -1183,11 +1614,11 @@
   // OUR_MACHINE_COUNT_RULES in convert_for_pzoo.py); red = flagged
   // inconsistent; gray = schedzoo's own untouched reduction graph.
   const SZ_EDGE_FLAGGED_COLOR = "#cf4444";
-  const SZ_EDGE_OURS_COLOR = "#2c8a3f";
-  const SZ_EDGE_COLORS = [MAP_EDGE_COLOR, SZ_EDGE_FLAGGED_COLOR, SZ_EDGE_OURS_COLOR];
+  const SZ_EDGE_COLORS = [MAP_EDGE_COLOR, SZ_EDGE_FLAGGED_COLOR];
   function szEdgeStroke(edge, flagged) {
-    if (flagged) return SZ_EDGE_FLAGGED_COLOR;
-    return edge.addedByUs ? SZ_EDGE_OURS_COLOR : MAP_EDGE_COLOR;
+    // Arrows added by a rule of ours look like every other arrow; their
+    // panel still says which rule added them.
+    return flagged ? SZ_EDGE_FLAGGED_COLOR : MAP_EDGE_COLOR;
   }
   function szArrowIdFor(color) {
     return "sz-arrow-" + color.replace("#", "");
@@ -1227,31 +1658,155 @@
     return szSearchForms(needle).some((nf) => nf && hayForms.some((hf) => hf.includes(nf)));
   }
 
-  // Two matching modes, because plain substring search is too literal to be
-  // useful on alpha|beta|gamma notation: "1|rj|Uj" would find nothing, since
-  // the actual problems are "1|rj;pmtn|ΣUj", "1|rj;pj=p|ΣUj" and so on --
-  // the beta field carries extra constraints and is not in a fixed order.
+  // Words people use for what the notation abbreviates, so the search box
+  // works for someone who doesn't know Graham notation or this site's
+  // filters: "preemptive", "setup", "makespan", "tardy". Matched as word
+  // PREFIXES ("preempt" finds preemptive problems), never from the middle of
+  // a word, so "preemptive" doesn't also find the non-preemptive ones.
+  const SZ_MACHINE_ENV_LABELS = {
+    1: "1 — single machine", P: "P — parallel identical machines", Q: "Q — uniform/related machines",
+    R: "R — unrelated machines", O: "O — open shop", F: "F — flow shop", J: "J — job shop",
+  };
+  const SZ_OBJECTIVE_WORDS = {
+    Cmax: "makespan maximum completion time",
+    Cmin: "minimum completion time",
+    "ΣCj": "total sum completion time",
+    "ΣwjCj": "total sum weighted completion time",
+    Lmax: "maximum lateness",
+    "ΣUj": "number of tardy late jobs throughput",
+    "ΣwjUj": "weighted number of tardy late jobs throughput",
+    "ΣTj": "total sum tardiness",
+    "ΣwjTj": "total sum weighted tardiness",
+    "ΣFj": "total sum flow time",
+    "ΣwjFj": "total sum weighted flow time",
+    Fmax: "maximum flow time",
+    "max wjFj": "maximum weighted flow time",
+  };
+  const SZ_PREEMPTION_WORDS = {
+    pmtn: "preemption preemptive",
+    restarts: "preemption restarts",
+    "": "non-preemptive nonpreemptive",
+  };
+  // Added to a problem's words for each beta field it sets, next to
+  // schedzoo's field name and this site's label for it (SZ_SETTING_LABELS).
+  const SZ_SETTING_WORDS = {
+    server: "setup setups",
+    "setup times": "setup setups",
+    "precedence relation": "constraints",
+    "release time": "release dates",
+    batching: "batch batches",
+    "machine sets": "multipurpose eligibility eligible dedicated",
+    "job size": "multiprocessor tasks",
+    "due date": "due dates",
+    deadline: "deadlines",
+    "rejection cost": "reject",
+    "transportation delays": "transport",
+    recirculation: "flexible",
+  };
+  // Multi-word phrases rewritten before the query is split into words. The
+  // machine environments become their alpha letter, so "job shop" means J
+  // rather than "mentions jobs, in any shop"; "non preemptive" stays one
+  // word so it can't turn into "non" AND "preemptive".
+  const SZ_QUERY_PHRASES = [
+    [/\bsingle[\s-]*machines?\b/g, " 1 "],
+    [/\bparallel\s+identical\s+machines?\b|\bidentical\s+(parallel\s+)?machines?\b|\bparallel\s+machines?\b/g, " p "],
+    [/\bunrelated\s+machines?\b/g, " r "],
+    [/\b(uniform|related)\s+machines?\b/g, " q "],
+    [/\bopen[\s-]*shops?\b/g, " o "],
+    [/\bflow[\s-]*shops?\b/g, " f "],
+    [/\bjob[\s-]*shops?\b/g, " j "],
+    [/\bnon[\s-]*preempt/g, " non-preempt"],
+    [/\b(unit|equal)[\s-]+(processing|setup|time|communication)/g, " $1-$2"],
+  ];
+  // A machine-environment token: 1, P, P2, Pm, F3, J, ... Matched against
+  // the problem's alpha field only -- otherwise "1" would also find every
+  // p_j=1 problem.
+  const SZ_ALPHA_TOKEN = /^(1|[pqrofj](\d+|m|∞)?)$/;
+
+  function szNodeWords(node) {
+    if (node._words === undefined) {
+      const parts = [
+        SZ_MACHINE_ENV_LABELS[node.machineEnv] || "",
+        SZ_OBJECTIVE_WORDS[node.objective] || "",
+        SZ_PREEMPTION_WORDS[node.preemption || ""] || "",
+      ];
+      Object.keys(node.settings || {}).forEach((f) => {
+        const v = node.settings[f];
+        parts.push(f, SZ_SETTING_LABELS[f] || "", SZ_SETTING_WORDS[f] || "");
+        // "unit"/"equal" on their own, and fused with the field they qualify
+        // ("unit-processing"), so "unit processing" doesn't also find a
+        // problem with unit time lags and arbitrary processing times.
+        const head = f.split(" ")[0];
+        if (/=1$/.test(v)) parts.push("unit", "unit-" + head);
+        else if (/=[a-zA-Z]$/.test(v)) parts.push("equal common", "equal-" + head);
+      });
+      node._words = parts.join(" ").toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean);
+    }
+    return node._words;
+  }
+  function szNodeAlpha(node) {
+    return String(node.notation || "").split("|")[0].split(";")[0].toLowerCase();
+  }
+  function szAlphaTokenMatches(node, t) {
+    const alpha = szNodeAlpha(node);
+    return t === "1" ? alpha === "1" : alpha.startsWith(t);
+  }
+
+  // Parsed once per query string, not once per problem.
+  let szParsedQuery = { q: null, tokens: [] };
+  function szQueryTokens(q) {
+    if (szParsedQuery.q !== q) {
+      let text = q.toLowerCase();
+      SZ_QUERY_PHRASES.forEach(([re, rep]) => { text = text.replace(re, rep); });
+      const tokens = text.split(/[\s,;]+/).filter(Boolean).map((t) => ({
+        t,
+        alpha: SZ_ALPHA_TOKEN.test(t),
+        forms: szSearchForms(t).filter(Boolean),
+        word: t.length >= 3 && /[a-z]/.test(t),
+      }));
+      szParsedQuery = { q, tokens };
+    }
+    return szParsedQuery.tokens;
+  }
+
+  // Two ways to search, because typed notation and typed words need
+  // different matching:
   //
-  // So a query CONTAINING "|" is matched slot by slot: its alpha must occur
-  // in the node's alpha, its gamma in the node's gamma, and every
-  // ";"-separated beta token must occur somewhere in the node's beta, in any
-  // order. "1|rj|Uj" then means "single machine, has release dates, some
-  // U_j objective", which is what someone typing it means. A query with no
-  // "|" stays a free substring search over every spelling of the notation.
+  // A query WITHOUT "|" is a list of words, and every one of them has to
+  // match, in any order: "1 rj Uj", "preemptive setup", "flow shop Cmax".
+  // A word matches when it is the problem's machine environment (1, P2, F,
+  // or a phrase like "open shop"), occurs anywhere in its notation in any
+  // spelling (see szSearchForms, so "sum" finds Σ), or starts one of its
+  // plain-language words (see szNodeWords).
+  //
+  // A query WITH "|" is notation typed slot by slot: its alpha must match
+  // the problem's alpha, its gamma the gamma, and every ";"- or
+  // space-separated beta token must occur somewhere in the beta, in any
+  // order -- "1|rj|Uj" is single machine, release dates, some U_j
+  // objective, even though the actual problems read "1|rj;pmtn|ΣUj" etc.
   function szNodeMatchesQuery(node, q) {
     if (!q) return true;
-    if (q.indexOf("|") === -1) {
-      const hay = szNodeSearchHaystack(node);
-      return szSearchForms(q).some((form) => form && hay.includes(form));
-    }
+    if (q.indexOf("|") !== -1) return szNodeMatchesSlots(node, q);
+    const tokens = szQueryTokens(q);
+    if (!tokens.length) return true;
+    const hay = szNodeSearchHaystack(node);
+    return tokens.every((tok) => {
+      if (tok.alpha) return szAlphaTokenMatches(node, tok.t);
+      if (tok.forms.some((f) => hay.includes(f))) return true;
+      return tok.word && szNodeWords(node).some((w) => w.startsWith(tok.t));
+    });
+  }
+  function szNodeMatchesSlots(node, q) {
     const qSlots = q.split("|");
     const nSlots = String(node.notation || "").split("|");
     if (qSlots.length > nSlots.length) return false;
     for (let i = 0; i < qSlots.length; i++) {
       if (!qSlots[i].trim()) continue;
       const nodeForms = szSearchForms(nSlots[i] || "");
-      const tokens = qSlots[i].split(";").map((t) => t.trim()).filter(Boolean);
-      if (!tokens.every((t) => szFormsContain(nodeForms, t))) return false;
+      const tokens = qSlots[i].toLowerCase().split(/[\s;]+/).filter(Boolean);
+      const ok = tokens.every((t) =>
+        i === 0 && SZ_ALPHA_TOKEN.test(t) ? szAlphaTokenMatches(node, t) : szFormsContain(nodeForms, t));
+      if (!ok) return false;
     }
     return true;
   }
@@ -1322,21 +1877,19 @@
   // (jobs revealed over time, competitive analysis), and it is the only
   // family in the corpus that no reduction rule touches in either
   // direction. Filed under "Release dates" it is invisible, and with 18
-  // problems it would sink into "Rare"; so it gets its own pinned group
-  // whose "+"/"-" mean online / not online, rather than the field group's
-  // "has release dates at all / has none". It still appears as a value
-  // under Release dates too -- the same problems, asked about differently.
+  // problems it would sink into "Rare"; so it gets its own pinned group.
+  // `match` is what the group's own "+"/"-" means (online / not online);
+  // `values` are the finer switches listed inside it.
   const SZ_SETTING_VALUE_GROUPS = [
     {
       key: "online",
-      label: "Online (jobs revealed over time)",
+      label: "Online",
+      match: { field: "release time", value: "online-r_j" },
       values: [
-        { field: "release time", value: "online-r_j" },
         // restarts is filed under "preemption" by schedzoo, but all four of
         // its problems are online -- it is the online model's own
-        // preemption variant, so it belongs to this family. It stays listed
-        // under Preemption as well; the same problems, asked about
-        // differently.
+        // preemption variant, so it is listed here rather than under
+        // Preemption.
         { field: "preemption", value: "restarts" },
       ],
     },
@@ -1346,10 +1899,10 @@
   // field, because the group's "+" already says the same thing.
   const SZ_HIDDEN_SETTING_VALUES = [
     { field: "precedence relation", value: "prec" },
-    // Both of these are listed under Online instead -- they ARE the online
-    // family. Their own fields keep counting them (a problem with
-    // online-r_j does have release dates, and restarts is a kind of
-    // preemption), they just aren't offered twice as switches.
+    // Both belong to Online instead: online-r_j IS Online's own switch, and
+    // restarts is listed inside it. Their own fields keep counting them (a
+    // problem with online-r_j does have release dates, and restarts is a
+    // kind of preemption), they just aren't offered twice as switches.
     { field: "release time", value: "online-r_j" },
     { field: "preemption", value: "restarts" },
   ];
@@ -1427,19 +1980,20 @@
       });
     });
     // Value groups match specific VALUES rather than "field is set at all",
-    // and may draw those values from more than one field: Online is
-    // online-r_j (a release-time value) together with restarts (a
-    // preemption value), which is a coherent family even though schedzoo
-    // files the two under different fields.
+    // and may draw them from more than one field: Online is online-r_j (a
+    // release-time value, its `match`) with restarts (a preemption value)
+    // listed inside it -- a coherent family even though schedzoo files the
+    // two under different fields.
     SZ_SETTING_VALUE_GROUPS.forEach((m) => {
       const values = m.values
         .map((mv) => (byFieldAll[mv.field] || []).filter((v) => v.value === mv.value)[0])
         .filter(Boolean);
-      if (!values.length) return;
+      if (!values.length && !m.match) return;
       groups.push({
         key: m.key,
-        fields: values.map((v) => v.field),
+        fields: Array.from(new Set((m.match ? [m.match.field] : []).concat(values.map((v) => v.field)))),
         isValueGroup: true,
+        match: m.match || null,
         label: m.label,
         pinned: true,
         values: values,
@@ -1479,7 +2033,14 @@
     }));
   }
 
+  // A value group's own match (Online's online-r_j), when it has one, read
+  // back off the rendered group the same way.
+  function szGroupMatchRef(groupEl) {
+    return groupEl.dataset.matchField ? { field: groupEl.dataset.matchField, value: groupEl.dataset.matchValue } : null;
+  }
+
   function szGroupMatches(node, g) {
+    if (g.match) return szSettingValue(node, g.match.field) === g.match.value;
     if (g.isValueGroup) return (g.values || []).some((v) => szSettingValue(node, v.field) === v.value);
     return g.fields.some((f) => !!szSettingValue(node, f));
   }
@@ -1537,7 +2098,9 @@
       const anyValueSet = g.values.some((v) => isSet(v, "include") || isSet(v, "exclude"));
       // One value means the value switch and the group switch would say the
       // same thing, so there is nothing worth expanding -- render it flat.
-      const expandable = nested || g.values.length > 1;
+      // Unless the group has its own match (Online): then its single value
+      // (restarts) is a narrower question than the group's switch.
+      const expandable = nested || g.values.length > 1 || (!!g.match && g.values.length > 0);
       const mainVals = g.values.filter((v) => v.count >= SZ_MORE_VALUE_MAX);
       const moreVals = g.values.filter((v) => v.count < SZ_MORE_VALUE_MAX);
       const moreOpen = moreVals.some((v) => isSet(v, "include") || isSet(v, "exclude"));
@@ -1554,6 +2117,7 @@
       return '<div class="ms-group" data-key="' + escapeHtml(g.key) +
         '" data-fields="' + escapeHtml(g.fields.join("|")) + '"' + (g.pinned ? ' data-pinned="1"' : "") +
         (g.isValueGroup ? ' data-valuegroup="1"' : "") +
+        (g.match ? ' data-match-field="' + escapeHtml(g.match.field) + '" data-match-value="' + escapeHtml(g.match.value) + '"' : "") +
         ' data-state="' + gState + '">' +
         '<div class="ms-option ms-group-head' + (expandable ? "" : " ms-group-leaf") + '">' + triHtml +
         (expandable
@@ -1578,6 +2142,44 @@
       "</div></div>";
   }
 
+  // Which dropdown is open, where it is scrolled to and which of its groups
+  // are expanded -- so a re-render can put it back exactly as it was.
+  function captureDropdownUi(root) {
+    const panel = root.querySelector(".ms-panel:not([hidden])");
+    if (!panel) return null;
+    const keyOf = (el) => { const g = el.parentElement.closest(".ms-group"); return g ? g.dataset.key : ""; };
+    return {
+      id: panel.id,
+      scroll: panel.scrollTop,
+      groups: Array.from(panel.querySelectorAll(".ms-group")).filter((g) => {
+        const body = g.querySelector(":scope > .ms-group-values");
+        return body && !body.hidden;
+      }).map((g) => g.dataset.key),
+      rares: Array.from(panel.querySelectorAll(".ms-rare")).filter((r) => !r.querySelector(":scope > .ms-rare-body").hidden).map(keyOf),
+    };
+  }
+  function restoreDropdownUi(root, snap) {
+    if (!snap) return;
+    const panel = root.querySelector("#" + cssEscape(snap.id));
+    if (!panel) return;
+    panel.hidden = false;
+    panel.querySelectorAll(".ms-group").forEach((g) => {
+      const body = g.querySelector(":scope > .ms-group-values");
+      if (!body || !snap.groups.includes(g.dataset.key)) return;
+      body.hidden = false;
+      const caret = g.querySelector(":scope > .ms-group-head .ms-caret");
+      if (caret) caret.setAttribute("aria-expanded", "true");
+    });
+    panel.querySelectorAll(".ms-rare").forEach((r) => {
+      const g = r.parentElement.closest(".ms-group");
+      if (!snap.rares.includes(g ? g.dataset.key : "")) return;
+      r.querySelector(":scope > .ms-rare-body").hidden = false;
+      const caret = r.querySelector(":scope > .ms-rare-caret");
+      if (caret) caret.setAttribute("aria-expanded", "true");
+    });
+    panel.scrollTop = snap.scroll;
+  }
+
   function wireSzSettingsDropdown(idPrefix, root, onChange) {
     const toggle = root.querySelector("#" + idPrefix + "-toggle");
     const panel = root.querySelector("#" + idPrefix + "-panel");
@@ -1591,6 +2193,7 @@
             key: g.dataset.key,
             fields: fields,
             isValueGroup: !!g.dataset.valuegroup,
+            match: szGroupMatchRef(g),
             values: szGroupValueRefs(g),
             state: g.dataset.state,
           });
@@ -1616,6 +2219,7 @@
         key: g.dataset.key,
         fields: g.dataset.fields.split("|"),
         isValueGroup: !!g.dataset.valuegroup,
+        match: szGroupMatchRef(g),
         values: szGroupValueRefs(g),
       }));
       // Value counts are tallied over the DISTINCT fields, not per group:
@@ -1676,7 +2280,7 @@
         const name = g.querySelector(".ms-group-label").firstChild.textContent.trim();
         const vs = Array.from(g.querySelectorAll('.ms-value:not([data-state="neutral"])'));
         if (vs.length) {
-          vs.forEach((v) => parts.push((v.dataset.state === "out" ? "−" : "") + v.dataset.value));
+          vs.forEach((v) => parts.push((v.dataset.state === "out" ? "−" : "") + v.querySelector(".ms-option-label").firstChild.textContent.trim()));
         } else if (g.dataset.state !== "neutral") {
           parts.push((g.dataset.state === "out" ? "no " : "") + name.toLowerCase());
         }
@@ -1693,12 +2297,20 @@
       panel.hidden = !willOpen;
       if (willOpen) sortByCount();
     });
+    // Closes only when its own button is clicked again (or another
+    // dropdown is opened) -- not on outside clicks or while switching values.
     panel.addEventListener("click", (e) => e.stopPropagation());
-    document.addEventListener("click", () => { panel.hidden = true; });
 
     function setState(el, state) {
       if (el.dataset.state === state) return;
       el.dataset.state = state;
+      const parent = el.classList.contains("ms-group") ? el : el.closest(".ms-group");
+      const isPrecedence = parent && parent.dataset.fields.split("|").includes("precedence relation");
+      if (isPrecedence && el.classList.contains("ms-group") && state !== "neutral") {
+        parent.querySelectorAll(".ms-value[data-field='precedence relation']").forEach((value) => { value.dataset.state = "neutral"; });
+      } else if (isPrecedence && el.classList.contains("ms-value") && state !== "neutral") {
+        parent.dataset.state = "neutral";
+      }
       updateLabel();
       onChange(selected());
     }
@@ -1815,8 +2427,9 @@
       panel.hidden = !willOpen;
       if (willOpen) sortByCount();
     });
+    // Closes only when its own button is clicked again (or another
+    // dropdown is opened) -- not on outside clicks or while switching values.
     panel.addEventListener("click", (e) => e.stopPropagation());
-    document.addEventListener("click", () => { panel.hidden = true; });
 
     function setState(row, state) {
       if (row.dataset.state === state) return;
@@ -1900,12 +2513,20 @@
     return effective;
   }
 
+  // One field of Graham's alpha|beta|gamma, for the overview's introduction.
+  function szGrahamField(symbol, name) {
+    return '<span class="sz-graham-field"><span class="sz-graham-sym">' + symbol + "</span>" +
+      '<span class="sz-graham-name">' + name + "</span></span>";
+  }
+
+  // More than this and a saved map is unreadable (and slow to lay out).
+  const SZ_SAVE_MAP_MAX = 150;
+
   function renderSchedulingZoo() {
     if (!DATA_SZ) {
       els.viewSchedulingZoo.innerHTML = '<div class="map-page"><h2 class="page-title">Scheduling Zoo overview</h2><p class="design-intro">Loading…</p></div>';
-      fetch("data/schedulingzoo.json")
-        .then((r) => r.json())
-        .then((data) => { DATA_SZ = data; renderSchedulingZoo(); })
+      loadSzData()
+        .then(() => renderSchedulingZoo())
         .catch((err) => {
           els.viewSchedulingZoo.innerHTML =
             '<div class="map-page"><h2 class="page-title">Scheduling Zoo overview</h2>' +
@@ -2068,7 +2689,7 @@
         // machines" reduction rule (see OUR_MACHINE_COUNT_RULES in
         // convert_for_pzoo.py) -- schedzoo's own data never implied it.
         // Never both flagged and ours: we only ever add edges we've checked
-        // are sound (see the data note below), unlike the one flagged edge.
+        // are sound (see the data notes below).
         const stroke = szEdgeStroke(e, flagged);
         const dash = flagged ? ' stroke-dasharray="6,3"' : "";
         // Two lines per edge: a wide, invisible one (easy hover/click target
@@ -2110,32 +2731,7 @@
     // Counted and ordered most-common-first, like the settings menu -- the
     // counts are refreshed against the current selection once wired (see
     // refreshCounts in wireMsDropdown), this is just the initial state.
-    const objectiveCounts = {};
-    DATA_SZ.nodes.forEach((n) => {
-      const o = canonicalSzObjective(n.objective);
-      if (o) objectiveCounts[o] = (objectiveCounts[o] || 0) + 1;
-    });
-    const objectiveOptions = Object.keys(objectiveCounts)
-      .map((o) => ({ value: o, label: o, count: objectiveCounts[o] }))
-      .sort((a, b) => b.count - a.count);
-
-    // Short dropdown labels + full hover text straight from schedzoo's own
-    // notation.xml <choice explanation=...> for the "type" field -- see
-    // machineEnvExplanations in data/schedulingzoo.json.
-    const machineEnvLabels = { 1: "1 — single machine", P: "P — parallel identical machines", Q: "Q — uniform/related machines", R: "R — unrelated machines", O: "O — open shop", F: "F — flow shop", J: "J — job shop" };
-    const machineEnvExpl = DATA_SZ.machineEnvExplanations || {};
-    const machineEnvCounts = {};
-    DATA_SZ.nodes.forEach((n) => {
-      if (n.machineEnv) machineEnvCounts[n.machineEnv] = (machineEnvCounts[n.machineEnv] || 0) + 1;
-    });
-    const machineEnvOptions = Object.keys(machineEnvCounts)
-      .map((v) => ({
-        value: v,
-        label: machineEnvLabels[v] || v,
-        title: machineEnvExpl[v] || "",
-        count: machineEnvCounts[v],
-      }))
-      .sort((a, b) => b.count - a.count);
+    const { machineEnvOptions, objectiveOptions } = szFilterOptions();
 
     const prevFilters = SZ_LAST_FILTERS || {};
     const machineEnvDropdownHtml = buildMsDropdownHtml("sz-ms-machine-env", "Machine Environment", machineEnvOptions, prevFilters.machineEnv);
@@ -2153,59 +2749,30 @@
       )
       .join("");
 
-    // Looked up from DATA_SZ.nodes (not the possibly-decluttered `nodes`),
-    // so this section always lists every flagged edge regardless of the
-    // current filter/focus state.
-    const szAllById = {};
-    DATA_SZ.nodes.forEach((n) => { szAllById[n.id] = n; });
-    const szAnomaliesHtml = SZ_FLAGGED_EDGES.length || SZ_DATA_NOTES.length
-      ? '<div class="map-excluded"><h3>Known data anomalies in schedzoo</h3>' +
-        "<p>Things we spot-checked and found inconsistent, or noteworthy gaps, in schedzoo's own data. Where it's " +
-        "a specific edge, it's marked red/dashed above. schedzoo's source files are left exactly as-is. " +
-        "Two things change how we READ them, both explained below: a single confirmed typo our classifier " +
-        "tolerates, and their setup-time reduction rules under a single server, which we replace with a " +
-        "corrected version.</p>" +
-        "<ul>" +
-        SZ_FLAGGED_EDGES.map((f) => {
-          const from = szAllById[f.from], to = szAllById[f.to];
-          return "<li><p style='margin:0 0 0.3rem'><b>" + escapeHtml(from ? from.notation : f.from) +
-            "</b> &rarr; <b>" + escapeHtml(to ? to.notation : f.to) + "</b></p>" +
-            "<p style='margin:0'>" + escapeHtml(f.note) + "</p></li>";
-        }).join("") +
-        SZ_DATA_NOTES.map((n) =>
-          "<li><p style='margin:0 0 0.3rem'><b>" + escapeHtml(n.title) + "</b></p>" +
-          "<p style='margin:0'>" + escapeHtml(n.body) + "</p></li>"
-        ).join("") +
-        "</ul></div>"
-      : "";
-
+    const dropdownUi = captureDropdownUi(els.viewSchedulingZoo);
     els.viewSchedulingZoo.innerHTML =
       '<div class="map-page">' +
       '<h2 class="page-title">Scheduling Zoo overview</h2>' +
-      '<p class="design-intro">Every base problem that appears in a result somewhere in ' +
-      '<a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">schedulingzoo.lip6.fr</a>\'s ' +
-      "own bibliography (" + DATA_SZ.nodes.length + " problems, " + DATA_SZ.edges.length + " generalization edges), " +
-      "laid out and colored in this site's style. Schedzoo records a parameterized result (e.g. \"[m]\") as a " +
-      "field on the SAME problem vector as the base problem -- so \"X\" and \"X [y]\" are merged back into one " +
-      "node here, with every \"[y]\" result attached as a parameterized result on that node instead of floating " +
-      "as its own disconnected, misleadingly-colored node. <b>These results are imported as-is, not " +
-      "independently verified by this site</b> -- click a node for its citations and links to the original " +
-      "source. Color uses this site's own classical-complexity model (see legend below), inferred from " +
-      "schedzoo's own cited bound text -- schedzoo itself only tags results \"positive\" or \"negative\" by " +
-      "keyword, with no P / weakly-NP-hard / strongly-NP-hard distinction, so this is our own reading of their " +
-      "text, not a category schedzoo assigns itself. A node with no direct classical citation we could parse " +
-      "still inherits hardness through the generalization edges below it, exactly like every other map on " +
-      "this site: if it strictly generalizes a node proven NP-hard, that hardness is a mathematical " +
-      "consequence (the general problem contains the specific one as an instance), not a citation, so it's " +
-      "shown regardless. Only \"no direct claim\" (open) means neither a direct nor an inherited classical " +
-      "claim exists here -- open a node to see the difference and its parameterized results.</p>" +
-      "<p class=\"design-intro\">Arrows: hover for a quick summary, click for the full explanation of why it " +
-      "exists (which field differs and what schedzoo says both values mean). Gray = schedzoo's own reduction " +
-      "graph. <span style='color:#cf4444'>Red/dashed</span> = flagged as internally inconsistent (see " +
-      "\"Known data anomalies\" at the bottom). <span style='color:#2c8a3f'>Green</span> = added by this site, " +
-      "not schedzoo's own data (also explained at the bottom).</p>" +
+      '<div class="sz-intro">' +
+      "<p>Problems are written in Graham's three-field notation:</p>" +
+      '<p class="sz-graham" role="img" aria-label="alpha: machine environment, beta: settings, gamma: objective">' +
+      szGrahamField("α", "machine environment") + '<span class="sz-graham-bar">|</span>' +
+      szGrahamField("β", "settings") + '<span class="sz-graham-bar">|</span>' +
+      szGrahamField("γ", "objective") + "</p>" +
+      "<p>For example <code>1|rj;pmtn|ΣCj</code> is a single machine, with release dates and preemption, " +
+      "minimizing total completion time. The filter bar below has the same three fields: type notation or plain " +
+      "words into the search box (<code>1 rj Uj</code>, <code>preemptive</code>, <code>flow shop</code>), or open a " +
+      "field and switch values to <b>+</b> require or <b>−</b> exclude. Matches stay highlighted as you go; " +
+      "<b>Apply filter</b> redraws the map with only them and <b>Show all</b> brings everything back.</p>" +
+      (SZ_FLAGGED_EDGES.length
+        ? '<p class="sz-arrow-key">' +
+          '<span class="sz-line-swatch" style="border-top-color:' + MAP_EDGE_COLOR + '"></span>reductions' +
+          '<span class="sz-line-swatch sz-line-dashed" style="border-top-color:' + SZ_EDGE_FLAGGED_COLOR +
+          '"></span>flagged as inconsistent (' + SZ_FLAGGED_EDGES.length + ")</p>"
+        : "") +
+      "</div>" +
       '<div class="sz-filters">' +
-      '<input type="text" id="sz-filter" class="sz-filter" placeholder="Filter by notation, e.g. Cmax, pmtn, #p…">' +
+      '<input type="text" id="sz-filter" class="sz-filter" placeholder="Search, e.g. 1 rj Uj, preemptive, setup, flow shop…">' +
       // Graham's alpha|beta|gamma order, with his separators drawn between
       // them: machine environment | constraints | objective.
       machineEnvDropdownHtml +
@@ -2228,6 +2795,7 @@
       "</div>" +
       '<button type="button" class="tikz-export-btn" title="Copy this diagram as TikZ code">⧉ TikZ</button>' +
       '<button type="button" class="auto-arrange-btn" title="Recompute node positions from scratch">⇄ Auto-arrange</button>' +
+      '<button type="button" class="sz-save-map-btn" title="Save the problems shown here as a new problem map">⊕ Save as a New Problem Map</button>' +
       // Two idempotent buttons, not a toggle -- each always does exactly
       // one thing regardless of current state, so there's no click whose
       // meaning depends on hidden state to track: Apply always narrows to
@@ -2247,13 +2815,18 @@
       nodesHtml +
       "</div></div>" +
       "</div>" +
-      '<p class="map-hint"><span class="map-hint-icon">i</span> Drag a node past the diagram\'s edge to hide it, ' +
-      "along with its edges, from this view only -- nothing in the underlying data changes. Undo / Redo / " +
-      "Restore hidden (top-left of the diagram) step through or undo those hides. \"Apply filter\" / \"Show all\" (top-right) " +
-      "is a separate, search-based view of just the currently-matching nodes -- Apply always narrows to whatever " +
-      "the filters above say right now, Show all always goes back to everything.</p>" +
       '<div class="map-legend">' + szClassLegendHtml + "</div>" +
-      szAnomaliesHtml +
+      // How to read the map and what can be done with it, under the legend.
+      '<div class="map-hint sz-map-help"><span class="map-hint-icon">i</span>' +
+      '<p><b class="sz-def">Nodes</b> are problems -- click one for its citations and parameterized results. ' +
+      '<b class="sz-def">Arrows</b> run from a problem to a special case of it: every instance of the problem an ' +
+      "arrow points to is also an instance of the one it starts from. Click one to see which field differs.</p>" +
+      '<p><b class="sz-def">Colors</b> show classical complexity. Hardness travels against the arrows, so a problem ' +
+      "with no classical result of its own takes the hardness of any special case of it that is proven hard.</p>" +
+      '<p><b class="sz-def">Drag</b> a node off the diagram ' +
+      'to hide it from this view -- the data is unchanged. <b class="sz-def">Undo / Redo / Restore hidden</b> ' +
+      'brings it back. <b class="sz-def">Apply filter</b> redraws the map with only the problems matching the ' +
+      'filters; <b class="sz-def">Show all</b> returns to the full map.</p></div>' +
       "</div>";
 
     setTimeout(() => fitMapCanvasToWidth(els.viewSchedulingZoo), 0);
@@ -2278,6 +2851,31 @@
     els.viewSchedulingZoo.querySelector(".auto-arrange-btn").addEventListener("click", () => {
       saveSzFilterState();
       renderSchedulingZoo();
+    });
+
+    // Saves the problems currently on the diagram -- after Apply filter, and
+    // minus any dragged off -- as a new map, laid out afresh, and opens it
+    // in the designer.
+    const saveMapBtn = els.viewSchedulingZoo.querySelector(".sz-save-map-btn");
+    saveMapBtn.addEventListener("click", () => {
+      const ids = nodes.map((n) => n.id).filter((id) => !SZ_HIDDEN_IDS.has(id));
+      if (ids.length > SZ_SAVE_MAP_MAX) {
+        saveMapBtn.textContent = ids.length + " problems -- apply a filter first (max " + SZ_SAVE_MAP_MAX + ")";
+        setTimeout(() => { saveMapBtn.textContent = "⊕ Save as a New Problem Map"; }, 2600);
+        return;
+      }
+      resetDesignerHidden();
+      storyProblemIds = ids;
+      designerUserEdges = [];
+      designerArrowMode = null;
+      storyPositions = {};
+      designerSelectedId = null;
+      designerMapId = null;
+      designerMapTitle = "From the Scheduling Zoo map (" + ids.length + " problem" + (ids.length === 1 ? "" : "s") + ")";
+      autoArrangeDesigner();
+      const r = saveDesignerMap({ keepUrl: true });
+      if (!r.ok) { saveMapBtn.textContent = r.message; return; }
+      location.hash = "#/design/" + encodeURIComponent(r.map.id);
     });
 
     els.viewSchedulingZoo.querySelector(".tikz-export-btn").addEventListener("click", (e) => {
@@ -2421,6 +3019,7 @@
     els.viewSchedulingZoo.querySelector("#sz-undo-btn").addEventListener("click", szUndoHide);
     els.viewSchedulingZoo.querySelector("#sz-redo-btn").addEventListener("click", szRedoHide);
     els.viewSchedulingZoo.querySelector("#sz-reset-hidden-btn").addEventListener("click", szResetHidden);
+    restoreDropdownUi(els.viewSchedulingZoo, dropdownUi);
   }
 
   // Toggles one node (and every edge touching it) between shown and hidden
@@ -2507,7 +3106,7 @@
       escapeHtml(to.notation) + "</h3>" +
       '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">' +
       (edge.addedByUs
-        ? "from a reduction rule <b>this site added</b> (not schedzoo's own data -- see the green note below)"
+        ? "from a reduction rule <b>this site added</b> (not The Scheduling Zoo's own data -- see the note below; every note is under Known data anomalies in the <a href=\"#/docs/docs-anomalies\">Documentation</a>)"
         : "from <a href=\"https://schedulingzoo.lip6.fr/\" target=\"_blank\" rel=\"noopener\">schedulingzoo.lip6.fr</a>'s own reduction graph (their notation.xml &lt;reduction&gt; declarations)") +
       " -- this arrow means every " + escapeHtml(to.notation) +
       " instance can be viewed as a " + escapeHtml(from.notation) + " instance with the same answer.</p>" +
@@ -2516,8 +3115,8 @@
           "<h4 style='color:#cf4444'>⚠ Flagged as inconsistent</h4><p style='margin:0'>" + escapeHtml(flagged.note) + "</p></div>"
         : "") +
       (edge.addedByUs
-        ? '<div class="detail-field" style="border-left:3px solid #2c8a3f;padding-left:0.7rem">' +
-          "<h4 style='color:#2c8a3f'>✚ Added by this site</h4><p style='margin:0'>" + escapeHtml(edge.addedBy === "s1-setup" ? SZ_S1_SETUP_NOTE : SZ_MACHINE_COUNT_RULE_NOTE) + "</p></div>"
+        ? '<div class="detail-field" style="border-left:3px solid var(--border);padding-left:0.7rem">' +
+          "<h4>✚ Added by this site</h4><p style='margin:0'>" + escapeHtml(szAddedEdgeNote(edge)) + "</p></div>"
         : "") +
       '<div class="detail-field"><h4>' + diffs.length + " differing field" + (diffs.length === 1 ? "" : "s") + "</h4>" +
       "<ul class='result-list'>" + diffs.map(diffLi).join("") + "</ul></div>";
@@ -2529,14 +3128,7 @@
   function openSchedulingZooPanel(nodeId) {
     const n = DATA_SZ.nodes.find((x) => x.id === nodeId);
     if (!n) return;
-    function resultLi(r) {
-      const cite = escapeHtml(r.author || "") + (r.year ? " (" + escapeHtml(r.year) + ")" : "");
-      const titleHtml = r.url
-        ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + escapeHtml(r.title || "") + "</a>"
-        : escapeHtml(r.title || "");
-      return "<li><p style='margin:0 0 0.2rem'>" + escapeHtml(r.bound) + "</p>" +
-        "<p style='margin:0;color:var(--muted);font-size:0.85rem'>" + cite + (r.title ? " — " + titleHtml : "") + "</p></li>";
-    }
+    const resultLi = szResultLi;
     const lower = n.classical.filter((r) => r.kind === "lower");
     const upper = n.classical.filter((r) => r.kind === "upper");
     const forest = buildParamForest(n.params);
@@ -2566,10 +3158,10 @@
     els.detailContent.innerHTML =
       "<h3>" + escapeHtml(n.notation) + " " + ccPillHtml + "</h3>" +
       '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">from <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">schedulingzoo.lip6.fr</a> -- ' +
-      "not independently verified by this site; classification above is this site's own reading of schedzoo's " +
-      "cited text, not a category schedzoo assigns itself.</p>" +
+      "not independently verified by this site; classification above is this site's own reading of The Scheduling Zoo's " +
+      "cited text, not a category The Scheduling Zoo assigns itself.</p>" +
       (machineEnvExpl ? '<p style="color:var(--muted);font-size:0.85rem"><b>' + escapeHtml(n.machineEnv) +
-        "</b> — " + escapeHtml(machineEnvExpl) + " (schedzoo's own wording)</p>" : "") +
+        "</b> — " + escapeHtml(machineEnvExpl) + " (The Scheduling Zoo's own wording)</p>" : "") +
       (lower.length ? '<div class="detail-field"><h4>Classical hardness results</h4><ul class="result-list">' + lower.map(resultLi).join("") + "</ul></div>" : "") +
       (upper.length ? '<div class="detail-field"><h4>Classical positive / algorithmic results</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
       (paramTreeHtml ? '<div class="detail-field"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
@@ -3176,6 +3768,1329 @@
   // instead of destroying the trail behind you.
   let sandboxGraph = null;
 
+  // The map designer is deliberately a user-curated story: unlike the
+  // restriction explorer below, it starts with no problem nodes at all.
+  let storyProblemIds = [];
+  let storySearchText = "";
+  let storyPositions = {};
+  let storyDrag = null;
+  let designerSelectedId = null;
+  let designerMapId = null; // the saved map being edited, or null for an unsaved one
+  let designerUserEdges = []; // arrows added by hand: { from, to } (from generalizes to)
+  let designerArrowMode = null; // while adding an arrow: { from: id or null }
+  let designerArrowNotice = ""; // one-line result of the last arrow added
+  let designerMapTitle = "";
+  let designerDraftNodes = {};
+  let designerFilterState = {
+    machineEnv: { include: new Set(), exclude: new Set() },
+    objective: { include: new Set(), exclude: new Set() },
+    settings: { groups: [], values: {} },
+  };
+
+  function designerFiltersActive() {
+    return designerFilterState.machineEnv.include.size || designerFilterState.machineEnv.exclude.size ||
+      designerFilterState.objective.include.size || designerFilterState.objective.exclude.size ||
+      designerFilterState.settings.groups.length || Object.keys(designerFilterState.settings.values).length;
+  }
+
+  function designerFilteredNodes() {
+    return DATA_SZ.nodes.filter((node) => storyProblemMatches(node) &&
+      msSelectionAccepts(designerFilterState.machineEnv, node.machineEnv || "") &&
+      msSelectionAccepts(designerFilterState.objective, canonicalSzObjective(node.objective)) &&
+      szNodeMatchesSettings(node, designerFilterState.settings));
+  }
+
+  function designerApplyFilterRemoval() {
+    const allowed = new Set(designerFilteredNodes().map((node) => node.id));
+    const excluded = storyProblemIds.filter((id) => !allowed.has(id));
+    if (!excluded.length) return;
+    storyProblemIds = storyProblemIds.filter((id) => allowed.has(id));
+    excluded.forEach((id) => delete storyPositions[id]);
+    if (excluded.includes(designerSelectedId)) designerSelectedId = storyProblemIds[0] || null;
+  }
+
+  function storyNodeById(id) {
+    return (DATA_SZ && DATA_SZ.nodes.find((node) => node.id === id)) || designerDraftNodes[id] || null;
+  }
+
+  function normalizedNotationPart(value) {
+    return String(value || "")
+      .replace(/\\sum\s*/g, "Σ")
+      .replace(/\\?w_?\{?j\}?/g, "wj")
+      .replace(/\\?U_?\{?j\}?/g, "Uj")
+      .replace(/([a-zA-Z])_\{?([a-zA-Z0-9]+)\}?/g, "$1$2")
+      .replace(/[{}\\]/g, "")
+      .replace(/\s+/g, "")
+      .replace(/,/g, ";");
+  }
+
+  function notationSignature(node) {
+    const slots = normalizedNotationPart(node.notation).split("|");
+    return [slots[0] || "", (slots.slice(1, -1)[0] || "").split(";").filter(Boolean).sort().join(";"), slots[slots.length - 1] || ""].join("|");
+  }
+
+  function canonicalStoryId(id) {
+    const node = storyNodeById(id);
+    if (!node || !DATA_SZ) return id;
+    const signature = notationSignature(node);
+    const equivalent = DATA_SZ.nodes.filter((candidate) => notationSignature(candidate) === signature).sort((a, b) => a.id.localeCompare(b.id));
+    return equivalent.length ? equivalent[0].id : id;
+  }
+
+  // ---- Which problems may be drafted. A new problem is only offered when the
+  // filters describe exactly one complete, well-formed problem, judged by
+  // The Scheduling Zoo's own problem-builder form (DATA_SZ.notationForm,
+  // exported from notation.xml): one radio choice per field, so one value
+  // per field -- "pj=p" and "pj=1" can't both hold -- and a field or value
+  // is only allowed while its `requires` condition holds, in form order.
+  // The same form fixes the order the name is written in, so two orderings
+  // of the same settings are the same problem.
+
+  // A port of index.php's eval_bool_expr: and / or / not with parentheses;
+  // an atom is true when it is a chosen value or a field with a non-empty
+  // value, and multi-word atoms ("release time") are read by joining
+  // consecutive words. "no" is read as "not" (index.php doesn't, which
+  // makes its "no number of machines" condition always false).
+  function szEvalRequires(expr, chosenValues, chosenFields) {
+    if (!expr) return true;
+    const priority = [";", "(", ")", "or", "and", "not"];
+    const vals = [], ops = [];
+    let last = "";
+    (expr + " ;").split(" ").forEach((raw) => {
+      const tok = raw === "no" ? "not" : raw;
+      const prio = priority.indexOf(tok);
+      if (prio !== -1) {
+        while (tok !== "(" && ops.length && priority.indexOf(ops[ops.length - 1]) >= prio) {
+          const op = ops.pop(), right = vals.pop();
+          if (op === "not") vals.push(!right);
+          else { const left = vals.pop(); vals.push(op === "and" ? left && right : left || right); }
+        }
+        if (tok === ")") ops.pop();
+        else ops.push(tok);
+        last = "";
+      } else if (tok) {
+        let atom = tok;
+        if (last) { atom = last + " " + tok; vals.pop(); }
+        vals.push(chosenValues.has(atom) || !!chosenFields[atom]);
+        last = atom;
+      }
+    });
+    return vals.pop();
+  }
+
+  const SZ_FIELD_NAMES = { type: "Machine environment", "Objective function": "Objective" };
+  function szFieldName(field) {
+    return SZ_FIELD_NAMES[field] || SZ_SETTING_LABELS[field] || field;
+  }
+  function szFormField(field) {
+    return (DATA_SZ.notationForm || []).find((f) => f.field === field);
+  }
+  function szChoiceLabel(field, value) {
+    const f = szFormField(field);
+    const c = f && f.choices.find((x) => x.value === value);
+    return c ? c.label : value;
+  }
+
+  // The filters as a problem: { ok, notation, assignment } when they describe
+  // one complete, well-formed problem, otherwise { ok: false, reason }.
+  function designerDraftProblem() {
+    const st = designerFilterState;
+    if (!DATA_SZ.notationForm) return { ok: false, reason: "" };
+    const env = Array.from(st.machineEnv.include), obj = Array.from(st.objective.include);
+    if (env.length !== 1 || obj.length !== 1) {
+      return { ok: false, reason: "To add a new problem, switch exactly one machine environment and exactly one objective to +." };
+    }
+    const assignment = { type: env[0] };
+    const objField = szFormField("Objective function");
+    const objChoice = objField.choices.find((c) => c.label === obj[0]);
+    if (!objChoice) return { ok: false, reason: "Unknown objective " + obj[0] + "." };
+    assignment["Objective function"] = objChoice.value;
+
+    const assign = (field, value) => {
+      if (assignment[field] !== undefined && assignment[field] !== value) {
+        return "\"" + szChoiceLabel(field, assignment[field]) + "\" and \"" + szChoiceLabel(field, value) + "\" are both " +
+          szFieldName(field) + " values -- a problem has one value per field.";
+      }
+      assignment[field] = value;
+      return null;
+    };
+    const sel = st.settings || { groups: [], values: {} };
+    // Specific values first: each switched to + is that field's value.
+    for (const field of Object.keys(sel.values || {})) {
+      const inc = Array.from(sel.values[field].include);
+      for (const v of inc) { const err = assign(field, v); if (err) return { ok: false, reason: err }; }
+    }
+    // Then a group switched to + on its own, when it names one value.
+    for (const g of sel.groups || []) {
+      if (g.state !== "in") continue;
+      if (g.match) { const err = assign(g.match.field, g.match.value); if (err) return { ok: false, reason: err }; continue; }
+      if (g.fields.some((f) => assignment[f])) continue;
+      // A group's + names the values listed under it: "Release dates" is
+      // rj (online-rj belongs to Online), "Preemption" is pmtn (restarts
+      // belongs to Online), and "Precedence" is prec, the group itself.
+      const field = g.fields[0];
+      if (g.fields.length === 1 && SZ_GROUP_PLUS_VALUE[field]) { assignment[field] = SZ_GROUP_PLUS_VALUE[field]; continue; }
+      const ownedElsewhere = new Set();
+      SZ_SETTING_VALUE_GROUPS.forEach((vg) => (vg.match ? [vg.match] : []).concat(vg.values).forEach((x) => {
+        if (x.field === field) ownedElsewhere.add(x.value);
+      }));
+      const options = g.fields.length === 1 && szFormField(field)
+        ? szFormField(field).choices.filter((c) => c.value !== "" && !ownedElsewhere.has(c.value) && (!c.requires ||
+            szEvalRequires(c.requires, new Set(Object.values(assignment).concat("advanced")), assignment)))
+        : [];
+      if (options.length !== 1) {
+        return { ok: false, reason: "\"" + (g.label || szFieldName(g.fields[0])) + "\" is switched to + without saying which one -- open it and pick a value." };
+      }
+      assignment[g.fields[0]] = options[0].value;
+    }
+    // Exclusions only have to agree with what is chosen.
+    for (const g of sel.groups || []) {
+      if (g.state !== "out") continue;
+      const hit = g.match ? assignment[g.match.field] === g.match.value : g.fields.some((f) => assignment[f]);
+      if (hit) return { ok: false, reason: "The filters both require and exclude " + (g.label || szFieldName(g.fields[0])) + "." };
+    }
+    for (const field of Object.keys(sel.values || {})) {
+      if (sel.values[field].exclude.has(assignment[field])) {
+        return { ok: false, reason: "The filters both require and exclude \"" + szChoiceLabel(field, assignment[field]) + "\"." };
+      }
+    }
+
+    // Walk the form in order, as The Scheduling Zoo's builder does.
+    const chosenValues = new Set(["advanced"]), chosenFields = { interface: "advanced" };
+    const slots = { alpha: "", beta: [], gamma: "" };
+    for (const f of DATA_SZ.notationForm) {
+      const v = assignment[f.field] || "";
+      if (!szEvalRequires(f.requires, chosenValues, chosenFields)) {
+        if (v) return { ok: false, reason: szFieldName(f.field) + " isn't available here (The Scheduling Zoo requires: " + f.requires.replace(/^advanced and /, "") + ")." };
+        continue;
+      }
+      const choice = f.choices.find((c) => c.value === v);
+      if (!choice) return { ok: false, reason: "\"" + v + "\" is not a " + szFieldName(f.field) + " value." };
+      if (!szEvalRequires(choice.requires, chosenValues, chosenFields)) {
+        return { ok: false, reason: "\"" + choice.label + "\" isn't allowed here (The Scheduling Zoo requires: " + choice.requires.replace(/^advanced and /, "") + ")." };
+      }
+      chosenFields[f.field] = v;
+      chosenValues.add(v);
+      if (!v) continue;
+      if (f.slot === "alpha") slots.alpha += (slots.alpha && f.separation ? ";" : "") + choice.label;
+      else if (f.slot === "beta") slots.beta.push(choice.label);
+      else slots.gamma = choice.label;
+    }
+    const notation = slots.alpha + "|" + slots.beta.join(";") + "|" + slots.gamma;
+    const existing = DATA_SZ.nodes.find((n) => notationSignature(n) === notationSignature({ notation: notation }));
+    if (existing) return { ok: false, existing: existing, notation: notation, reason: "" };
+    return { ok: true, notation: notation, assignment: assignment };
+  }
+
+  // Values that ARE their group's +, hidden as a separate row for that reason
+  // (see SZ_HIDDEN_SETTING_VALUES).
+  const SZ_GROUP_PLUS_VALUE = { "precedence relation": "prec" };
+
+  function szDraftVector(assignment) {
+    const v = {};
+    Object.keys(assignment).forEach((f) => { if (assignment[f]) v[f] = assignment[f]; });
+    if (v.type === "1") { v.type = "P"; v["number of machines"] = "1"; }
+    return v;
+  }
+
+  function addDesignerDraft() {
+    const draft = designerDraftProblem();
+    if (!draft.ok) return;
+    const a = draft.assignment, settings = {};
+    Object.keys(a).forEach((field) => {
+      if (!["type", "Objective function", "preemption"].includes(field) && a[field]) settings[field] = a[field];
+    });
+    const id = "designer-draft-" + draft.notation.replace(/[^a-zA-Z0-9]+/g, "-");
+    designerDraftNodes[id] = {
+      id: id, notation: draft.notation, classicalClass: "unclaimed", machineEnv: a.type,
+      // same shape as a corpus problem's vector: single machine is type P
+      // with one machine, as The Scheduling Zoo's parser stores it
+      vector: szDraftVector(a),
+      objective: szChoiceLabel("Objective function", a["Objective function"]), settings: settings,
+      preemption: a.preemption || "", classical: [], params: [], draft: true,
+    };
+    addStoryProblem(id);
+  }
+
+  function smartStoryPosition(id) {
+    const nodeW = 220, nodeH = 44, gap = 34;
+    const related = designerRelationPairs().filter((edge) => {
+      return edge.from === id && storyProblemIds.includes(edge.to) || edge.to === id && storyProblemIds.includes(edge.from);
+    });
+    if (!related.length) {
+      for (let row = 0; row < 12; row += 1) {
+        for (let col = 0; col < 5; col += 1) {
+          const candidate = { left: 30 + col * (nodeW + gap), top: 30 + row * (nodeH + gap) };
+          const occupied = storyProblemIds.some((existingId) => {
+            const existing = storyPositions[existingId];
+            return existing && Math.abs(existing.left - candidate.left) < nodeW && Math.abs(existing.top - candidate.top) < nodeH;
+          });
+          if (!occupied) return candidate;
+        }
+      }
+      return { left: 30, top: 30 + storyProblemIds.length * (nodeH + gap) };
+    }
+    const anchors = related.map((edge) => {
+      const existingId = edge.from === id ? edge.to : edge.from;
+      const anchor = storyPositions[existingId] || { left: 370, top: 190 };
+      return {
+        left: anchor.left,
+        top: anchor.top + (edge.from === id ? -(nodeH + gap) : nodeH + gap),
+      };
+    });
+    const base = {
+      left: anchors.reduce((sum, item) => sum + item.left, 0) / anchors.length,
+      top: anchors.reduce((sum, item) => sum + item.top, 0) / anchors.length,
+    };
+    const offsets = [{ x: 0, y: 0 }];
+    for (let ring = 1; ring < 12; ring += 1) {
+      offsets.push({ x: ring * (nodeW + gap), y: 0 }, { x: -ring * (nodeW + gap), y: 0 }, { x: 0, y: ring * (nodeH + gap) }, { x: 0, y: -ring * (nodeH + gap) });
+    }
+    for (const offset of offsets) {
+      const position = { left: Math.max(20, base.left + offset.x), top: Math.max(20, base.top + offset.y) };
+      const occupied = storyProblemIds.some((existingId) => {
+        const existing = storyPositions[existingId];
+        return existing && Math.abs(existing.left - position.left) < nodeW && Math.abs(existing.top - position.top) < nodeH;
+      });
+      if (!occupied) return position;
+    }
+    return { left: Math.max(20, base.left), top: Math.max(20, base.top + 12 * (nodeH + gap)) };
+  }
+
+  function addStoryProblem(id, position) {
+    id = canonicalStoryId(id);
+    if (!storyNodeById(id) || storyProblemIds.includes(id)) return;
+    const autoPosition = position || smartStoryPosition(id);
+    storyProblemIds.push(id);
+    designerSelectedId = id;
+    storyPositions[id] = autoPosition;
+    renderDesign();
+  }
+
+  function storyProblemMatches(p) {
+    const query = storySearchText.trim().toLowerCase();
+    if (!query) return true;
+    return szNodeMatchesQuery(p, query);
+  }
+
+  function storyEdges() {
+    const selected = new Set(storyProblemIds);
+    const edges = [];
+    (DATA_SZ ? DATA_SZ.edges : []).forEach((edge) => {
+      if (selected.has(edge.from) && selected.has(edge.to)) edges.push(edge);
+    });
+    return edges;
+  }
+
+  function renderStoryDesigner() {
+    const selected = new Set(storyProblemIds);
+    const candidates = (DATA_SZ ? DATA_SZ.nodes : []).filter(storyProblemMatches).slice(0, 80);
+    const resultHtml = !storySearchText.trim()
+      ? ""
+      : candidates.length
+      ? candidates.map((p) => {
+        const already = selected.has(p.id);
+        const cc = classicalClassById(SZ_EFFECTIVE[p.id] || p.classicalClass);
+        const color = cc ? cc.color : "#868e96";
+        const text = cc && cc.fill ? fillTextColor(cc) : "#fff";
+        return '<button type="button" class="story-result" draggable="' + (!already) + '" data-story-problem="' + escapeHtml(p.id) + '"' +
+          (already ? ' disabled' : '') + ' style="background:' + color + ';border-color:' + color + ';color:' + text + '">' + escapeHtml(p.notation) + '</button>';
+      }).join("")
+      : '<div class="story-empty">No problems match that search.</div>';
+
+    const nodeW = 220, nodeH = 64;
+    const positions = storyPositions;
+    const width = 1000;
+    const height = Math.max(480, ...storyProblemIds.map((id) => (positions[id] ? positions[id].top + nodeH + 35 : 0)));
+    const lines = storyEdges().map((edge) => {
+      const from = positions[edge.from], to = positions[edge.to];
+      if (!from || !to) return "";
+      const tip = pullBackToRect(from.left + nodeW / 2, from.top + nodeH / 2, to.left + nodeW / 2, to.top + nodeH / 2, nodeW / 2, nodeH / 2, 5);
+      const tail = pullBackToRect(to.left + nodeW / 2, to.top + nodeH / 2, from.left + nodeW / 2, from.top + nodeH / 2, nodeW / 2, nodeH / 2, 5);
+      return '<line x1="' + tail.x + '" y1="' + tail.y + '" x2="' + tip.x + '" y2="' + tip.y + '" marker-end="url(#story-arrow)" />';
+    }).join("");
+    const nodes = storyProblemIds.map((id) => {
+      const p = storyNodeById(id), pos = positions[id];
+      const cc = classicalClassById(SZ_EFFECTIVE[id] || p.classicalClass);
+      const color = cc ? cc.color : "#868e96";
+      const text = cc && cc.fill ? fillTextColor(cc) : "#fff";
+      return '<div class="story-node" data-story-node="' + escapeHtml(id) + '" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + color + ';border-color:' + color + ';color:' + text + '">' + escapeHtml(p.notation) + '</div>';
+    }).join("");
+
+    return '<section class="story-designer">' +
+      '<div class="story-search-wrap"><input class="story-search sz-filter" type="search" placeholder="Search problems to add" value="' + escapeHtml(storySearchText) + '" aria-label="Search problems to add"><div class="story-results" role="listbox"' + (storySearchText.trim() ? '' : ' hidden') + '>' + resultHtml + '</div></div>' +
+      '<div class="story-canvas-wrap" data-story-dropzone><div class="story-canvas" style="width:' + width + 'px;height:' + height + 'px">' +
+      '<svg class="story-edge-svg" width="' + width + '" height="' + height + '"><defs><marker id="story-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>' + lines + '</svg>' + nodes +
+      '</div></div>' +
+      '<button type="button" class="reset-btn" id="story-clear">Clear added problems</button>' +
+      '</section>';
+  }
+
+  const DESIGNER_MAP_ID = "problem-map-designer";
+
+  function resetDesignerHidden() {
+    MAP_HIDDEN_IDS[DESIGNER_MAP_ID] = new Set();
+    MAP_HIDDEN_STACK[DESIGNER_MAP_ID] = [];
+    MAP_HIDDEN_REDO_STACK[DESIGNER_MAP_ID] = [];
+  }
+
+  // Loads a saved map (or "new": an empty one) into the designer.
+  function openDesignerMap(mapId) {
+    resetDesignerHidden();
+    designerSelectedId = null;
+    designerArrowMode = null;
+    designerArrowNotice = "";
+    if (mapId === "new") {
+      storyProblemIds = [];
+      storyPositions = {};
+      designerUserEdges = [];
+      designerMapId = null;
+      designerMapTitle = "";
+      return;
+    }
+    const m = loadSavedMaps().find((x) => x.id === mapId);
+    if (!m) { designerMapId = null; designerMapTitle = ""; storyProblemIds = []; storyPositions = {}; designerUserEdges = []; return; }
+    Object.assign(designerDraftNodes, m.drafts || {});
+    storyProblemIds = (m.problemIds || []).filter((id) => storyNodeById(id));
+    storyPositions = {};
+    storyProblemIds.forEach((id) => { storyPositions[id] = (m.positions || {})[id] || { left: 30, top: 30 }; });
+    const onMap = new Set(storyProblemIds);
+    designerUserEdges = (m.userEdges || []).filter((e) => onMap.has(e.from) && onMap.has(e.to));
+    designerMapId = m.id;
+    designerMapTitle = m.title || "";
+  }
+
+  // Saves the designer's map -- every problem on it that isn't hidden --
+  // under its current title, as a new map or over the one being edited.
+  function saveDesignerMap(options) {
+    const keepUrl = options && options.keepUrl;
+    const hidden = MAP_HIDDEN_IDS[DESIGNER_MAP_ID] || new Set();
+    const ids = storyProblemIds.filter((id) => !hidden.has(id));
+    if (!ids.length) return { ok: false, message: "Add at least one problem first." };
+    const now = new Date().toISOString();
+    const list = loadSavedMaps();
+    const existing = designerMapId ? list.find((x) => x.id === designerMapId) : null;
+    const map = {
+      id: existing ? existing.id : "map-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      title: designerMapTitle.trim() || "Untitled problem map",
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+      problemIds: ids,
+      userEdges: designerUserEdges.filter((e) => ids.includes(e.from) && ids.includes(e.to)),
+      positions: {},
+      drafts: {},
+      notations: ids.map((id) => storyNodeById(id).notation),
+    };
+    ids.forEach((id) => {
+      map.positions[id] = storyPositions[id];
+      if (designerDraftNodes[id]) map.drafts[id] = designerDraftNodes[id];
+    });
+    const next = existing ? list.map((x) => (x.id === map.id ? map : x)) : list.concat(map);
+    if (!storeSavedMaps(next)) return { ok: false, message: "Couldn't save: this browser doesn't allow local storage." };
+    designerMapId = map.id;
+    designerMapTitle = map.title;
+    // Keep the address pointing at this map without re-running the route
+    // (unless the caller is about to navigate there itself).
+    if (!keepUrl) history.replaceState(null, "", "#/design/" + encodeURIComponent(map.id));
+    return { ok: true, map: map, created: !existing };
+  }
+
+  // ---- adding arrows by hand
+  // An arrow A → B claims B is a special case of A. It conflicts with The
+  // Scheduling Zoo's results when that can't be true unless P = NP: A is in
+  // P while B is NP-hard, or A is solvable in pseudo-polynomial time while B
+  // is strongly NP-hard.
+  const SZ_REPORT_ISSUE_URL = "https://github.com/xtof-durr/schedulingzoo/issues/new";
+  // `edge` is { from, to } plus what the user said about the reduction (see
+  // SZ_REDUCTION_KINDS): the pseudo-polynomial check only applies when it
+  // keeps numbers polynomial, the field-rule check only when it is (or may
+  // be) a restriction.
+  function designerArrowConflict(edge) {
+    const fromId = edge.from, toId = edge.to;
+    const a = storyNodeById(fromId), b = storyNodeById(toId);
+    if (!a || !b || !SZ_EFFECTIVE) return null;
+    const ca = SZ_EFFECTIVE[fromId] || a.classicalClass, cb = SZ_EFFECTIVE[toId] || b.classicalClass;
+    const hard = ["weakly-NP-hard", "NP-hard-unresolved", "strongly-NP-hard"];
+    if (ca === "P" && hard.includes(cb)) {
+      return { general: a, specific: b, generalClass: ca, specificClass: cb,
+        why: "an algorithm for " + a.notation + " would then solve the NP-hard " + b.notation + " in polynomial time" };
+    }
+    if (ca === "weakly-NP-hard" && cb === "strongly-NP-hard" && edge.numbers !== "blowup") {
+      return { general: a, specific: b, generalClass: ca, specificClass: cb,
+        why: "the pseudo-polynomial algorithm for " + a.notation + " would then solve the strongly NP-hard " + b.notation + " in pseudo-polynomial time" };
+    }
+    // Otherwise, field by field against the reduction rules: a special case
+    // can narrow a field but never widen it. A field whose rules only say the
+    // two values are unrelated (or say nothing) is not counted -- the rules
+    // are incomplete, so silence is not a contradiction.
+    if (edge.kind && !["restriction", "padding", "unsure"].includes(edge.kind)) return null;
+    const va = szProblemVector(a), vb = szProblemVector(b);
+    if (!va || !vb) return null;
+    const fields = Object.keys(DATA_SZ.fieldReductions || {})
+      .filter((f) => szFieldRelation(f, vb[f] || "", va[f] || "") === "wider")
+      .map((f) => ({ field: f, general: va[f] || "", specific: vb[f] || "" }));
+    return fields.length ? { kind: "rules", general: a, specific: b, fields: fields } : null;
+  }
+
+  // A problem's raw field values (The Scheduling Zoo's own), for drafts too.
+  function szProblemVector(node) {
+    return node.vector || null;
+  }
+
+  // How `value` relates to `than` in one field, by the reduction rules:
+  // "same", "narrower" (value is a special case of than), "wider" (than is a
+  // special case of value), or "unknown".
+  let SZ_FIELD_ORDER = null;
+  function szFieldRelation(field, value, than) {
+    if (value === than) return "same";
+    if (!SZ_FIELD_ORDER || SZ_FIELD_ORDER.data !== DATA_SZ) {
+      SZ_FIELD_ORDER = { data: DATA_SZ, pairs: {} };
+      Object.keys(DATA_SZ.fieldReductions || {}).forEach((f) => {
+        SZ_FIELD_ORDER.pairs[f] = new Set(DATA_SZ.fieldReductions[f].map((pair) => pair[0] + "\u0001" + pair[1]));
+      });
+    }
+    const pairs = SZ_FIELD_ORDER.pairs[field];
+    if (!pairs) return "unknown";
+    if (pairs.has(value + "\u0001" + than)) return "narrower";
+    if (pairs.has(than + "\u0001" + value)) return "wider";
+    return "unknown";
+  }
+
+  function szValueLabel(field, value) {
+    if (!value) return "none";
+    return field === "number of machines" && value === "1" ? "1" : szChoiceLabel(field, value);
+  }
+  function szWiderFieldLi(f) {
+    return "<li><b>" + escapeHtml(szFieldName(f.field)) + "</b>: " + escapeHtml(szValueLabel(f.field, f.specific)) +
+      " is more general than " + escapeHtml(szValueLabel(f.field, f.general)) + "</li>";
+  }
+
+  function designerArrowPick(id) {
+    if (!designerArrowMode.from) {
+      designerArrowMode.from = id;
+      renderDesign();
+      return;
+    }
+    const from = designerArrowMode.from;
+    if (id === from) { designerArrowMode.from = null; renderDesign(); return; }
+    designerArrowMode = null;
+    const a = storyNodeById(from), b = storyNodeById(id);
+    if (designerUserEdges.some((e) => e.from === from && e.to === id)) {
+      designerArrowNotice = "That arrow is already on the map.";
+      renderDesign();
+      return;
+    }
+    renderDesign();
+    showDesignerReductionDialog({ from: from, to: id }, -1);
+  }
+
+  // ---- describing a hand-drawn reduction
+  // Kinds follow Documentation > Arrow rule types.
+  const SZ_REDUCTION_KINDS = [
+    { id: "restriction", label: "Value restriction", hint: "Every instance of the special case already is an instance of the general problem -- a field is narrowed, nothing is rewritten." },
+    { id: "padding", label: "Padding or defaults", hint: "A trivial rewrite makes it one: weights set to 1, release or due dates set to 0, an idle machine added." },
+    { id: "encoding", label: "Encoding reduction", hint: "Instances are genuinely transformed to simulate a feature the general problem lacks, e.g. p_ij = ∞ to encode machine sets." },
+    { id: "objective", label: "Objective or threshold", hint: "The objective is rewritten, or the answer is only preserved at one threshold (Lmax ≤ 0 iff ΣTj = 0)." },
+    { id: "other", label: "Another polynomial-time reduction", hint: "Any other many-one reduction." },
+    { id: "unsure", label: "Not sure", hint: "" },
+  ];
+  const SZ_REDUCTION_NUMBERS = [
+    { id: "polynomial", label: "Keeps numbers polynomially bounded", hint: "Strong NP-hardness carries over." },
+    { id: "blowup", label: "May blow numbers up", hint: "Only (weak) NP-hardness carries over." },
+    { id: "unsure", label: "Not sure", hint: "" },
+  ];
+  const SZ_REDUCTION_PARAMS = [
+    { id: "all", label: "Safe for every parameter", hint: "Each parameter keeps its value, or stays bounded by a function of it -- as with a plain restriction." },
+    { id: "some", label: "Safe only for these parameters", hint: "" },
+    { id: "none", label: "Not parameter-safe", hint: "Parameterized hardness does not carry over." },
+    { id: "unsure", label: "Not sure", hint: "" },
+  ];
+
+  function szReductionSummary(edge) {
+    const pick = (list, id) => (list.find((x) => x.id === id) || {}).label;
+    if (!edge.kind) return "no description";
+    const parts = [pick(SZ_REDUCTION_KINDS, edge.kind)];
+    if (edge.numbers && edge.numbers !== "unsure") parts.push(edge.numbers === "polynomial" ? "numbers stay polynomial" : "numbers may blow up");
+    if (edge.params === "all") parts.push("parameter-safe");
+    else if (edge.params === "some") parts.push("parameter-safe for " + ((edge.safeParams || []).join(", ") || "no parameter chosen"));
+    else if (edge.params === "none") parts.push("not parameter-safe");
+    return parts.join(" · ");
+  }
+
+  // The single parameters results are stated for in The Scheduling Zoo
+  // (m, pmax, #p, ...), most used first.
+  function szParameterTokens() {
+    const counts = {};
+    DATA_SZ.nodes.forEach((n) => n.params.forEach((r) => paramLabelTokens(r.param).forEach((t) => { counts[t] = (counts[t] || 0) + 1; })));
+    return Object.keys(counts).sort((x, y) => counts[y] - counts[x] || x.localeCompare(y));
+  }
+
+  // A best guess to start from: when the two problems differ only by fields
+  // the rules call narrower, it looks like a plain restriction.
+  function szGuessReductionKind(fromId, toId) {
+    const va = szProblemVector(storyNodeById(fromId)), vb = szProblemVector(storyNodeById(toId));
+    if (!va || !vb) return "unsure";
+    const fields = Object.keys(Object.assign({}, va, vb));
+    const rel = fields.map((f) => szFieldRelation(f, vb[f] || "", va[f] || ""));
+    return rel.every((r) => r === "same" || r === "narrower") && rel.includes("narrower") ? "restriction" : "unsure";
+  }
+
+  // `index` -1 adds a new arrow; otherwise it edits designerUserEdges[index].
+  function showDesignerReductionDialog(edge, index) {
+    const a = storyNodeById(edge.from), b = storyNodeById(edge.to);
+    const editing = index >= 0;
+    const kind = edge.kind || szGuessReductionKind(edge.from, edge.to);
+    const plain = kind === "restriction";
+    const state = {
+      kind: kind,
+      numbers: edge.numbers || (plain ? "polynomial" : "unsure"),
+      params: edge.params || (plain ? "all" : "unsure"),
+      safeParams: new Set(edge.safeParams || []),
+      note: edge.note || "",
+    };
+    const radios = (name, list, current) => list.map((o) =>
+      '<label class="designer-reduction-option"><input type="radio" name="' + name + '" value="' + o.id + '"' + (o.id === current ? " checked" : "") + ">" +
+      "<span><b>" + escapeHtml(o.label) + "</b>" + (o.hint ? "<small>" + escapeHtml(o.hint) + "</small>" : "") + "</span></label>").join("");
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<form class="designer-dialog designer-reduction-dialog" role="dialog" aria-modal="true" aria-labelledby="designer-reduction-title">' +
+      '<h3 id="designer-reduction-title">You claim that <span class="designer-reduction-problem">' + escapeHtml(b.notation) +
+      '</span> reduces to <span class="designer-reduction-problem">' + escapeHtml(a.notation) + "</span>. The reduction is:</h3>" +
+      '<fieldset><legend>Kind <a href="#/docs/docs-arrow-rules" target="_blank" rel="noopener">what these mean</a></legend>' + radios("kind", SZ_REDUCTION_KINDS, state.kind) + "</fieldset>" +
+      "<fieldset><legend>Numbers</legend>" + radios("numbers", SZ_REDUCTION_NUMBERS, state.numbers) + "</fieldset>" +
+      "<fieldset><legend>Parameters</legend>" + radios("params", SZ_REDUCTION_PARAMS, state.params) +
+      '<div class="designer-reduction-params">' + szParameterTokens().map((t) =>
+        '<label class="chip' + (state.safeParams.has(t) ? " active" : "") + '"><input type="checkbox" value="' + escapeHtml(t) + '"' +
+        (state.safeParams.has(t) ? " checked" : "") + ">" + escapeHtml(t) + "</label>").join("") + "</div></fieldset>" +
+      '<label class="designer-reduction-note">Source or note <small>(optional)</small>' +
+      '<input type="text" class="sz-filter" name="note" placeholder="e.g. Lemma 3 of …, or a one-line idea of the reduction" value="' + escapeHtml(state.note) + '"></label>' +
+      '<div class="designer-dialog-actions">' +
+      (editing ? '<button type="button" class="map-history-btn designer-reduction-remove">Remove arrow</button>' : "") +
+      '<button type="button" class="map-history-btn" data-dialog="cancel">Cancel</button>' +
+      '<button type="submit" class="map-history-btn designer-dialog-report">' + (editing ? "Save changes" : "Add arrow") + "</button>" +
+      "</div></form>";
+    const form = backdrop.querySelector("form");
+    const paramBox = form.querySelector(".designer-reduction-params");
+    const syncParams = () => {
+      const some = form.params.value === "some";
+      paramBox.classList.toggle("disabled", !some);
+      paramBox.querySelectorAll("input").forEach((i) => { i.disabled = !some; });
+    };
+    syncParams();
+    // Choosing "Value restriction" fills in what a restriction implies; the
+    // other answers stay editable.
+    form.querySelectorAll('input[name="kind"]').forEach((i) => i.addEventListener("change", () => {
+      if (i.value === "restriction" && i.checked) {
+        form.numbers.value = "polynomial";
+        form.params.value = "all";
+        syncParams();
+      }
+    }));
+    form.querySelectorAll('input[name="params"]').forEach((i) => i.addEventListener("change", syncParams));
+    paramBox.querySelectorAll("input").forEach((i) => i.addEventListener("change", () => i.parentElement.classList.toggle("active", i.checked)));
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    form.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
+    const remove = form.querySelector(".designer-reduction-remove");
+    if (remove) remove.addEventListener("click", () => {
+      designerUserEdges.splice(index, 1);
+      designerArrowNotice = "";
+      close();
+      renderDesign();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const next = {
+        from: edge.from, to: edge.to,
+        kind: form.kind.value, numbers: form.numbers.value, params: form.params.value,
+        safeParams: form.params.value === "some" ? Array.from(paramBox.querySelectorAll("input:checked")).map((i) => i.value) : [],
+        note: form.note.value.trim(),
+      };
+      close();
+      let at = index;
+      if (editing) designerUserEdges[index] = next;
+      else { designerUserEdges.push(next); at = designerUserEdges.length - 1; }
+      const implied = DATA_SZ.nodes.some((n) => n.id === next.from) && szDescendants(next.from).has(next.to);
+      const reverse = DATA_SZ.nodes.some((n) => n.id === next.to) && szDescendants(next.to).has(next.from);
+      designerArrowNotice = (editing ? "Updated " : "Added ") + a.notation + " → " + b.notation + " (" + szReductionSummary(next) + ")." +
+        (implied ? " The Scheduling Zoo's reductions already imply it." : "") +
+        (reverse ? " The Scheduling Zoo records the opposite direction, so together they would make the two problems equivalent." : "");
+      renderDesign();
+      const conflict = designerArrowConflict(next);
+      if (conflict) showDesignerConflictDialog(conflict, at);
+    });
+    document.body.appendChild(backdrop);
+    form.querySelector('input[name="kind"]:checked').focus();
+  }
+
+  function szClassLabel(classId) {
+    const cc = classicalClassById(classId);
+    return classId === "unclaimed" || !cc ? "open" : cc.label;
+  }
+
+  // The claim behind a problem's class, in words, for the dialog and report.
+  function szClassEvidence(node) {
+    const direct = node.classicalClass && node.classicalClass !== "unclaimed";
+    if (!direct) return "not cited directly -- inherited as " + szClassLabel(SZ_EFFECTIVE[node.id]) + " from a special case of it";
+    const kind = node.classicalClass === "P" ? "upper" : "lower";
+    return (node.classical || []).filter((r) => r.kind === kind).slice(0, 3)
+      .map((r) => r.bound + " (" + [r.author, r.year].filter(Boolean).join(", ") + (r.title ? ": " + r.title : "") + ")")
+      .join("; ");
+  }
+
+  // One problem in the conflict dialog: its notation, class and cited bound
+  // in the class's own color (green for P, red for strongly NP-hard, ...).
+  function szConflictResultLi(node, classId) {
+    const cc = classicalClassById(classId);
+    const evidence = szClassEvidence(node);
+    const cut = evidence.indexOf(" (");
+    const claim = cut === -1 ? evidence : evidence.slice(0, cut);
+    const source = cut === -1 ? "" : evidence.slice(cut);
+    return '<li><span class="designer-dialog-claim" style="color:' + (cc ? cc.color : "var(--fg)") + '"><b>' +
+      escapeHtml(node.notation) + "</b>: " + escapeHtml(szClassLabel(classId)) + " -- " + escapeHtml(claim) + "</span>" +
+      '<span class="designer-dialog-source">' + escapeHtml(source) + "</span></li>";
+  }
+
+  function designerReportUrl(c) {
+    const title = "Possible inconsistency: " + c.specific.notation + " as a special case of " + c.general.notation;
+    const body = c.kind === "rules" ? [
+      "While building a problem map on The Parameterized Scheduling Zoo, I drew the reduction",
+      "",
+      "    " + c.general.notation + "  →  " + c.specific.notation,
+      "",
+      "(every " + c.specific.notation + " instance is also an instance of " + c.general.notation + "). The reduction rules in notation.xml say the opposite in these fields:",
+      "",
+    ].concat(c.fields.map((f) => "- " + szFieldName(f.field) + ": " + szValueLabel(f.field, f.specific) + " is more general than " + szValueLabel(f.field, f.general)))
+      .concat(["", "So either the reduction is wrong, or one of these rules is."]).join("\n") : [
+      "While building a problem map on The Parameterized Scheduling Zoo, I drew the reduction",
+      "",
+      "    " + c.general.notation + "  →  " + c.specific.notation,
+      "",
+      "(every " + c.specific.notation + " instance is also an instance of " + c.general.notation + "). It conflicts with the results recorded here, since " + c.why + ":",
+      "",
+      "- " + c.general.notation + ": " + szClassLabel(c.generalClass) + " -- " + szClassEvidence(c.general),
+      "- " + c.specific.notation + ": " + szClassLabel(c.specificClass) + " -- " + szClassEvidence(c.specific),
+      "",
+      "So either the reduction is wrong, or one of these results is.",
+    ].join("\n");
+    return SZ_REPORT_ISSUE_URL + "?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body.slice(0, 6000));
+  }
+
+  function showDesignerConflictDialog(c, edgeIndex) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<div class="designer-dialog" role="dialog" aria-modal="true" aria-labelledby="designer-dialog-title">' +
+      '<h3 id="designer-dialog-title">Your reduction conflicts with the data of The Scheduling Zoo. Want to report a problem?</h3>' +
+      "<p>The arrow <b>" + escapeHtml(c.general.notation) + " → " + escapeHtml(c.specific.notation) + "</b> says every " +
+      escapeHtml(c.specific.notation) + " instance is also an instance of " + escapeHtml(c.general.notation) + ". " +
+      (c.kind === "rules"
+        ? "But by The Scheduling Zoo's reduction rules, " + escapeHtml(c.specific.notation) + " is the more general one in " +
+          (c.fields.length === 1 ? "this field" : "these fields") + ":</p>" +
+          '<ul class="designer-dialog-results">' + c.fields.map(szWiderFieldLi).join("") + "</ul>" +
+          "<p>So either this reduction is flawed -- a special case can narrow a field, never widen it -- or one of " +
+          "these rules is wrong, or the arrow stands for a genuine encoding between the two problems rather than a " +
+          "restriction. "
+        : "But " + escapeHtml(c.why) + ":</p>" +
+          '<ul class="designer-dialog-results">' + szConflictResultLi(c.general, c.generalClass) + szConflictResultLi(c.specific, c.specificClass) + "</ul>" +
+          "<p>So either this reduction is flawed, or one of these published results is in error -- or you have just " +
+          "proved P = NP. ") +
+      "Reporting opens a pre-filled issue on The Scheduling Zoo's GitHub page; nothing is sent until you submit it there.</p>" +
+      '<div class="designer-dialog-actions">' +
+      '<a class="map-history-btn designer-dialog-report" target="_blank" rel="noopener" href="' + escapeHtml(designerReportUrl(c)) + '">Report a problem</a>' +
+      '<button type="button" class="map-history-btn" data-dialog="remove">Remove arrow</button>' +
+      '<button type="button" class="map-history-btn" data-dialog="keep">Keep arrow</button>' +
+      "</div></div>";
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    backdrop.querySelector(".designer-dialog-report").addEventListener("click", close);
+    backdrop.querySelector('[data-dialog="keep"]').addEventListener("click", close);
+    backdrop.querySelector('[data-dialog="remove"]').addEventListener("click", () => {
+      designerUserEdges.splice(edgeIndex, 1);
+      designerArrowNotice = "";
+      close();
+      renderDesign();
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector(".designer-dialog-report").focus();
+  }
+
+  function designerMapBarHtml() {
+    return '<div class="designer-map-bar">' +
+      '<input type="text" class="sz-filter designer-map-title" placeholder="Untitled problem map" aria-label="Map title" value="' +
+      escapeHtml(designerMapTitle) + '">' +
+      '<button type="button" class="map-history-btn designer-save-map-btn">Save problem map</button>' +
+      '<span class="designer-save-status" role="status"></span></div>';
+  }
+
+  function enableDesignerMapBar() {
+    const view = els.viewDesign;
+    const title = view.querySelector(".designer-map-title");
+    const status = view.querySelector(".designer-save-status");
+    title.addEventListener("input", () => { designerMapTitle = title.value; status.textContent = ""; });
+    view.querySelector(".designer-save-map-btn").addEventListener("click", () => {
+      const r = saveDesignerMap();
+      status.innerHTML = r.ok
+        ? (r.created ? "Saved" : "Updated") + ' in <a href="#/zoo-maps">Problem Maps</a>'
+        : escapeHtml(r.message);
+      title.value = designerMapTitle;
+    });
+  }
+  function designerRelationControls() {
+    const node = storyNodeById(designerSelectedId);
+    if (!node) return '<div class="designer-relations"><span class="designer-relations-empty">Select a node to generalize, specialize, or inspect it.</span></div>';
+    const general = DATA_SZ.edges.filter((edge) => edge.to === node.id).map((edge) => DATA_SZ.nodes.find((item) => item.id === edge.from)).filter(Boolean);
+    const specific = DATA_SZ.edges.filter((edge) => edge.from === node.id).map((edge) => DATA_SZ.nodes.find((item) => item.id === edge.to)).filter(Boolean);
+    const button = (item, kind) => '<button type="button" class="designer-relation-btn" data-designer-relation="' + escapeHtml(item.id) + '"><span>' + escapeHtml(item.notation) + '</span><small>' + kind + '</small></button>';
+    return '<div class="designer-relations"><div class="designer-relations-title">Selected: ' + escapeHtml(node.notation) + '</div>' +
+      (node.draft ? '<span class="designer-draft-label">Draft node</span>' : '<button type="button" class="reset-btn designer-details-btn" id="designer-details">Open details</button>') +
+      '<div class="designer-relations-group"><b>Generalize</b>' + (general.length ? general.map((item) => button(item, "generalization")).join("") : '<span class="designer-relations-empty">No direct generalization in the adjusted graph.</span>') + '</div>' +
+      '<div class="designer-relations-group"><b>Specialize</b>' + (specific.length ? specific.map((item) => button(item, "specialization")).join("") : '<span class="designer-relations-empty">No direct specialization in the adjusted graph.</span>') + '</div></div>';
+  }
+
+  function enableDesignerRelations() {
+    const view = els.viewDesign;
+    view.querySelectorAll("[data-designer-relation]").forEach((button) => button.addEventListener("click", () => addStoryProblem(button.dataset.designerRelation)));
+    const details = view.querySelector("#designer-details");
+    if (details) details.addEventListener("click", () => openSchedulingZooPanel(designerSelectedId));
+  }
+
+  function designerNodePositions(nodeW, nodeH) {
+    const positions = {};
+    storyProblemIds.forEach((id) => {
+      const p = storyPositions[id];
+      if (p) positions[id] = { left: p.left, top: p.top, cx: p.left + nodeW / 2, cy: p.top + nodeH / 2 };
+    });
+    return positions;
+  }
+
+  function designerMapEdges() {
+    const hidden = MAP_HIDDEN_IDS[DESIGNER_MAP_ID] || new Set();
+    const visible = storyProblemIds.filter((id) => !hidden.has(id));
+    const outgoing = {};
+    designerRelationPairs().forEach((edge) => { (outgoing[edge.from] = outgoing[edge.from] || []).push(edge.to); });
+    const reach = {};
+    const reachOf = (id) => {
+      if (!reach[id]) {
+        const seen = new Set(), stack = (outgoing[id] || []).slice();
+        while (stack.length) {
+          const x = stack.pop();
+          if (!seen.has(x)) { seen.add(x); (outgoing[x] || []).forEach((y) => stack.push(y)); }
+        }
+        reach[id] = seen;
+      }
+      return reach[id];
+    };
+    const full = [];
+    visible.forEach((from) => visible.forEach((to) => {
+      if (from !== to && reachOf(from).has(to)) full.push({ from: from, to: to });
+    }));
+    return full.filter((edge) => !visible.some((middle) => middle !== edge.from && middle !== edge.to && reachOf(edge.from).has(middle) && reachOf(middle).has(edge.to)));
+  }
+
+  let designerRelationCache = { key: null, pairs: null };
+  function designerRelationPairs() {
+    const cacheKey = DATA_SZ.edges.length + "|" + storyProblemIds.filter((id) => designerDraftNodes[id]).sort().join(",");
+    if (designerRelationCache.key === cacheKey) return designerRelationCache.pairs;
+    const pairs = (DATA_SZ.edges || []).map((edge) => ({ from: edge.from, to: edge.to }));
+    const nodeById = new Map((DATA_SZ.nodes || []).map((node) => [node.id, node]));
+    storyProblemIds.forEach((id) => { const node = storyNodeById(id); if (node) nodeById.set(id, node); });
+    const nodes = Array.from(nodeById.values());
+    const precedenceRelations = [
+      ["prec", "chains"], ["prec", "outtree"], ["prec", "intree"], ["prec", "tree"],
+      ["outtree", "chains"], ["intree", "chains"], ["tree", "chains"],
+    ];
+    nodes.forEach((from) => nodes.forEach((to) => {
+      if (from.id === to.id) return;
+      const a = String(from.notation || "").split("|");
+      const b = String(to.notation || "").split("|");
+      if (a.length !== 3 || b.length !== 3 || a[0] !== b[0] || a[2] !== b[2]) return;
+      const general = new Set(a[1].split(/[;|]+/).filter(Boolean));
+      const specific = new Set(b[1].split(/[;|]+/).filter(Boolean));
+      const generalWithoutProcessing = new Set(Array.from(general).filter((value) => value !== "pj=p"));
+      const specificWithoutProcessing = new Set(Array.from(specific).filter((value) => value !== "pj=1"));
+      if (general.has("pj=p") && specific.has("pj=1") && Array.from(generalWithoutProcessing).every((value) => specificWithoutProcessing.has(value))) {
+        pairs.push({ from: from.id, to: to.id });
+      }
+      const generalShape = Array.from(general).find((value) => precedenceRelations.some((relation) => relation[0] === value));
+      const specificShape = Array.from(specific).find((value) => precedenceRelations.some((relation) => relation[1] === value));
+      const sameOtherFields = Array.from(general).filter((value) => value !== generalShape).every((value) => specific.has(value));
+      if (generalShape && specificShape && sameOtherFields && precedenceRelations.some((relation) => relation[0] === generalShape && relation[1] === specificShape)) {
+        pairs.push({ from: from.id, to: to.id });
+      }
+    }));
+    designerRelationCache = { key: cacheKey, pairs: pairs };
+    return pairs;
+  }
+
+  function renderDesignerMap() {
+    const nodeH = MAP_NODE_H_DEFAULT;
+    const nodeW = Math.max(150, ...storyProblemIds.map((id) => measureTextWidthPx(storyNodeById(id).notation, MAP_NODE_FONT_SIZE_REM * 16) + 24));
+    const positions = designerNodePositions(nodeW, nodeH);
+    const hidden = MAP_HIDDEN_IDS[DESIGNER_MAP_ID] || new Set();
+    const visibleIds = storyProblemIds.filter((id) => !hidden.has(id));
+    const width = Math.max(900, ...Object.values(positions).map((p) => p.left + nodeW + MAP_MARGIN));
+    const height = Math.max(480, ...Object.values(positions).map((p) => p.top + nodeH + MAP_MARGIN));
+    const marker = (id, style) => '<marker id="' + id + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="' + STEALTH_ARROW_PATH + '" style="' + style + '" /></marker>';
+    const arrowDef = "<defs>" + marker("designer-map-arrow", "fill:" + MAP_EDGE_COLOR) + marker("designer-user-arrow", "fill:var(--accent)") +
+      marker("designer-conflict-arrow", "fill:" + SZ_EDGE_FLAGGED_COLOR) + "</defs>";
+    const lines = designerMapEdges().map((edge) => {
+      const a = positions[edge.from], b = positions[edge.to];
+      if (!a || !b) return "";
+      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
+      return '<line data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y + '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="2" marker-end="url(#designer-map-arrow)" />';
+    }).join("") +
+    // Arrows added by hand: dashed, in the accent color, or red when they
+    // conflict with The Scheduling Zoo's results. Click one to remove it.
+    designerUserEdges.map((edge, i) => {
+      const a = positions[edge.from], b = positions[edge.to];
+      if (!a || !b || hidden.has(edge.from) || hidden.has(edge.to)) return "";
+      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
+      const conflict = !!designerArrowConflict(edge);
+      const ends = 'data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y + '"';
+      return '<g class="designer-user-edge" data-user-edge="' + i + '"><title>' + escapeHtml("Added by you: " + szReductionSummary(edge) + (conflict ? " -- conflicts with The Scheduling Zoo's data" : "") + ". Click to edit or remove.") + '</title>' +
+        '<line class="designer-user-edge-hit" ' + ends + ' />' +
+        '<line ' + ends + ' style="stroke:' + (conflict ? SZ_EDGE_FLAGGED_COLOR : "var(--accent)") + '" stroke-width="2.4" stroke-dasharray="7,4" marker-end="url(#' +
+        (conflict ? "designer-conflict-arrow" : "designer-user-arrow") + ')" /></g>';
+    }).join("");
+    const nodes = visibleIds.map((id) => {
+      const p = storyNodeById(id);
+      const cc = classicalClassById(SZ_EFFECTIVE[id] || p.classicalClass);
+      const pos = positions[id];
+      const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+      const text = cc && cc.fill ? fillTextColor(cc) : null;
+      return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
+    }).join("");
+    const controls = '<div class="map-history-controls">' +
+      '<button type="button" class="map-undo-btn map-history-btn" disabled title="Undo the last hidden node">↶ Undo</button>' +
+      '<button type="button" class="map-redo-btn map-history-btn" disabled title="Redo the last hidden node">↷ Redo</button>' +
+      '<button type="button" class="map-reset-hidden-btn map-history-btn" disabled title="Restore hidden nodes">↺ Restore hidden</button>' +
+      '<button type="button" class="designer-clear-btn map-history-btn" title="Remove every problem from the designer">Clear map</button>' +
+      '<button type="button" class="designer-add-arrow-btn map-history-btn" aria-pressed="' + (designerArrowMode ? "true" : "false") +
+      '" title="Add an arrow: click the more general problem, then its special case" aria-label="Add arrow">→+</button></div>' +
+      '<button type="button" class="tikz-export-btn" title="Copy this diagram as TikZ code">⧉ TikZ</button>' +
+      '<button type="button" class="auto-arrange-btn" title="Recompute node positions">⇄ Auto-arrange</button>';
+    // While picking an arrow's ends, the instruction floats at the top of the
+    // window; afterwards, the result of adding it sits under the map.
+    const arrowHint = designerArrowMode ? "" : designerArrowNotice;
+    const arrowToast = designerArrowMode
+      ? '<div class="designer-arrow-toast" role="status"><b>' +
+        (designerArrowMode.from ? "Choose Destination Problem" : "Choose Origin Problem") + "</b>" +
+        '<span>' + (designerArrowMode.from ? "the special case the arrow points to" : "the more general problem the arrow starts from") +
+        " · Esc to cancel</span></div>"
+      : "";
+    return '<div class="map-diagram designer-map-diagram' + (designerArrowMode ? " arrow-mode" : "") + '">' + controls + '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + 'px;height:' + height + 'px"><svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + arrowDef + lines + '</svg>' + nodes + '</div></div></div>' +
+      (arrowHint ? '<p class="designer-arrow-hint" role="status">' + escapeHtml(arrowHint) + "</p>" : "") + arrowToast +
+      '<p class="map-hint"><span class="map-hint-icon">i</span> Drag nodes to arrange them. Drag a node past the diagram edge to hide it; Undo, Redo, or Restore hidden brings it back.</p>';
+  }
+
+  function autoArrangeDesigner() {
+    const nodeW = Math.max(150, ...storyProblemIds.map((id) => measureTextWidthPx(storyNodeById(id).notation, MAP_NODE_FONT_SIZE_REM * 16) + 24));
+    const colW = nodeW + 40, rowH = MAP_NODE_H_DEFAULT + 50;
+    const cols = Math.max(3, Math.min(8, Math.ceil(Math.sqrt(storyProblemIds.length * 1.5))));
+    const { slots } = designerGraphSlots(storyProblemIds, designerMapEdges(), cols, 0);
+    storyProblemIds.forEach((id) => {
+      storyPositions[id] = { left: MAP_MARGIN + slots[id].col * colW, top: MAP_MARGIN + slots[id].row * rowH };
+    });
+  }
+
+  function enableDesignerMap() {
+    const view = els.viewDesign;
+    const canvas = view.querySelector(".map-canvas");
+    const nodeW = Math.max(150, ...storyProblemIds.map((id) => measureTextWidthPx(storyNodeById(id).notation, MAP_NODE_FONT_SIZE_REM * 16) + 24));
+    enableMapNodeDragging(canvas, nodeW, MAP_NODE_H_DEFAULT, DESIGNER_MAP_ID, view, (id) => {
+      if (designerArrowMode) { designerArrowPick(id); return; }
+      designerSelectedId = id;
+      renderDesign();
+    }, () => !!designerArrowMode);
+    view.querySelector(".designer-add-arrow-btn").addEventListener("click", () => {
+      designerArrowMode = designerArrowMode ? null : { from: null };
+      designerArrowNotice = "";
+      renderDesign();
+    });
+    view.querySelectorAll("[data-user-edge]").forEach((g) => g.addEventListener("click", () => {
+      const edge = designerUserEdges[+g.dataset.userEdge];
+      if (edge) showDesignerReductionDialog(edge, +g.dataset.userEdge);
+    }));
+    if (!window.designerArrowEscReady) {
+      window.designerArrowEscReady = true;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && designerArrowMode && !els.viewDesign.hidden && !document.querySelector(".designer-dialog-backdrop")) {
+          designerArrowMode = null;
+          renderDesign();
+        }
+      });
+    }
+    setTimeout(() => fitMapCanvasToWidth(view), 0);
+    view.querySelector(".auto-arrange-btn").addEventListener("click", () => { autoArrangeDesigner(); renderDesign(); });
+    view.querySelector(".designer-clear-btn").addEventListener("click", () => { storyProblemIds = []; storyPositions = {}; designerUserEdges = []; designerArrowMode = null; designerArrowNotice = ""; designerSelectedId = null; MAP_HIDDEN_IDS[DESIGNER_MAP_ID] = new Set(); MAP_HIDDEN_STACK[DESIGNER_MAP_ID] = []; MAP_HIDDEN_REDO_STACK[DESIGNER_MAP_ID] = []; renderDesign(); });
+    view.querySelector(".map-undo-btn").addEventListener("click", () => mapUndoHide(DESIGNER_MAP_ID, view));
+    view.querySelector(".map-redo-btn").addEventListener("click", () => mapRedoHide(DESIGNER_MAP_ID, view));
+    view.querySelector(".map-reset-hidden-btn").addEventListener("click", () => mapResetHidden(DESIGNER_MAP_ID, view));
+    view.querySelector(".tikz-export-btn").addEventListener("click", () => {
+      const livePositions = {};
+      canvas.querySelectorAll(".map-node:not(.node-hidden)").forEach((node) => {
+        const left = parseFloat(node.style.left), top = parseFloat(node.style.top);
+        livePositions[node.dataset.problemId] = { left, top, cx: left + nodeW / 2, cy: top + MAP_NODE_H_DEFAULT / 2, w: nodeW, h: MAP_NODE_H_DEFAULT };
+      });
+      const selectedNodes = storyProblemIds.map((id) => storyNodeById(id));
+      copyTextToClipboard(szMapToTikzCode(selectedNodes, designerMapEdges().concat(designerUserEdges), livePositions, SZ_EFFECTIVE));
+    });
+  }
+
+  // Every problem reachable along the arrows from `id`, so the results graph
+  // can connect two matches even when the problem between them isn't one.
+  let SZ_DESCENDANTS = null;
+  function szDescendants(id) {
+    if (!SZ_DESCENDANTS || SZ_DESCENDANTS.data !== DATA_SZ) {
+      const out = {};
+      DATA_SZ.edges.forEach((e) => { (out[e.from] = out[e.from] || []).push(e.to); });
+      SZ_DESCENDANTS = { data: DATA_SZ, out: out, memo: {} };
+    }
+    const c = SZ_DESCENDANTS;
+    if (!c.memo[id]) {
+      const seen = new Set(), stack = (c.out[id] || []).slice();
+      while (stack.length) {
+        const x = stack.pop();
+        if (!seen.has(x)) { seen.add(x); (c.out[x] || []).forEach((y) => stack.push(y)); }
+      }
+      c.memo[id] = seen;
+    }
+    return c.memo[id];
+  }
+
+  // Grid slots {row, col} for a small graph drawn `cols` cells wide, with the
+  // first `reserved` cells of the top row's right end kept free. Each group
+  // of connected problems is laid out as its own block -- layered from the
+  // most general down, a problem with no parent here pulled down to just
+  // above its nearest child, and every box in the column nearest its
+  // neighbours -- and the blocks are packed left to right, row by row, with
+  // unconnected problems filling the rows after them.
+  function designerGraphSlots(ids, edges, cols, reserved) {
+    const parentsOf = {}, childrenOf = {};
+    ids.forEach((id) => { parentsOf[id] = []; childrenOf[id] = []; });
+    edges.forEach((e) => { parentsOf[e.to].push(e.from); childrenOf[e.from].push(e.to); });
+
+    const groupOf = {}, groups = [];
+    ids.forEach((start) => {
+      if (groupOf[start] !== undefined || (!parentsOf[start].length && !childrenOf[start].length)) return;
+      const members = [], stack = [start];
+      groupOf[start] = groups.length;
+      while (stack.length) {
+        const x = stack.pop();
+        members.push(x);
+        parentsOf[x].concat(childrenOf[x]).forEach((y) => { if (groupOf[y] === undefined) { groupOf[y] = groups.length; stack.push(y); } });
+      }
+      groups.push(members);
+    });
+    const isolated = ids.filter((id) => groupOf[id] === undefined);
+
+    // One block: local rows and columns, at most `width` columns wide.
+    const block = (members, width) => {
+      const memberEdges = edges.filter((e) => groupOf[e.from] === groupOf[members[0]]);
+      const layer = layoutDag(members, memberEdges).row;
+      members.forEach((id) => {
+        if (!parentsOf[id].length) layer[id] = Math.min(...childrenOf[id].map((c) => layer[c])) - 1;
+      });
+      const layers = {};
+      members.forEach((id) => { (layers[layer[id]] = layers[layer[id]] || []).push(id); });
+      const keys = Object.keys(layers).map(Number).sort((x, y) => x - y);
+      const w = Math.min(width, Math.max(...keys.map((k) => layers[k].length)));
+      let local = {}, height = 0;
+      const place = (want) => {
+        local = {};
+        let row = 0;
+        keys.forEach((k) => {
+          const items = layers[k];
+          for (let i = 0; i < items.length; i += w) {
+            const chunk = items.slice(i, i + w);
+            const cs = chunk.map((id, j) => want ? Math.min(w - 1, Math.max(0, Math.round(want[id]))) : j + (w - chunk.length) / 2);
+            for (let j = 1; j < cs.length; j += 1) cs[j] = Math.max(cs[j], cs[j - 1] + 1);
+            for (let j = cs.length - 1; j >= 0; j -= 1) cs[j] = Math.min(cs[j], (j + 1 < cs.length ? cs[j + 1] : w) - 1);
+            chunk.forEach((id, j) => { local[id] = { row: row, col: cs[j] }; });
+            row += 1;
+          }
+        });
+        height = row;
+      };
+      const wishes = (neighbours) => {
+        const want = {};
+        members.forEach((id) => {
+          const xs = neighbours(id).map((n) => local[n].col);
+          want[id] = xs.length ? xs.reduce((sum, x) => sum + x, 0) / xs.length : local[id].col;
+        });
+        keys.forEach((k) => layers[k].sort((x, y) => want[x] - want[y] || local[x].col - local[y].col));
+        return want;
+      };
+      place(null);
+      for (let sweep = 0; sweep < 4; sweep += 1) {
+        place(wishes((id) => parentsOf[id]));
+        place(wishes((id) => childrenOf[id]));
+      }
+      place(wishes((id) => parentsOf[id].concat(childrenOf[id])));
+      return { local: local, w: w, h: height };
+    };
+
+    const slots = {};
+    let shelfTop = 0, shelfH = 0, x = 0;
+    const shelfWidth = () => cols - (shelfTop === 0 ? reserved : 0);
+    groups
+      .slice()
+      .sort((g1, g2) => g2.length - g1.length)
+      .forEach((members) => {
+        let b = block(members, Math.max(1, shelfWidth()));
+        if (x > 0 && x + b.w > shelfWidth()) {
+          shelfTop += shelfH;
+          shelfH = 0;
+          x = 0;
+          b = block(members, Math.max(1, shelfWidth()));
+        }
+        members.forEach((id) => { slots[id] = { row: shelfTop + b.local[id].row, col: x + b.local[id].col }; });
+        x += b.w;
+        shelfH = Math.max(shelfH, b.h);
+      });
+    let row = groups.length ? shelfTop + shelfH : 0;
+    let k = 0;
+    while (k < isolated.length) {
+      const c = cols - (row === 0 ? reserved : 0);
+      if (c <= 0) { row += 1; continue; }
+      const chunk = isolated.slice(k, k + c);
+      chunk.forEach((id, j) => { slots[id] = { row: row, col: j + (c - chunk.length) / 2 }; });
+      k += c;
+      row += 1;
+    }
+    return { slots: slots, rows: Math.max(row, reserved ? 1 : 0) };
+  }
+
+  let designerMiniWidth = 0; // last measured width of the results panel
+  let designerDropdowns = []; // the live filter controls, for their counts
+
+  // The results panel's contents: matching problems laid out as a graph that
+  // fills the panel's width, with the new-problem box (or the reason there
+  // is none) at the right end of the top row.
+  function designerResultsInnerHtml() {
+    const selected = new Set(storyProblemIds);
+    const matches = designerFilteredNodes();
+    const bySignature = new Map();
+    matches.forEach((node) => { if (!bySignature.has(notationSignature(node))) bySignature.set(notationSignature(node), node); });
+    const unique = Array.from(bySignature.values());
+    const draft = designerFiltersActive() ? designerDraftProblem() : null;
+
+    const width = Math.max(320, designerMiniWidth || els.viewDesign.clientWidth || 960);
+    const pad = 16, gapX = 14, nodeH = 42, rowH = nodeH + 34;
+    const fontPx = 0.68 * 16;
+    const longest = Math.max(0, ...unique.slice(0, 200).map((n) => measureTextWidthPx(n.notation, fontPx)));
+    // Boxes are as wide as the longest label needs; the columns spread them
+    // over the whole panel.
+    const nodeW = Math.min(280, Math.max(80, Math.ceil(longest * 1.06 + 26))); // bold text, padding and border
+    const cols = Math.max(1, Math.floor((width - 2 * pad + gapX) / (nodeW + gapX + 12)));
+    const cellW = (width - 2 * pad) / cols;
+    const cap = cols * 8;
+    const shown = unique.slice(0, cap);
+    const ids = shown.map((n) => n.id);
+    const idSet = new Set(ids);
+
+    // Arrows between shown problems: every reachable pair, minus the ones
+    // another shown problem already sits between.
+    const reach = {};
+    ids.forEach((id) => { reach[id] = new Set(Array.from(szDescendants(id)).filter((x) => idSet.has(x))); });
+    const edges = [];
+    ids.forEach((from) => reach[from].forEach((to) => {
+      if (!ids.some((mid) => mid !== from && mid !== to && reach[from].has(mid) && reach[mid].has(to))) edges.push({ from: from, to: to });
+    }));
+
+    const { slots, rows: used } = designerGraphSlots(ids, edges, cols, 0);
+    const positions = {};
+    ids.forEach((id) => {
+      const left = pad + slots[id].col * cellW + (cellW - nodeW) / 2, top = pad + slots[id].row * rowH;
+      positions[id] = { left: left, top: top, cx: left + nodeW / 2, cy: top + nodeH / 2 };
+    });
+    const rows = used;
+    const height = pad * 2 + Math.max(1, rows) * rowH - (rowH - nodeH);
+
+    const lines = edges.map((e) => {
+      const from = positions[e.from], to = positions[e.to];
+      const tail = pullBackToRect(to.cx, to.cy, from.cx, from.cy, nodeW / 2, nodeH / 2, 2);
+      const tip = pullBackToRect(from.cx, from.cy, to.cx, to.cy, nodeW / 2, nodeH / 2, 4);
+      return '<line x1="' + tail.x + '" y1="' + tail.y + '" x2="' + tip.x + '" y2="' + tip.y + '" marker-end="url(#designer-mini-arrow)" />';
+    }).join("");
+    const exactId = draft && draft.existing ? draft.existing.id : null;
+    const nodes = shown.map((p) => {
+      const cc = classicalClassById(SZ_EFFECTIVE[p.id] || p.classicalClass);
+      const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+      const already = selected.has(p.id);
+      const pos = positions[p.id];
+      return '<button type="button" class="designer-mini-node' + (already ? " added" : "") +
+        (exactId && notationSignature(p) === notationSignature(draft.existing) ? " exact-fit" : "") +
+        '" draggable="' + (!already) + '" data-story-problem="' + escapeHtml(p.id) + '" title="' + escapeHtml(p.notation) +
+        '" style="left:' + pos.left + "px;top:" + pos.top + "px;width:" + nodeW + "px;height:" + nodeH + "px;background:" + bg +
+        ";border-color:" + (cc ? cc.color : "#868e96") + ";color:" + (cc && cc.fill ? fillTextColor(cc) : "var(--fg)") + '">' +
+        escapeHtml(p.notation) + "</button>";
+    }).join("");
+    if (!shown.length) return '<div class="story-empty">No problems match that search.</div>';
+    return '<div class="designer-mini-graph" style="width:100%;height:' + height + 'px">' +
+      '<svg width="' + width + '" height="' + height + '"><defs><marker id="designer-mini-arrow" viewBox="0 0 10 10" refX="8" refY="5" ' +
+      'markerWidth="7" markerHeight="7" orient="auto"><path d="' + STEALTH_ARROW_PATH + '" /></marker></defs>' + lines + "</svg>" +
+      nodes + "</div>" +
+      (unique.length > shown.length
+        ? '<div class="story-empty">Showing ' + shown.length + " of " + unique.length + " matching problems -- narrow the search to see the rest.</div>"
+        : "");
+  }
+
+  function renderDesignerSearch() {
+    const opts = szFilterOptions();
+    const active = designerFiltersActive() || storySearchText.trim();
+    return '<div class="designer-search-tools">' +
+      '<div class="story-search-wrap"><input class="story-search sz-filter" type="search" placeholder="Search, e.g. 1 rj Uj, preemptive, flow shop…" value="' + escapeHtml(storySearchText) + '" aria-label="Search problems to add"></div>' +
+      '<div class="designer-filter-row">' +
+      buildMsDropdownHtml("designer-ms-machine-env", "Machine Environment", opts.machineEnvOptions, designerFilterState.machineEnv) +
+      '<span class="sz-field-sep">|</span>' +
+      buildSzSettingsHtml("designer-settings", szSettingGroups(), designerFilterState.settings) +
+      '<span class="sz-field-sep">|</span>' +
+      buildMsDropdownHtml("designer-ms-objective", "Objective", opts.objectiveOptions, designerFilterState.objective) +
+      '<button type="button" id="designer-add-problem" class="map-history-btn designer-add-btn" disabled>+ Add problem</button>' +
+      '<button type="button" id="designer-reset-filters" class="map-history-btn" title="Clear the text search and every designer filter">↺ Reset filters</button>' +
+      "</div>" +
+      '<div class="story-results" role="listbox"' + (active ? "" : " hidden") + "></div></div>";
+  }
+
+  // Redraws only the results panel -- the filter controls stay exactly as
+  // they are, open dropdown included.
+  function refreshDesignerResults() {
+    const panel = els.viewDesign.querySelector(".story-results");
+    if (!panel || !DATA_SZ) return;
+    const active = designerFiltersActive() || storySearchText.trim();
+    panel.hidden = !active;
+    if (!active) { panel.innerHTML = ""; return; }
+    if (panel.clientWidth) designerMiniWidth = panel.clientWidth;
+    panel.innerHTML = designerResultsInnerHtml();
+    // The panel's width is only known once it is on the page; if the
+    // guess used above was off, lay it out again at the real width.
+    if (panel.clientWidth && Math.abs(panel.clientWidth - designerMiniWidth) > 2) {
+      designerMiniWidth = panel.clientWidth;
+      panel.innerHTML = designerResultsInnerHtml();
+    }
+    const matched = new Set(designerFilteredNodes().map((n) => n.id));
+    designerDropdowns.forEach((d) => d.refreshCounts(matched));
+    refreshDesignerAddButton();
+  }
+
+  // The "Add problem" button in the filter row: enabled only when the filters
+  // describe one complete, well-formed problem that isn't already there; its
+  // tooltip says what it would add, or why it can't.
+  function refreshDesignerAddButton() {
+    const btn = els.viewDesign.querySelector("#designer-add-problem");
+    if (!btn || !DATA_SZ) return;
+    const draft = designerFiltersActive() ? designerDraftProblem() : null;
+    const onMap = draft && draft.ok && storyProblemIds.includes("designer-draft-" + draft.notation.replace(/[^a-zA-Z0-9]+/g, "-"));
+    btn.disabled = !draft || !draft.ok || onMap;
+    btn.textContent = draft && draft.ok ? "+ Add " + draft.notation : "+ Add problem";
+    btn.title = !draft
+      ? "Set the filters to one complete problem to add it to the map."
+      : draft.existing
+      ? draft.existing.notation + " is already in The Scheduling Zoo -- it's highlighted below."
+      : onMap
+      ? draft.notation + " is already on the map."
+      : draft.ok
+      ? "Add " + draft.notation + ", which isn't in The Scheduling Zoo, to the map."
+      : draft.reason;
+  }
+
+  function enableDesignerSearch() {
+    const view = els.viewDesign, input = view.querySelector(".story-search");
+    const results = view.querySelector(".story-results");
+    designerDropdowns = [
+      wireMsDropdown("designer-ms-machine-env", view, "Machine Environment", (selection) => { designerFilterState.machineEnv = selection; refreshDesignerResults(); }, (node) => node.machineEnv || ""),
+      wireMsDropdown("designer-ms-objective", view, "Objective", (selection) => { designerFilterState.objective = selection; refreshDesignerResults(); }, (node) => canonicalSzObjective(node.objective)),
+      wireSzSettingsDropdown("designer-settings", view, (selection) => { designerFilterState.settings = selection; refreshDesignerResults(); }),
+    ];
+    input.addEventListener("input", () => { storySearchText = input.value; refreshDesignerResults(); });
+    view.querySelector("#designer-add-problem").addEventListener("click", addDesignerDraft);
+    view.querySelector("#designer-reset-filters").addEventListener("click", () => {
+      storySearchText = "";
+      designerFilterState = {
+        machineEnv: { include: new Set(), exclude: new Set() },
+        objective: { include: new Set(), exclude: new Set() },
+        settings: { groups: [], values: {} },
+      };
+      renderDesign();
+    });
+    // Delegated, so redrawing the panel's contents needs no rewiring.
+    results.addEventListener("click", (event) => {
+      if (event.target.closest("[data-designer-draft]")) { addDesignerDraft(); return; }
+      const item = event.target.closest("[data-story-problem]");
+      if (item) addStoryProblem(item.dataset.storyProblem);
+    });
+    results.addEventListener("dragstart", (event) => {
+      const item = event.target.closest("[data-story-problem], [data-designer-draft]");
+      if (item) event.dataTransfer.setData("text/plain", item.dataset.storyProblem || "designer-draft-preview");
+    });
+    results.addEventListener("dragover", (event) => event.preventDefault());
+    const wrap = view.querySelector(".map-canvas-wrap");
+    wrap.addEventListener("dragover", (event) => { event.preventDefault(); wrap.classList.add("drop-target"); });
+    wrap.addEventListener("dragleave", () => wrap.classList.remove("drop-target"));
+    wrap.addEventListener("drop", (event) => { event.preventDefault(); wrap.classList.remove("drop-target"); const id = event.dataTransfer.getData("text/plain"); if (id === "designer-draft-preview") { addDesignerDraft(); return; } const rect = wrap.querySelector(".map-canvas").getBoundingClientRect(); addStoryProblem(id, { left: Math.max(10, event.clientX - rect.left - 75), top: Math.max(10, event.clientY - rect.top - 22) }); });
+    refreshDesignerResults();
+  }
+
+  function enableStoryDesigner() {
+    const root = els.viewDesign.querySelector(".story-designer");
+    if (!root) return;
+    const input = root.querySelector(".story-search");
+    input.addEventListener("input", () => {
+      storySearchText = input.value;
+      renderDesign();
+      const nextInput = els.viewDesign.querySelector(".story-search");
+      nextInput.focus();
+      nextInput.setSelectionRange(storySearchText.length, storySearchText.length);
+    });
+    root.querySelectorAll("[data-story-problem]").forEach((item) => {
+      item.addEventListener("click", () => addStoryProblem(item.dataset.storyProblem));
+      item.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", item.dataset.storyProblem));
+    });
+    root.querySelectorAll("[data-story-node]").forEach((node) => {
+      node.addEventListener("pointerdown", (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        storyDrag = { id: node.dataset.storyNode, startX: event.clientX, startY: event.clientY, left: storyPositions[node.dataset.storyNode].left, top: storyPositions[node.dataset.storyNode].top, moved: false };
+      });
+    });
+    const dropzone = root.querySelector("[data-story-dropzone]");
+    dropzone.addEventListener("dragover", (event) => { event.preventDefault(); dropzone.classList.add("drop-target"); });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drop-target"));
+    dropzone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropzone.classList.remove("drop-target");
+      const canvas = dropzone.querySelector(".story-canvas");
+      const rect = canvas.getBoundingClientRect();
+      addStoryProblem(event.dataTransfer.getData("text/plain"), { left: Math.max(10, event.clientX - rect.left - 110), top: Math.max(10, event.clientY - rect.top - 32) });
+    });
+    const clear = root.querySelector("#story-clear");
+    if (clear) clear.addEventListener("click", () => { storyProblemIds = []; storyPositions = {}; renderDesign(); });
+    if (!window.storyDesignerDragReady) {
+      window.storyDesignerDragReady = true;
+      document.addEventListener("pointermove", (event) => {
+        if (!storyDrag) return;
+        const dx = event.clientX - storyDrag.startX, dy = event.clientY - storyDrag.startY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) storyDrag.moved = true;
+        if (storyDrag.moved) {
+          const position = { left: Math.max(10, storyDrag.left + dx), top: Math.max(10, storyDrag.top + dy) };
+          storyPositions[storyDrag.id] = position;
+          const node = els.viewDesign.querySelector('[data-story-node="' + cssEscape(storyDrag.id) + '"]');
+          if (node) { node.style.left = position.left + "px"; node.style.top = position.top + "px"; }
+        }
+      });
+      document.addEventListener("pointerup", () => {
+        if (storyDrag && storyDrag.moved) renderDesign();
+        storyDrag = null;
+      });
+    }
+  }
+
   function sandboxNodeKey(r) {
     return RESTRICTION_DIMENSIONS.map((dim) => {
       const x = r[dim];
@@ -3382,6 +5297,24 @@
   }
 
   function renderDesign() {
+    if (!DATA_SZ) {
+      els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading Scheduling Zoo problems…</p></div>';
+      loadSzData().then(() => {
+        if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+        renderDesign();
+      });
+      return;
+    }
+    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    const dropdownUi = captureDropdownUi(els.viewDesign);
+    els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2>' + designerMapBarHtml() + renderDesignerMap() + designerRelationControls() + renderDesignerSearch() + '</div>';
+    enableDesignerMapBar();
+    enableDesignerMap();
+    enableDesignerRelations();
+    enableDesignerSearch();
+    restoreDropdownUi(els.viewDesign, dropdownUi);
+    return;
+
     if (!sandboxGraph) resetSandboxGraph();
     const nodes = Object.values(sandboxGraph.nodes);
     const notationOf = {}, knowledgeOf = {};
@@ -3498,8 +5431,10 @@
 
     els.viewDesign.innerHTML =
       '<div class="design-page">' +
-      '<h2 class="page-title">Problem Designer</h2>' +
-      '<p class="design-intro">Every option you click adds a new node to this graph instead of replacing the current one — click any node to make it the selected one and keep exploring from there. This only shows what is already proven for a more specific case; it cannot invent a new result for a combination nobody has studied.</p>' +
+      '<h2 class="page-title">Problem Map Designer</h2>' +
+      renderStoryDesigner() +
+      '<h3 class="design-subheading">Restriction explorer</h3>' +
+      '<p class="design-intro">Explore a restriction lattice by adding or removing dimensions. Every option you click adds a new node to this graph instead of replacing the current one; this only shows results inherited from problems already in the dataset.</p>' +
       '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + canvasRight + "px;height:" + canvasBottom + 'px">' +
       '<svg class="map-edge-svg" width="' + canvasRight + '" height="' + canvasBottom + '">' + linesSvg + "</svg>" +
       nodesHtml +
@@ -3517,6 +5452,7 @@
       "<p><b>More specific (known problems this generalizes):</b></p>" + relList(know.specializations) +
       "</div></div></div>";
 
+    enableStoryDesigner();
     enableSandboxNodeDragging(nodeW, SANDBOX_NODE_H);
     els.viewDesign.querySelectorAll("[data-remove-dim]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -4265,49 +6201,53 @@
       .forEach((line) => line.classList.toggle("node-hidden", hidden));
   }
 
-  function mapUpdateHistoryButtons(mapId) {
-    const undoBtn = els.viewMap.querySelector(".map-undo-btn");
-    const redoBtn = els.viewMap.querySelector(".map-redo-btn");
-    const resetBtn = els.viewMap.querySelector(".map-reset-hidden-btn");
+  function mapUpdateHistoryButtons(mapId, viewEl) {
+    viewEl = viewEl || els.viewMap;
+    const undoBtn = viewEl.querySelector(".map-undo-btn");
+    const redoBtn = viewEl.querySelector(".map-redo-btn");
+    const resetBtn = viewEl.querySelector(".map-reset-hidden-btn");
     if (undoBtn) undoBtn.disabled = !(MAP_HIDDEN_STACK[mapId] || []).length;
     if (redoBtn) redoBtn.disabled = !(MAP_HIDDEN_REDO_STACK[mapId] || []).length;
     const hidden = MAP_HIDDEN_IDS[mapId];
     if (resetBtn) resetBtn.disabled = !(hidden && hidden.size);
   }
 
-  function mapUndoHide(mapId) {
+  function mapUndoHide(mapId, viewEl) {
+    viewEl = viewEl || els.viewMap;
     const stack = MAP_HIDDEN_STACK[mapId];
     if (!stack || !stack.length) return;
     const problemId = stack.pop();
     if (MAP_HIDDEN_IDS[mapId]) MAP_HIDDEN_IDS[mapId].delete(problemId);
     (MAP_HIDDEN_REDO_STACK[mapId] || (MAP_HIDDEN_REDO_STACK[mapId] = [])).push(problemId);
-    setMapNodeHidden(els.viewMap.querySelector(".map-canvas"), problemId, false);
-    mapUpdateHistoryButtons(mapId);
+    setMapNodeHidden(viewEl.querySelector(".map-canvas"), problemId, false);
+    mapUpdateHistoryButtons(mapId, viewEl);
   }
 
-  function mapRedoHide(mapId) {
+  function mapRedoHide(mapId, viewEl) {
+    viewEl = viewEl || els.viewMap;
     const redoStack = MAP_HIDDEN_REDO_STACK[mapId];
     if (!redoStack || !redoStack.length) return;
     const problemId = redoStack.pop();
     (MAP_HIDDEN_IDS[mapId] || (MAP_HIDDEN_IDS[mapId] = new Set())).add(problemId);
     (MAP_HIDDEN_STACK[mapId] || (MAP_HIDDEN_STACK[mapId] = [])).push(problemId);
-    setMapNodeHidden(els.viewMap.querySelector(".map-canvas"), problemId, true);
-    mapUpdateHistoryButtons(mapId);
+    setMapNodeHidden(viewEl.querySelector(".map-canvas"), problemId, true);
+    mapUpdateHistoryButtons(mapId, viewEl);
   }
 
   // Restores every node hidden on this map at once, in place (same as
   // undo/redo -- no re-render, so nothing else's position moves) -- unlike
   // repeatedly clicking Undo, this also clears the redo stack, matching
   // what "Reset" implies (start over, not "keep stepping back").
-  function mapResetHidden(mapId) {
+  function mapResetHidden(mapId, viewEl) {
+    viewEl = viewEl || els.viewMap;
     const stack = MAP_HIDDEN_STACK[mapId];
     if (!stack || !stack.length) return;
-    const canvas = els.viewMap.querySelector(".map-canvas");
+    const canvas = viewEl.querySelector(".map-canvas");
     stack.forEach((problemId) => setMapNodeHidden(canvas, problemId, false));
     delete MAP_HIDDEN_IDS[mapId];
     MAP_HIDDEN_STACK[mapId] = [];
     MAP_HIDDEN_REDO_STACK[mapId] = [];
-    mapUpdateHistoryButtons(mapId);
+    mapUpdateHistoryButtons(mapId, viewEl);
   }
 
   // Drag is tracked at the document level once started, not on the node
@@ -4332,13 +6272,19 @@
     const chrome =
       parseFloat(wrapCs.paddingLeft) + parseFloat(wrapCs.paddingRight) +
       parseFloat(wrapCs.borderLeftWidth) + parseFloat(wrapCs.borderRightWidth);
+    // The wrap is border-box, so its height has to cover its own padding
+    // and border as well as the scaled canvas -- leaving them out cut the
+    // bottom ~50px of the diagram off.
+    const verticalChrome =
+      parseFloat(wrapCs.paddingTop) + parseFloat(wrapCs.paddingBottom) +
+      parseFloat(wrapCs.borderTopWidth) + parseFloat(wrapCs.borderBottomWidth);
     const budget = viewEl.clientWidth - chrome;
     const scale = budget > 0 ? Math.min(1, budget / naturalWidth) : 1;
     canvas.dataset.scale = scale;
     if (scale < 1) {
       canvas.style.transformOrigin = "top left";
       canvas.style.transform = "scale(" + scale + ")";
-      wrap.style.height = naturalHeight * scale + "px";
+      wrap.style.height = naturalHeight * scale + verticalChrome + "px";
     } else {
       wrap.style.height = "";
     }
@@ -4350,8 +6296,17 @@
     canvas.style.marginLeft = Math.max(0, (budget - renderedWidth) / 2) + "px";
   }
 
-  function enableMapNodeDragging(canvas, nodeW, nodeH, mapId) {
+  // One set of document-level drag listeners per map: re-rendering a map
+  // (the designer does on every change) replaces them instead of piling up.
+  const MAP_DRAG_LISTENERS = {};
+  // `dragDisabled`, when given and true, makes a press a plain click -- the
+  // designer uses it while picking the ends of a new arrow.
+  function enableMapNodeDragging(canvas, nodeW, nodeH, mapId, viewEl, onSelect, dragDisabled) {
+    viewEl = viewEl || els.viewMap;
     if (!canvas) return;
+    if (MAP_DRAG_LISTENERS[mapId]) MAP_DRAG_LISTENERS[mapId].abort();
+    const listeners = new AbortController();
+    MAP_DRAG_LISTENERS[mapId] = listeners;
     const svg = canvas.querySelector(".map-edge-svg");
     const wrap = canvas.closest(".map-canvas-wrap");
     const halfW = nodeW / 2, halfH = nodeH / 2;
@@ -4380,6 +6335,7 @@
       el.addEventListener("pointerdown", (e) => {
         if (e.button !== undefined && e.button !== 0) return;
         e.preventDefault();
+        if (dragDisabled && dragDisabled()) return;
         drag = {
           el,
           id: el.dataset.problemId,
@@ -4396,7 +6352,8 @@
       el.addEventListener("click", (e) => {
         e.preventDefault();
         if (drag && drag.moved) return;
-        openProblemPanel(el.dataset.problemId);
+        if (onSelect) onSelect(el.dataset.problemId);
+        else openProblemPanel(el.dataset.problemId);
       });
     });
 
@@ -4407,7 +6364,10 @@
       // still tracks the cursor 1:1 instead of moving in canvas-space px.
       const scale = parseFloat(canvas.dataset.scale) || 1;
       const dx = (e.clientX - drag.startX) / scale, dy = (e.clientY - drag.startY) / scale;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+      // Measured in screen pixels, not canvas units: on a map shrunk to fit,
+      // 3 canvas units is about 1 screen pixel, so the wobble of an ordinary
+      // click counted as a drag and the click was swallowed.
+      if (Math.abs(e.clientX - drag.startX) > 5 || Math.abs(e.clientY - drag.startY) > 5) drag.moved = true;
       if (!drag.moved) return;
       const left = drag.left0 + dx, top = drag.top0 + dy;
       drag.el.style.left = left + "px";
@@ -4419,7 +6379,7 @@
       const outOfFrame = nodeDraggedOutOfFrame(wrap, e.clientX, e.clientY);
       drag.el.classList.toggle("delete-armed", outOfFrame);
       if (wrap) wrap.classList.toggle("delete-armed", outOfFrame);
-    });
+    }, { signal: listeners.signal });
 
     document.addEventListener("pointerup", (e) => {
       if (wrap) wrap.classList.remove("delete-armed");
@@ -4435,15 +6395,18 @@
         (MAP_HIDDEN_STACK[mapId] || (MAP_HIDDEN_STACK[mapId] = [])).push(drag.id);
         MAP_HIDDEN_REDO_STACK[mapId] = [];
         setMapNodeHidden(canvas, drag.id, true);
-        mapUpdateHistoryButtons(mapId);
+        mapUpdateHistoryButtons(mapId, viewEl);
         drag.el.classList.remove("delete-armed");
         drag = null;
         return;
       }
+      if (drag && drag.moved && mapId === DESIGNER_MAP_ID) {
+        storyPositions[drag.id] = { left: parseFloat(drag.el.style.left), top: parseFloat(drag.el.style.top) };
+      }
       // Cleared on the next tick, after the browser's own click event (which
       // fires right after pointerup) has had a chance to read drag.moved.
       setTimeout(() => { drag = null; }, 0);
-    });
+    }, { signal: listeners.signal });
   }
 
   // Shared by enableMapNodeDragging and enableSzNodeDragging: "past the
@@ -4524,7 +6487,10 @@
       if (!drag) return;
       const scale = parseFloat(canvas.dataset.scale) || 1;
       const dx = (e.clientX - drag.startX) / scale, dy = (e.clientY - drag.startY) / scale;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+      // Measured in screen pixels, not canvas units: on a map shrunk to fit,
+      // 3 canvas units is about 1 screen pixel, so the wobble of an ordinary
+      // click counted as a drag and the click was swallowed.
+      if (Math.abs(e.clientX - drag.startX) > 5 || Math.abs(e.clientY - drag.startY) > 5) drag.moved = true;
       if (!drag.moved) return;
       const left = drag.left0 + dx, top = drag.top0 + dy;
       drag.el.style.left = left + "px";
@@ -4583,32 +6549,4 @@
     return { x: bx - ux * t, y: by - uy * t };
   }
 
-  // ---------- references ----------
-
-  function referenceLinkHtml(ref) {
-    if (ref.doi) {
-      const url = "https://doi.org/" + ref.doi;
-      return ' <a class="ref-doi" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(url) + "</a>";
-    }
-    if (ref.url) {
-      return ' <a class="ref-doi" href="' + escapeHtml(ref.url) + '" target="_blank" rel="noopener">' + escapeHtml(ref.url) + "</a>";
-    }
-    if (ref.doiNote) {
-      return ' <span class="ref-doi-note">' + escapeHtml(ref.doiNote) + "</span>";
-    }
-    return "";
-  }
-  function renderReferences() {
-    const keys = Object.keys(DATA.references).sort();
-    els.viewReferences.innerHTML =
-      '<h2 class="page-title">References</h2><div class="ref-list">' +
-      keys
-        .map(
-          (k) =>
-            '<div class="ref-item"><span class="ref-key">[' + k + ']</span><span>' +
-            escapeHtml(DATA.references[k].text) + referenceLinkHtml(DATA.references[k]) + "</span></div>"
-        )
-        .join("") +
-      "</div>";
-  }
 })();

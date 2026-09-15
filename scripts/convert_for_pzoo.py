@@ -261,12 +261,46 @@ simple_reductions["setup times"] -= SCHEDZOO_EMPTY_SETUP_RULES
 OUR_S1_SETUP_RULES = {(("S1", v), ("S1", "")) for v in S1_SETUP_VALUES}
 complex_reductions.setdefault(("server", "setup times"), set()).update(OUR_S1_SETUP_RULES)
 
-# ---- baseline pass: schedzoo's rules with the setup-time correction applied
-# -- used below to tell which edges are newly possible because of the
-# machine-count rule we add next.
+after_s1_pairs = set(all_pairwise_edges())
+print(f"# S1 setup-time correction: removed {len(schedzoo_pairs - after_s1_pairs)} of schedzoo's pairwise "
+      f"edges, added {len(after_s1_pairs - schedzoo_pairs)}", file=sys.stderr)
+
+# ---- OUR correction of schedzoo's multiprocessor-task rule. notation.xml
+# declares "" -> fix_j for the "machine sets" field: a problem with no
+# machine-set constraint is a special case of the same problem where every
+# job needs a GIVEN set of machines at once. Whether that holds depends on
+# the machine environment. In a shop (O/F/J) every operation's machine is
+# already input ("operation O_ij ... on machine i"), which is fix_j with
+# every set of size 1 -- the rule holds. On parallel machines (P/Q/R) an
+# empty field means the SCHEDULER picks one machine per job; fix_j turns
+# that decision into input, and no choice of sets reproduces it without
+# solving the problem. P2||Cmax is NP-hard (Partition) while P2|fix_j|Cmax
+# is in P (Hoogeveen, van de Velde & Veltman 1994, p. 261), so the rule had
+# a polynomial problem "generalizing" an NP-hard one. We drop the one-field
+# rule and keep it for shops only, as a two-field (machine sets, type) rule.
+# F -> J is spelled out too: schedzoo's extend_complex_reduction never
+# composes a two-field rule with the one-field F -> J type rule.
+SCHEDZOO_FIX_J_RULE = ("", "fix_j")
+assert SCHEDZOO_FIX_J_RULE in simple_reductions["machine sets"], \
+    "schedzoo's fix_j rule changed upstream -- recheck this correction"
+simple_reductions["machine sets"].discard(SCHEDZOO_FIX_J_RULE)
+OUR_SHOP_FIX_J_RULES = {
+    (("", particular_type), ("fix_j", general_type))
+    for particular_type, general_type in [("O", "O"), ("F", "F"), ("J", "J"), ("F", "J")]
+}
+complex_reductions.setdefault(("machine sets", "type"), set()).update(OUR_SHOP_FIX_J_RULES)
+
+# ---- baseline pass: schedzoo's rules with both corrections applied -- used
+# below to tell which edges are newly possible because of the machine-count
+# rule we add next.
 baseline_pairs = set(all_pairwise_edges())
-print(f"# S1 setup-time correction: removed {len(schedzoo_pairs - baseline_pairs)} of schedzoo's pairwise "
-      f"edges, added {len(baseline_pairs - schedzoo_pairs)}", file=sys.stderr)
+fix_j_removed_by_env = {}
+for (a, b) in after_s1_pairs - baseline_pairs:
+    t = bases[a]["core_vec"]["type"]
+    fix_j_removed_by_env[t] = fix_j_removed_by_env.get(t, 0) + 1
+print(f"# fix_j correction: removed {len(after_s1_pairs - baseline_pairs)} pairwise edges "
+      f"(by environment of the general problem: {fix_j_removed_by_env}), "
+      f"added {len(baseline_pairs - after_s1_pairs)}", file=sys.stderr)
 
 # ---- OUR OWN added reduction rule, layered on top of (never replacing)
 # schedzoo's own data: "number of machines" has ZERO reduction rules in
@@ -301,8 +335,7 @@ augmented_edges = all_pairwise_edges()
 # new-because-of-us edge when "number of machines" is the sole differing
 # field; never let it stack with another relaxation we haven't individually
 # checked -- the exact discipline schedzoo's own reduction data lacks (see
-# the "number of machines" data note) and that let fix_j-style
-# contradictions through in the first place.
+# the "number of machines" data note).
 def sole_diff_field(general_id, specific_id):
     va, vb = bases[general_id]["core_vec"], bases[specific_id]["core_vec"]
     diffs = [f for f in core_fields if va[f] != vb[f]]
@@ -470,6 +503,9 @@ for name in names:
         # actually sets (an unset field means "no such constraint", which
         # the filter treats as its own selectable state).
         "settings": {f: cv[f] for f in SETTINGS_FIELDS if cv.get(f)},
+        # every core field this problem sets, raw -- lets the site compare two
+        # problems field by field against fieldReductions below
+        "vector": {f: cv[f] for f in core_fields if cv.get(f)},
         "classicalClass": cc,
         "classical": entry["classical"],
         "params": [dict(r, complexityClass=classify_param_result(r["kind"], r["bound"])) for r in entry["params"]],
@@ -499,15 +535,20 @@ for (a, b) in hasse_edges:
     ]
     # True only when this exact (general, specific) pair was NOT reachable
     # under schedzoo's own rules as shipped. addedBy names the rule of ours
-    # that made it reachable: the S1 setup-time correction (already in the
-    # corrected baseline) or OUR_MACHINE_COUNT_RULES (only after it).
-    # Frontend renders these green with that rule's note; never marks an
-    # edge schedzoo's own data already implied.
+    # that made it reachable, in the order they were applied: the S1
+    # setup-time correction, the shop-only fix_j correction, or
+    # OUR_MACHINE_COUNT_RULES. Frontend renders these green with that rule's
+    # note; never marks an edge schedzoo's own data already implied.
     added = (a, b) not in schedzoo_pairs
-    edges.append({
-        "from": a, "to": b, "diffs": diffs, "addedByUs": added,
-        "addedBy": ("s1-setup" if (a, b) in baseline_pairs else "machine-count") if added else None,
-    })
+    added_by = None
+    if added:
+        if (a, b) in after_s1_pairs:
+            added_by = "s1-setup"
+        elif (a, b) in baseline_pairs:
+            added_by = "fixj-shop"
+        else:
+            added_by = "machine-count"
+    edges.append({"from": a, "to": b, "diffs": diffs, "addedByUs": added, "addedBy": added_by})
 
 # ---- the settings filter's own menu data: for every exported beta field,
 # the values that actually occur in this corpus (with schedzoo's own
@@ -535,8 +576,64 @@ for f in SETTINGS_FIELDS:
         ],
     })
 
+# ---- The Scheduling Zoo's problem-builder form, as notation.xml defines it:
+# every field in order, with its values and its `requires` condition. A
+# problem there is one radio choice per field (so at most one value per
+# field), a field or value is only offered while its condition holds, and
+# the name is written in this field order -- so this is what decides which
+# problems are well-formed, and that two orderings of the same settings are
+# the same problem. The site uses it to only let complete, well-formed
+# problems be drafted. The hidden "interface" field and the parameter
+# section are left out: drafts are always "advanced" and never bracketed.
+notation_form = []
+for section_index, section in enumerate(tree[1]):
+    if section.attrib.get("id") == "Parameters":
+        continue
+    for field in section:
+        if field.attrib.get("hide"):
+            continue
+        notation_form.append({
+            "field": tools.correctxml(field.attrib["name"]),
+            "slot": {"Machine": "alpha", "Constraints": "beta", "Objective": "gamma"}.get(
+                section.attrib.get("name", "").split(" ")[0], ""),
+            "requires": field.attrib.get("requires", ""),
+            "separation": field.attrib.get("separation", "True") != "False",
+            "choices": [
+                {
+                    "value": tools.correctxml(c.attrib["value"]),
+                    "label": latex_to_plain(tools.correctxml(c.attrib["value"])),
+                    "requires": c.attrib.get("requires", ""),
+                }
+                for c in field
+            ],
+        })
+assert {f["slot"] for f in notation_form} == {"alpha", "beta", "gamma"}, "notation.xml's form sections changed"
+
+# ---- two corrections to those conditions, found by running every problem in
+# the corpus through them (all 719 pass after these, 95 did not before):
+# 1. p_{ij}=1 and p_{ij}=p require "R or J or O", leaving out F -- yet 76
+#    and 18 flow-shop problems use them, and notation.xml's own F
+#    explanation writes processing times as p_ij.
+# 2. index.php's evaluator splits a condition on spaces only, so "(P" in
+#    "advanced and (P or Q or 1)" is read as one unknown atom and
+#    p_j\in\{1,2\} is never offered; spacing the parentheses fixes it.
+OUR_FORM_REQUIRES_FIXES = {("processing times", "p_{ij}=1"), ("processing times", "p_{ij}=p")}
+for f in notation_form:
+    for c in [f] + f["choices"]:
+        c["requires"] = re.sub(r"\s+", " ", c["requires"].replace("(", " ( ").replace(")", " ) ")).strip()
+    for c in f["choices"]:
+        if (f["field"], c["value"]) in OUR_FORM_REQUIRES_FIXES:
+            assert c["requires"] == "R or J or O", "notation.xml's p_ij condition changed -- recheck this fix"
+            c["requires"] = "R or J or O or F"
+
 out = {
     "nodes": nodes,
+    "notationForm": notation_form,
+    # per core field, every (particular, general) value pair the one-field
+    # reduction rules give -- The Scheduling Zoo's own, with our corrections
+    # and machine-count rule applied, transitively closed. Used by the site
+    # to tell when a hand-drawn arrow runs against the rules in some field.
+    "fieldReductions": {f: sorted([list(pair) for pair in simple_reductions[f]]) for f in core_fields if simple_reductions[f]},
     "edges": edges,
     "machineEnvExplanations": machine_env_explanations,
     "settingsFields": settings_fields,

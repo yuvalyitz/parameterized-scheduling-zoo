@@ -11,54 +11,25 @@
   <h1><a href="#/">The Parameterized Scheduling Zoo</a></h1>
   <p class="tagline">A faceted browser for the parameterized complexity of machine scheduling problems.</p>
   <nav class="site-nav">
-    <a href="#/" data-route="/">Search</a>
-    <a href="#/maps" data-route="/maps">Problem maps</a>
-    <a href="#/design" data-route="/design">Design</a>
-    <a href="#/glossary" data-route="/glossary">Glossary</a>
-    <a href="#/docs" data-route="/docs">Documentation</a>
-    <a href="#/references" data-route="/references">References</a>
     <a href="#/schedulingzoo" data-route="/schedulingzoo">Scheduling Zoo</a>
+    <a href="#/design" data-route="/design">Problem Map Designer</a>
+    <a href="#/zoo-maps" data-route="/zoo-maps">Problem Maps</a>
+    <!-- Hidden for now; the page still works at #/maps. Uncomment to show it in the nav. -->
+    <!-- <a href="#/maps" data-route="/maps">Problem Maps [WIP]</a> -->
+    <a href="#/" data-route="/">Search</a>
+    <a href="#/docs" data-route="/docs">Documentation</a>
+    <!-- Hidden for now; the page still works at #/next. Uncomment to show it in the nav. -->
+    <!-- <a href="#/next" data-route="/next">What's Coming Next</a> -->
   </nav>
 </header>
 
 <main>
 
-<section id="view-search" class="view">
-  <section class="facets" aria-label="Problem facets">
-    <div class="facet-group">
-      <h2>Machine environment <span class="greek">α</span></h2>
-      <div class="chip-row" data-facet="alpha" data-field="alpha"></div>
-    </div>
-    <div class="facet-group">
-      <h2>Constraints <span class="greek">β</span></h2>
-      <div class="chip-row" data-facet="beta" data-field="beta"></div>
-    </div>
-    <div class="facet-group">
-      <h2>Objective <span class="greek">γ</span></h2>
-      <div class="chip-row" data-facet="gamma" data-field="gamma"></div>
-    </div>
-    <div class="facet-group">
-      <h2>Parameters shown</h2>
-      <div class="chip-row" id="param-toggle"></div>
-    </div>
-    <button id="reset-facets" class="reset-btn">Reset filters</button>
-  </section>
-
-  <section class="matrix-wrap" aria-label="Complexity matrix">
-    <table class="matrix" id="matrix">
-      <thead><tr id="matrix-head"></tr></thead>
-      <tbody id="matrix-body"></tbody>
-    </table>
-    <p id="empty-state" class="empty-state" hidden>No problems match the current filters.</p>
-  </section>
-
-  <section class="legend" aria-label="Legend">
-    <h2>Legend</h2>
-    <div id="legend-items" class="legend-items"></div>
-  </section>
-</section>
+<section id="view-search" class="view"></section>
 
 <section id="view-problem" class="view" hidden></section>
+
+<section id="view-zoo-maps" class="view" hidden></section>
 
 <section id="view-maps" class="view" hidden></section>
 
@@ -66,11 +37,10 @@
 
 <section id="view-map" class="view" hidden></section>
 
-<section id="view-glossary" class="view" hidden></section>
-
 <section id="view-docs" class="view" hidden></section>
 
-<section id="view-references" class="view" hidden></section>
+<section id="view-next" class="view" hidden></section>
+
 
 <section id="view-schedulingzoo" class="view" hidden></section>
 

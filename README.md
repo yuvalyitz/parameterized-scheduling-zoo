@@ -8,7 +8,8 @@ single verdict.
 
 ## Structure
 
-- `data/problems.json` — the curated dataset. Each problem carries classical
+- `data/problems.json` — the curated dataset behind the problem maps and
+  problem pages. Each problem carries classical
   α|β|γ notation plus a list of `results`, one per parameterization
   (`{parameter, class, reference, note, confidence}`).
 - `data/schedulingzoo.json` — every problem, citation and reduction edge from
@@ -19,9 +20,8 @@ single verdict.
   ([xtof-durr/schedulingzoo](https://github.com/xtof-durr/schedulingzoo)) as a
   git submodule, pinned to one commit and unmodified.
 - `index.html` / `css/style.css` / `js/app.js` — a static, no-build UI:
-  facet chips to filter problems by α/β/γ, a color-coded complexity matrix
-  (problems × parameters), problem maps, the Scheduling Zoo overview, and
-  documentation.
+  a searchable problems × parameters matrix over The Scheduling Zoo data,
+  problem maps, the Scheduling Zoo overview, and documentation.
 
 No build step, no framework — edit and refresh.
 
@@ -51,8 +51,9 @@ To regenerate `data/schedulingzoo.json`, e.g. after updating the submodule:
 python3 scripts/convert_for_pzoo.py
 ```
 
-It needs `bibtexparser` (`pip install bibtexparser`), which The Scheduling
-Zoo's own `extract.py` imports.
+It needs `bibtexparser` 1.x (`pip install "bibtexparser<2"`), which The
+Scheduling Zoo's own `extract.py` imports; 2.x removed the `bibtexparser.load`
+API it uses.
 
 ## About the seed data
 

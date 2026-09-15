@@ -85,23 +85,6 @@ main {
   gap: 1.5rem;
 }
 
-.facets {
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-  display: grid;
-  gap: 0.9rem;
-}
-.facet-group h2 {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin: 0 0 0.4rem;
-  font-weight: 600;
-}
-.greek { font-style: italic; text-transform: none; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .chip {
@@ -201,6 +184,53 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   padding: 0.25rem 0.6rem 0.25rem 0.4rem;
 }
 .legend-swatch { width: 0.9em; height: 0.9em; border-radius: 3px; flex-shrink: 0; }
+
+/* Search: the parameter chips, row count and legend around the matrix */
+.search-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.8rem;
+}
+.search-params-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+.search-params .chip { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
+.search-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.search-only-param { cursor: pointer; }
+.search-problem-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+.search-problem-link:hover { color: var(--accent); text-decoration: underline; }
+.search-matrix .badge { min-height: 2.4rem; }
+/* Wide enough that the longest classical label ("pseudo-polynomial time
+   solvable") takes two lines instead of stretching every row to three. */
+.search-matrix td.result-cell:nth-child(2) { min-width: 10.5rem; }
+.search-legend { margin-top: 1.2rem; }
+.search-legend .legend-items + .legend-items { margin-top: 0.5rem; }
+.search-legend-label { align-self: center; font-size: 0.8rem; color: var(--muted); }
 
 .detail-overlay {
   position: fixed; inset: 0;
@@ -344,7 +374,6 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 }
 .related-links a:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Glossary */
 /* Documentation pages -- prose, so a readable measure (~70 characters)
    rather than the full page width the diagrams use. */
 .docs-page { max-width: 820px; margin: 0 auto; }
@@ -381,29 +410,6 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   vertical-align: top;
 }
 .docs-table th { background: var(--hover-bg, rgba(128,128,128,0.12)); }
-.glossary-list { max-width: 820px; margin: 0 auto; display: grid; gap: 1.1rem; }
-.glossary-item h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
-.glossary-item .sym { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
-.glossary-item p { margin: 0.2rem 0 0; font-size: 0.9rem; color: var(--fg); }
-
-/* References */
-.ref-list { max-width: 820px; margin: 0 auto; display: grid; gap: 0.7rem; }
-.ref-item {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.88rem;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.8rem;
-}
-.ref-item .ref-key {
-  font-weight: 700;
-  color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.ref-doi { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: var(--accent); word-break: break-all; }
-.ref-doi-note { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: var(--muted); font-style: italic; }
 
 /* .view is the actual grid item under main (not .map-page, which is just
    a normal block child of it) -- same min-width:auto default grid-item
@@ -512,7 +518,10 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-bg);
-  padding: 1.5rem;
+  /* Extra room on top: the Undo/Redo and TikZ/Apply button rows sit over
+     the top of the box (~65px deep) and used to cover the first row of
+     nodes. */
+  padding: 4.5rem 1.5rem 1.5rem;
 }
 .map-canvas { position: relative; }
 .map-edge-svg { position: absolute; top: 0; left: 0; overflow: visible; }
@@ -569,6 +578,66 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   position: relative;
   padding-right: 8rem;
 }
+/* The overview's short introduction above the filters. The defined terms
+   (Nodes, Arrows, Colors) stand out in the full text color against the
+   muted prose; Graham's alpha|beta|gamma gets its own centered line. */
+.sz-intro {
+  /* As wide as the filter bar and diagram box below it. */
+  max-width: none;
+  margin: -0.5rem 0 1.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  text-align: left;
+}
+.sz-intro p { margin: 0 0 0.6rem; }
+/* The browser-default link blue is nearly invisible on the dark panel. */
+.sz-intro a, .design-intro a { color: var(--accent); }
+.sz-intro code {
+  background: rgba(128,128,128,0.16);
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  color: var(--fg);
+  font-size: 0.9em;
+}
+.sz-def { color: var(--fg); font-weight: 700; }
+.sz-graham {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 0.4rem 0 0.9rem !important;
+}
+.sz-graham-field { display: flex; flex-direction: column; align-items: center; min-width: 6rem; }
+.sz-graham-sym {
+  font-size: 2.2rem;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1.15;
+  background: linear-gradient(135deg, #4dabf7 0%, #9775fa 50%, #f783ac 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(151, 117, 250, 0.35);
+}
+.sz-graham-bar { font-size: 2.2rem; line-height: 1.15; color: var(--muted); }
+.sz-graham-name {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+/* Left-aligned with the text around it; only the alpha|beta|gamma line is centred. */
+.sz-intro-legend { margin: 0.2rem 0 0.8rem; justify-content: flex-start; }
+.sz-arrow-key { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.3rem 0.5rem; }
+.sz-line-swatch {
+  display: inline-block;
+  width: 1.6rem;
+  border-top: 3px solid;
+  margin: 0 0.1rem 0 0.8rem;
+}
+.sz-line-swatch:first-child { margin-left: 0; }
+.sz-line-dashed { border-top-style: dashed; }
 .sz-reset-filters-btn {
   position: absolute;
   right: 0;
@@ -829,9 +898,54 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
    its own container even while "fitting" the wrong (wider) one. */
 .design-page { width: 100%; margin: 0 auto; }
 .design-intro { max-width: 780px; margin: -0.5rem auto 1.5rem; color: var(--muted); font-size: 0.9rem; text-align: center; }
+.story-designer { max-width: 980px; margin: 0 auto 2.5rem; }
+.story-picker { display: block; margin-bottom: 1rem; }
+.story-search-wrap { position: relative; max-width: 720px; margin: 1rem auto 0; }
+.story-search { width: 100%; }
+.story-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-bg); box-shadow: var(--shadow); }
+.designer-search-tools { display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%; margin-top: 1rem; }
+.designer-search-tools .story-search-wrap { max-width: none; width: 100%; margin: 0; }
+.designer-filter-row { display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: 0.6rem; margin: 0; }
+.designer-search-tools > .story-results { position: relative; top: auto; left: auto; right: auto; width: 100%; max-height: none; overflow: visible; }
+.designer-search-tools > .story-results { grid-column: 1 / -1; }
+.designer-search-tools > .story-results .designer-mini-graph { min-width: 0; }
+.story-result { display: block; width: 100%; min-height: 2.4rem; padding: 0.55rem 0.7rem; border: 0; border-bottom: 1px solid rgba(255,255,255,0.2); color: #111; text-align: left; cursor: grab; font: inherit; font-weight: 700; }
+.story-result:last-child { border-bottom: 0; }
+.story-result:hover, .story-result:focus { filter: brightness(1.12); outline: none; }
+.story-result:disabled { cursor: default; opacity: 0.55; }
+.story-empty { padding: 0.8rem; color: var(--muted); font-size: 0.85rem; }
+.designer-mini-graph { position: relative; overflow: hidden; background: var(--panel-bg); }
+.designer-mini-graph svg { position: absolute; inset: 0; pointer-events: none; }
+.designer-mini-graph line { stroke: var(--muted); stroke-width: 1.5; }
+.designer-mini-graph marker path { fill: var(--muted); }
+.designer-mini-node { position: absolute; display: grid; place-items: center; padding: 0.2rem 0.35rem; border: 2px solid; border-radius: 4px; cursor: grab; font: inherit; font-size: 0.68rem; font-weight: 700; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: normal; text-align: center; }
+.designer-mini-node:hover, .designer-mini-node:focus { filter: brightness(1.12); outline: 2px solid var(--accent); }
+.designer-mini-node.added { opacity: 0.45; cursor: default; }
+.designer-mini-node.exact-fit { outline: 3px solid #4dabf7; outline-offset: 3px; box-shadow: 0 0 0 4px rgba(77,171,247,0.24), 0 0 16px rgba(77,171,247,0.85); }
+.designer-draft-node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; border: 2px dashed var(--accent); border-radius: 4px; background: var(--panel-bg); color: var(--accent); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 700; }
+.designer-draft-node strong { color: var(--fg); font-size: 0.72rem; }
+.designer-draft-node:hover, .designer-draft-node:focus { background: var(--chip-bg); outline: 2px solid var(--accent); }
+.designer-draft-plus { font-size: 1.1rem; line-height: 1; }
+.story-canvas-wrap { min-height: 480px; border: 2px solid var(--border); border-radius: 6px; overflow: auto; background: var(--panel-bg); }
+.story-canvas-wrap.drop-target { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel-bg)); }
+.map-canvas-wrap.drop-target { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.story-canvas { position: relative; min-width: 680px; min-height: 260px; }
+.story-canvas-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+.story-edge-svg { position: absolute; inset: 0; pointer-events: none; }
+.story-edge-svg line { stroke: var(--muted); stroke-width: 2; }
+.story-edge-svg marker path { fill: var(--muted); }
+.story-node { position: absolute; display: grid; place-items: center; padding: 0.55rem 0.7rem; border: 2px solid var(--accent); border-radius: 6px; cursor: grab; font-size: 0.84rem; font-weight: 700; text-align: center; box-shadow: var(--shadow); user-select: none; }
+.story-node:active { cursor: grabbing; }
+.story-node small { display: block; margin-top: 0.15rem; color: var(--muted); font-weight: 400; }
+@media (max-width: 700px) { .story-canvas { min-width: 600px; } }
+@media (max-width: 1050px) { .designer-search-tools { grid-template-columns: 1fr; } .designer-filter-row { justify-content: center; flex-wrap: wrap; } }
 .design-chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; min-height: 2.1rem; }
 .design-chip-empty { color: var(--muted); font-size: 0.82rem; font-style: italic; align-self: center; }
 .design-chip { font-size: 0.78rem; }
+.designer-restrictions { max-width: 980px; margin: 1.1rem auto 0; padding: 0.75rem 1rem; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.designer-restrictions-label { margin-bottom: 0.45rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
+.designer-restrictions .design-chip-row { min-height: 1.8rem; justify-content: center; }
+.designer-restrictions-note { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.75rem; text-align: center; }
 .design-selected-label { text-align: center; font-size: 0.85rem; color: var(--muted); margin: 0.8rem 0 0.6rem; }
 .design-graph-node { cursor: pointer; }
 .design-graph-node.active { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -839,6 +953,17 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .sz-node.delete-armed,
 .map-node.delete-armed { opacity: 0.4; }
 .map-canvas-wrap.delete-armed { border-color: #c92a2a; box-shadow: inset 0 0 0 2px #c92a2a; }
+.designer-selected { outline: 3px solid #4dabf7 !important; outline-offset: 4px; box-shadow: 0 0 0 4px rgba(77,171,247,0.28), 0 0 18px rgba(77,171,247,0.8); z-index: 4; }
+.designer-relations { max-width: 980px; margin: 1rem auto 0; padding: 0.8rem 1rem; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: center; }
+.designer-relations-title { display: inline-block; margin-right: 0.6rem; color: var(--fg); font-size: 0.85rem; font-weight: 700; }
+.designer-details-btn { display: inline-block; margin-bottom: 0.65rem; }
+.designer-relations-group { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.4rem; margin-top: 0.45rem; }
+.designer-relations-group b { color: var(--muted); font-size: 0.78rem; margin-right: 0.25rem; }
+.designer-relation-btn { padding: 0.35rem 0.55rem; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-bg); color: var(--fg); cursor: pointer; font: inherit; font-size: 0.75rem; }
+.designer-relation-btn:hover { border-color: var(--accent); color: var(--accent); }
+.designer-relation-btn small { display: block; color: var(--muted); font-size: 0.65rem; }
+.designer-relations-empty { color: var(--muted); font-size: 0.78rem; }
+.designer-draft-label { display: inline-block; margin-left: 0.5rem; color: var(--accent); font-size: 0.78rem; font-weight: 700; }
 .design-bin {
   position: fixed;
   bottom: 28px;
@@ -864,3 +989,171 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .design-details { max-width: 780px; margin: 1.5rem auto 0; }
 .design-details ul { margin: 0.3rem 0 0.8rem; padding-left: 1.2rem; }
 .design-details li { margin-bottom: 0.25rem; }
+
+/* Where the Problem Map Designer's new-problem box would be, when the
+   filters don't describe one complete, well-formed problem: says why. */
+.designer-draft-hint {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.6rem;
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+}
+/* The designer's add button sits in the filter row: a long notation is cut
+   with an ellipsis (the full text is in its tooltip). */
+.designer-add-btn { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.designer-add-btn:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+/* Documentation contents: sections and their subsections, linked as
+   #/docs/<id>. */
+.docs-toc {
+  margin: 0 0 2rem;
+  padding: 0.9rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+.docs-toc h3 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.docs-toc ol { margin: 0; padding-left: 1.3rem; line-height: 1.7; }
+.docs-toc ol ol { padding-left: 1.2rem; font-size: 0.9em; }
+.docs-toc a { color: var(--accent); text-decoration: none; }
+.docs-toc a:hover { text-decoration: underline; }
+.docs-section h3, .docs-section h4 { scroll-margin-top: 1rem; }
+
+/* The overview's reading guide under its legend: the (i) beside a few
+   short paragraphs. */
+.sz-map-help {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.4rem;
+  max-width: 780px;
+  text-align: left;
+  line-height: 1.5;
+}
+.sz-map-help .map-hint-icon { grid-row: 1 / span 3; margin-top: 0.2em; }
+.sz-map-help p { grid-column: 2; margin: 0 0 0.45rem; }
+.sz-map-help p:last-child { margin-bottom: 0; }
+
+/* Scheduling Zoo map: Save as a New Problem Map, bottom right of the box,
+   styled like the TikZ button; the box gets room for it at the bottom. */
+.sz-save-map-btn {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+.sz-save-map-btn:hover { border-color: var(--accent); color: var(--accent); }
+#view-schedulingzoo .map-canvas-wrap { padding-bottom: 3.2rem; }
+
+/* Problem Map Designer: title and save, above the map. */
+.designer-map-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0 0 0.8rem; }
+.designer-map-bar .designer-map-title { flex: 1 1 18rem; max-width: 28rem; }
+.designer-save-status { color: var(--muted); font-size: 0.85rem; }
+.designer-save-status a { color: var(--accent); }
+
+/* Problem Maps: the create card, and saved maps with a delete button. */
+.map-card-new h3 { color: var(--accent); }
+.map-card-saved { display: flex; align-items: center; gap: 0.8rem; }
+.map-card-saved .map-card-link { flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.map-card-saved .map-card-delete { flex: none; }
+
+/* Problem Map Designer: adding arrows by hand. */
+.designer-add-arrow-btn { font-weight: 700; letter-spacing: 0.02em; }
+.designer-add-arrow-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--chip-bg); }
+.arrow-mode .map-node { cursor: crosshair; }
+.designer-arrow-hint { margin: 0.6rem 0 0; color: var(--fg); font-size: 0.85rem; text-align: center; }
+.designer-user-edge { cursor: pointer; }
+.designer-user-edge-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+.designer-dialog-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1rem;
+}
+.designer-dialog {
+  max-width: 560px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 1.2rem 1.4rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.designer-dialog h3 { margin: 0 0 0.7rem; font-size: 1.05rem; }
+.designer-dialog ul { padding-left: 1.1rem; }
+.designer-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.designer-dialog-report { text-decoration: none; border-color: var(--accent); color: var(--accent); }
+.designer-dialog-claim b { color: inherit; }
+.designer-dialog-source { color: var(--muted); }
+
+/* Adding an arrow: the instruction floats at the top of the window, and the
+   problem under the pointer (and the chosen origin) glows yellow. */
+.designer-arrow-toast {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid #fcc419;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow), 0 0 14px rgba(252, 196, 25, 0.35);
+  font-size: 0.95rem;
+  pointer-events: none;
+  animation: designer-toast-in 0.15s ease-out;
+}
+.designer-arrow-toast b { color: #fcc419; letter-spacing: 0.01em; }
+.designer-arrow-toast span { color: var(--muted); font-size: 0.75rem; }
+@keyframes designer-toast-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.arrow-mode .map-node:hover,
+.map-node.arrow-origin {
+  outline: 3px solid #fcc419 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(252, 196, 25, 0.3), 0 0 18px rgba(252, 196, 25, 0.85) !important;
+  z-index: 4;
+}
+
+/* Describing a hand-drawn reduction. */
+.designer-reduction-dialog { max-width: 640px; max-height: calc(100vh - 2rem); overflow-y: auto; }
+.designer-reduction-problem {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  white-space: nowrap;
+}
+.designer-reduction-dialog h3 { line-height: 1.6; }
+.designer-reduction-dialog fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 0.7rem; padding: 0.4rem 0.8rem 0.6rem; }
+.designer-reduction-dialog legend { padding: 0 0.3rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.designer-reduction-dialog legend a { text-transform: none; letter-spacing: 0; margin-left: 0.4rem; color: var(--accent); }
+.designer-reduction-option { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.2rem 0; cursor: pointer; }
+.designer-reduction-option input { margin-top: 0.3rem; }
+.designer-reduction-option small { display: block; color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+.designer-reduction-params { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.3rem 0 0 1.5rem; }
+.designer-reduction-params.disabled { opacity: 0.4; }
+.designer-reduction-params .chip { padding: 0.15rem 0.5rem; font-size: 0.75rem; }
+.designer-reduction-params .chip input { display: none; }
+.designer-reduction-note { display: block; font-size: 0.85rem; }
+.designer-reduction-note small { color: var(--muted); }
+.designer-reduction-note input { display: block; width: 100%; max-width: none; margin-top: 0.3rem; }

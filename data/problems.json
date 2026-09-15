@@ -87,8 +87,7 @@
       "name": "number of machines",
       "dimensions": [
         { "dimension": "machines", "measureKind": "magnitude" }
-      ],
-      "gloss": "The number of machines in the scheduling instance, taken as a parameter instead of part of the input size. Many problems that are NP-hard for arbitrary m turn out to be FPT or remain hard when m is small and fixed."
+      ]
     },
     {
       "id": "pmax",
@@ -96,8 +95,7 @@
       "name": "maximum processing time",
       "dimensions": [
         { "dimension": "processingTimes", "measureKind": "magnitude" }
-      ],
-      "gloss": "The largest job processing time in the instance. Parameterizing by p_max turns pseudo-polynomial dynamic programs (which run in time polynomial in the numeric value of processing times) into FPT algorithms."
+      ]
     },
     {
       "id": "numP",
@@ -105,8 +103,7 @@
       "name": "number of distinct processing times",
       "dimensions": [
         { "dimension": "processingTimes", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct values that appear among job processing times. Small #p lets jobs be grouped into few interchangeable classes, which is the basis of n-fold integer programming approaches."
+      ]
     },
     {
       "id": "numW",
@@ -114,8 +111,7 @@
       "name": "number of distinct weights",
       "dimensions": [
         { "dimension": "weights", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct job weight values. Analogous in spirit to #p, but for weights instead of processing times."
+      ]
     },
     {
       "id": "numR",
@@ -123,12 +119,11 @@
       "name": "number of distinct release dates",
       "dimensions": [
         { "dimension": "releaseTimes", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct release-date values. Small #r lets jobs be grouped by release-date class."
+      ]
     },
-    { "id": "numSpeed", "symbol": "#speeds", "name": "number of distinct machine speeds", "gloss": "The number of distinct machine speed values in a uniform-machines (Q) environment. Not part of the mega-problem dimension model (no machine-speed dimension defined there)." },
-    { "id": "tw", "symbol": "tw(prec)", "name": "treewidth of the precedence graph", "gloss": "The treewidth of the DAG describing precedence constraints between jobs. Bounded treewidth typically enables dynamic programming over a tree decomposition. Not part of the mega-problem dimension model (precedence constraints aren't one of its dimensions)." },
-    { "id": "vc", "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph", "gloss": "The size of a minimum vertex cover of the (underlying undirected) precedence graph — i.e. the number of jobs whose removal leaves no precedence edges. Not part of the mega-problem dimension model." },
+    { "id": "numSpeed", "symbol": "#speeds", "name": "number of distinct machine speeds" },
+    { "id": "tw", "symbol": "tw(prec)", "name": "treewidth of the precedence graph" },
+    { "id": "vc", "symbol": "vc(prec)", "name": "vertex cover number of the precedence graph" },
     {
       "id": "numDD_numP",
       "symbol": "#dd+#p",
@@ -136,8 +131,7 @@
       "dimensions": [
         { "dimension": "dueDates", "measureKind": "cardinality" },
         { "dimension": "processingTimes", "measureKind": "cardinality" }
-      ],
-      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter. Common in single-machine scheduling: bounding both lets jobs be grouped into few interchangeable (due-date, processing-time) classes."
+      ]
     },
     {
       "id": "sigma_plus_m",
@@ -146,8 +140,7 @@
       "dimensions": [
         { "dimension": "slack", "measureKind": "magnitude" },
         { "dimension": "machines", "measureKind": "magnitude" }
-      ],
-      "gloss": "The additive due-date slack bound (how far d_j−r_j may exceed p_j) plus the number of machines, treated as a single combined parameter."
+      ]
     },
     {
       "id": "m_plus_p",
@@ -156,8 +149,7 @@
       "dimensions": [
         { "dimension": "machines", "measureKind": "magnitude" },
         { "dimension": "processingTimes", "measureKind": "magnitude" }
-      ],
-      "gloss": "The number of machines plus the shared processing-time value p, treated as a single combined parameter — meaningful only when processing times are uniform (pj=p)."
+      ]
     },
     {
       "id": "numDD",
@@ -165,8 +157,7 @@
       "name": "number of distinct due dates",
       "dimensions": [
         { "dimension": "dueDates", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct due-date values in the instance, on its own (not combined with any other count)."
+      ]
     },
     {
       "id": "numDD_numW",
@@ -175,8 +166,7 @@
       "dimensions": [
         { "dimension": "dueDates", "measureKind": "cardinality" },
         { "dimension": "weights", "measureKind": "cardinality" }
-      ],
-      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter."
+      ]
     },
     {
       "id": "numP_numW",
@@ -185,8 +175,7 @@
       "dimensions": [
         { "dimension": "processingTimes", "measureKind": "cardinality" },
         { "dimension": "weights", "measureKind": "cardinality" }
-      ],
-      "gloss": "The sum of two distinct-value counts, treated as a single combined parameter."
+      ]
     },
     {
       "id": "sigma",
@@ -194,8 +183,7 @@
       "name": "additive slack bound",
       "dimensions": [
         { "dimension": "slack", "measureKind": "magnitude" }
-      ],
-      "gloss": "The additive due-date slack bound (how far d_j-r_j may exceed p_j), taken alone as a parameter -- unlike sigma_plus_m, the number of machines is left unrestricted here."
+      ]
     },
     {
       "id": "lambda",
@@ -203,8 +191,7 @@
       "name": "window looseness ratio",
       "dimensions": [
         { "dimension": "window", "measureKind": "magnitude" }
-      ],
-      "gloss": "The multiplicative looseness of a job's due-date window relative to its processing time (d_j-r_j <= lambda * p_j), taken as a parameter."
+      ]
     },
     {
       "id": "numR_numDD",
@@ -213,8 +200,7 @@
       "dimensions": [
         { "dimension": "releaseTimes", "measureKind": "cardinality" },
         { "dimension": "dueDates", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct release dates plus the number of distinct due dates, treated as a single combined parameter."
+      ]
     },
     {
       "id": "numP_numR_numDD",
@@ -224,8 +210,7 @@
         { "dimension": "processingTimes", "measureKind": "cardinality" },
         { "dimension": "releaseTimes", "measureKind": "cardinality" },
         { "dimension": "dueDates", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct processing times, release dates, and due dates, summed into a single combined parameter."
+      ]
     },
     {
       "id": "numP_numW_numR",
@@ -235,8 +220,7 @@
         { "dimension": "processingTimes", "measureKind": "cardinality" },
         { "dimension": "weights", "measureKind": "cardinality" },
         { "dimension": "releaseTimes", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct processing times, weights, and release dates, summed into a single combined parameter."
+      ]
     },
     {
       "id": "numP_numW_numDD",
@@ -246,8 +230,7 @@
         { "dimension": "processingTimes", "measureKind": "cardinality" },
         { "dimension": "weights", "measureKind": "cardinality" },
         { "dimension": "dueDates", "measureKind": "cardinality" }
-      ],
-      "gloss": "The number of distinct processing times, weights, and due dates, summed into a single combined parameter."
+      ]
     }
   ],
   "references": {
@@ -367,7 +350,8 @@
     { "id": "O2--Cmax", "notation": "O2||Cmax", "alpha": "O", "beta": [], "gamma": "Cmax", "name": "Two-machine open shop, makespan", "classicalClass": "P", "classicalStatus": "Polynomial.", "overview": "Open-shop scheduling with two machines is one of the few multi-operation shop-scheduling problems solvable exactly in polynomial time, via a simple list-scheduling argument. It's included mainly as a green, parameter-independent baseline for contrast against the harder shop-scheduling variants.", "related": ["P--Cmax"], "results": [] },
     { "id": "F3--sumWjZj", "notation": "F3||ΣwjZj", "alpha": "F3", "beta": [], "gamma": "ΣwjZj", "name": "3-stage flow shop, weighted number of non-JIT jobs", "classicalClass": "strongly-NP-hard", "classicalStatus": "Strongly NP-hard.", "overview": "Zj = 1 if job j does not complete exactly on its due date (a just-in-time / JIT objective), 0 otherwise; ΣwjZj is the weighted count of jobs that miss their exact due date. With three sequential stages and general weights this is strongly NP-hard — the top of this generalization family.", "related": ["F3--sumZj", "F2--sumWjZj"], "results": [] },
     { "id": "F3--sumZj", "notation": "F3||ΣZj", "alpha": "F3", "beta": [], "gamma": "ΣZj", "name": "3-stage flow shop, number of non-JIT jobs", "classicalClass": "strongly-NP-hard", "classicalStatus": "Strongly NP-hard.", "overview": "The unweighted (wj=1) special case of F3||ΣwjZj. Still strongly NP-hard — unlike the 2-stage case, dropping weights does not restore polynomial-time solvability once a third stage is added.", "related": ["F3--sumWjZj", "F2--sumZj"], "results": [] },
-    { "id": "F1m--sumWjZj", "notation": "F(1,m)||ΣwjZj", "alpha": "F(1,m)", "beta": [], "gamma": "ΣwjZj", "name": "Flexible flow shop (1 machine, then m parallel machines), weighted number of non-JIT jobs", "classicalClass": "NP-hard-unresolved", "classicalStatus": "NP-hard; strong/weak status and pseudo-polynomial solvability open.", "overview": "A 2-stage flexible flow shop: every job first passes through a single machine, then through one of m identical parallel machines. Generalizes P||ΣwjZj (by adding stage 1) and specializes into F(1,c)||ΣwjZj when the second-stage machine count is bounded by a constant c.", "related": ["F1c--sumWjZj", "P--sumWjZj"], "results": [] },
+    { "id": "F1m--sumWjZj", "notation": "F(1,m)||ΣwjZj", "alpha": "F(1,m)", "beta": [], "gamma": "ΣwjZj", "name": "Flexible flow shop (1 machine, then m parallel machines), weighted number of non-JIT jobs", "classicalClass": "strongly-NP-hard", "classicalStatus": "Strongly NP-hard.", "overview": "A 2-stage flexible flow shop: every job first passes through a single machine, then through one of m identical parallel machines. Generalizes P||ΣwjZj (by adding stage 1) and specializes into F(1,c)||ΣwjZj when the second-stage machine count is bounded by a constant c.", "related": ["F1c--sumWjZj", "P--sumWjZj", "F1m--sumZj"], "results": [] },
+    { "id": "F1m--sumZj", "notation": "F(1,m)||ΣZj", "alpha": "F(1,m)", "beta": [], "gamma": "ΣZj", "name": "Flexible flow shop (1 machine, then m parallel machines), number of non-JIT jobs", "classicalClass": "strongly-NP-hard", "classicalStatus": "Strongly NP-hard.", "overview": "The unweighted (wj=1) special case of F(1,m)||ΣwjZj. Strongly NP-hard even without weights, unlike the 2-stage flow shop F2||ΣZj it generalizes (m=1).", "related": ["F1m--sumWjZj", "F2--sumZj"], "results": [] },
     { "id": "F1c--sumWjZj", "notation": "F(1,c)||ΣwjZj", "alpha": "F(1,c)", "beta": [], "gamma": "ΣwjZj", "name": "Flexible flow shop (1 machine, then c parallel machines, c constant), weighted number of non-JIT jobs", "classicalClass": "weakly-NP-hard", "classicalStatus": "Weakly NP-hard; pseudo-polynomial algorithm known.", "overview": "Same 2-stage flexible flow shop as F(1,m)||ΣwjZj, but with the second-stage machine count fixed to a constant c rather than left arbitrary. Bounding the machine count resolves the open weak/strong question of F(1,m): here a pseudo-polynomial algorithm is known. Setting c=1 degenerates to the plain 2-stage flow shop F2||ΣwjZj.", "related": ["F1m--sumWjZj", "F2--sumWjZj"], "results": [] },
     { "id": "F2--sumWjZj", "notation": "F2||ΣwjZj", "alpha": "F2", "beta": [], "gamma": "ΣwjZj", "name": "2-stage flow shop, weighted number of non-JIT jobs", "classicalClass": "weakly-NP-hard", "classicalStatus": "Weakly NP-hard; pseudo-polynomial algorithm known.", "overview": "The c=1 special case of F(1,c)||ΣwjZj, and the 2-stage special case of F3||ΣwjZj. Dropping weights (Zj unweighted) restores polynomial solvability; dropping a stage (down to 1 machine) also restores polynomial solvability.", "related": ["F3--sumWjZj", "F1c--sumWjZj", "F2--sumZj", "1--sumWjZj"], "results": [] },
     { "id": "F2--sumZj", "notation": "F2||ΣZj", "alpha": "F2", "beta": [], "gamma": "ΣZj", "name": "2-stage flow shop, number of non-JIT jobs", "classicalClass": "P", "classicalStatus": "Polynomial.", "overview": "The unweighted special case of F2||ΣwjZj. Unlike the 3-stage case, dropping weights here does restore polynomial-time solvability — the weight axis and the stage-count axis interact rather than acting independently.", "related": ["F2--sumWjZj", "F3--sumZj", "1--sumZj"], "results": [] },
@@ -729,11 +713,12 @@
   "maps": [
     {
       "id": "jit-flowshop",
-      "title": "JIT Flow Shop",
+      "title": "Just-in-Time Flexible Flow Shop",
       "description": "Weighted number of just-in-time-violating jobs, across three independent generalization axes: number of flow-shop stages, flexibility (parallel machines at a stage), and weighted vs. unweighted.",
       "colStagger": 0,
       "nodes": [
         { "problemId": "F1m--sumWjZj", "col": 1, "row": 0 },
+        { "problemId": "F1m--sumZj", "col": 2, "row": 0 },
         { "problemId": "F3--sumWjZj", "col": 3, "row": 0 },
         { "problemId": "F3--sumZj", "col": 4, "row": 0.5 },
         { "problemId": "F1c--sumWjZj", "col": 2, "row": 1 },
@@ -754,6 +739,8 @@
         { "from": "F1m--sumWjZj", "to": "F1c--sumWjZj", "axis": "flexibility" },
         { "from": "F1c--sumWjZj", "to": "F2--sumWjZj", "axis": "flexibility" },
         { "from": "F1m--sumWjZj", "to": "P--sumWjZj", "axis": "flexibility" },
+        { "from": "F1m--sumWjZj", "to": "F1m--sumZj", "axis": "weight" },
+        { "from": "F1m--sumZj", "to": "F2--sumZj", "axis": "flexibility" },
         { "from": "P--sumWjZj", "to": "1--sumWjZj", "axis": "parallel" }
       ]
     },
