@@ -332,7 +332,25 @@
 
   // One cited result: its bound text, then author (year) -- title, linked
   // when schedzoo has a URL/DOI. Shared by the problem panel and Search.
+  // A problem's parameterized results: its own, then the hardness results
+  // this site infers for it along parameter-safe arrows (inheritedParams,
+  // see param_safe_tokens in convert_for_pzoo.py).
+  function szAllParams(n) {
+    return n.params.concat(n.inheritedParams || []);
+  }
+  function szNotationOf(id) {
+    const n = DATA_SZ.nodes.find((x) => x.id === id);
+    return n ? n.notation : id;
+  }
+
   function szCitationHtml(r) {
+    if (r.inheritedFrom) {
+      return "<p style='margin:0 0 0.2rem'><b>Inherited</b> from its special case " + escapeHtml(szNotationOf(r.inheritedFrom)) +
+        ", which " + escapeHtml(r.bound) + " for " + escapeHtml(r.param) + ".</p>" +
+        "<p style='margin:0 0 0.2rem;color:var(--muted);font-size:0.85rem'>Along " +
+        escapeHtml(r.via.map(szNotationOf).join(" → ")) + ": every arrow keeps " + escapeHtml(r.param) + " bounded.</p>" +
+        szCitationHtml(Object.assign({}, r, { inheritedFrom: null }));
+    }
     const cite = escapeHtml(r.author || "") + (r.year ? " (" + escapeHtml(r.year) + ")" : "");
     const titleHtml = r.url
       ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + escapeHtml(r.title || "") + "</a>"
@@ -374,7 +392,7 @@
     const paramCounts = {};
     nodes.forEach((n) => {
       const byLabel = {};
-      n.params.forEach((r) => {
+      szAllParams(n).forEach((r) => {
         const l = canonicalParamLabel(r.param);
         (byLabel[l] = byLabel[l] || []).push(r);
       });
@@ -393,7 +411,7 @@
       swatch(c) + "<span>" + escapeHtml(label) + "</span></div>";
     const usedClassical = new Set(nodes.map((n) => SZ_EFFECTIVE[n.id]));
     const usedParam = new Set();
-    nodes.forEach((n) => n.params.forEach((r) => { if (r.complexityClass) usedParam.add(r.complexityClass); }));
+    nodes.forEach((n) => szAllParams(n).forEach((r) => { if (r.complexityClass) usedParam.add(r.complexityClass); }));
     const classicalLegend = DATA.classicalClasses
       .filter((c) => usedClassical.has(c.id))
       .map((c) => legendItem(c, c.id === "unclaimed" ? "open" : c.label))
@@ -437,7 +455,7 @@
       '<div class="legend-items"><span class="search-legend-label">Classical</span>' + classicalLegend +
       '<span class="search-legend-label">• = inherited through a reduction edge, not cited directly</span></div>' +
       '<div class="legend-items"><span class="search-legend-label">Parameterized</span>' + paramLegend +
-      '<span class="search-legend-label">×n = n cited results, strongest shown</span></div>' +
+      '<span class="search-legend-label">×n = n cited results, strongest shown · • = inherited along parameter-safe arrows</span></div>' +
       "</div>";
 
     const filterInput = root.querySelector("#search-filter");
@@ -514,6 +532,8 @@
                 if (!rs) return '<td class="result-cell"><div class="badge na">—</div></td>';
                 const best = bestParamComplexityClass(rs);
                 const pc = best ? classById(best) : null;
+                // • when the class shown comes only from an inherited result
+                const inheritedOnly = !!best && bestParamComplexityClass(rs.filter((r) => !r.inheritedFrom)) !== best;
                 return '<td class="result-cell"><button type="button" class="badge" data-sz-id="' + escapeHtml(n.id) +
                   '" data-param="' + escapeHtml(l) + '" style="' +
                   (pc ? classPillStyle(pc) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
@@ -523,7 +543,8 @@
                   '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + " for " + l + ", " +
                     rs.length + " cited result" + (rs.length === 1 ? "" : "s")) +
                   '">' + escapeHtml(pc ? pc.label : "other") +
-                  (rs.length > 1 ? '<span class="conf-flag">×' + rs.length + "</span>" : "") + "</button></td>";
+                  (rs.length > 1 ? '<span class="conf-flag">×' + rs.length + "</span>" : "") +
+                  (inheritedOnly ? '<span class="conf-flag" title="Inherited along parameter-safe arrows">•</span>' : "") + "</button></td>";
               })
               .join("") +
             "</tr>";
@@ -562,7 +583,7 @@
   function openSzParamResultsPanel(nodeId, label) {
     const n = DATA_SZ.nodes.find((x) => x.id === nodeId);
     if (!n) return;
-    const rs = n.params.filter((r) => canonicalParamLabel(r.param) === label);
+    const rs = szAllParams(n).filter((r) => canonicalParamLabel(r.param) === label);
     const best = bestParamComplexityClass(rs);
     const pc = best ? classById(best) : null;
     const pill = (c) => '<span class="class-pill" style="' + classPillStyle(c) + '">' + escapeHtml(c.label) + "</span>";
@@ -575,7 +596,7 @@
             ? detailField("Why this class", "It is the strongest of the cited results below: a hardness result wins over a positive one, and within each kind the strongest statement wins.")
             : "")
         : detailField("Classification", "None of the cited results below is an FPT, XP, W-hardness or para-NP-hardness statement this site recognizes (for example a fine-grained running-time bound), so no class is shown.")) +
-      '<div class="detail-field"><h4>Cited result' + (rs.length === 1 ? "" : "s") + " (from The Scheduling Zoo)</h4>" +
+      '<div class="detail-field"><h4>Result' + (rs.length === 1 ? "" : "s") + " (cited in The Scheduling Zoo, or inherited from one)</h4>" +
       '<ul class="result-list">' +
       rs.map((r) => {
         const c = r.complexityClass ? classById(r.complexityClass) : null;
@@ -937,9 +958,18 @@
       "problem its arrows reach -- that is proven hard. Strongly NP-hard carries over as it is; " +
       "pseudo-polynomial carries over only as at least weakly NP-hard, since its algorithm need not extend to the " +
       "more general problem; P never carries over. A problem's panel says when its class is inherited. " +
-      "Parameterized results are not carried along these arrows at all: that needs the arrow to be a plain " +
-      "restriction (see Arrow rule types above), and The Scheduling Zoo's rules don't record which kind each " +
-      "one is.</p>" +
+      "</p>" +
+      "<p>Parameterized <b>hardness</b> (W[1], W[2], para-NP) is carried too, but only along arrows known to keep " +
+      "the parameter bounded. An arrow qualifies when every field it changes either reads the same instance with " +
+      "a wider value (a set of chains is a precedence order, p<sub>j</sub>=1 is p<sub>j</sub>=p with p=1) or pads " +
+      "it with constant data (weights 1, due dates or release dates 0, speeds 1, every machine eligible). Paddings " +
+      "exclude the measures built from the padded data: release and due dates set to 0 change the windows behind " +
+      "pw(I) and slack<sub>max</sub>, and unrelated machines rescale the processing times behind p<sub>max</sub> " +
+      "and #p. Nothing is carried across machine counts, preemption, the online model, or objective changes that " +
+      "only hold at one threshold. For example, P|r<sub>j</sub>;p<sub>j</sub>=p|ΣU<sub>j</sub> is W[2]-hard in " +
+      "m, and weighting its jobs changes nothing about m, so P|r<sub>j</sub>;p<sub>j</sub>=p|Σw<sub>j</sub>U<sub>j</sub> " +
+      "is W[2]-hard in m too. Inherited results are marked in the Search matrix and explained, with the chain of " +
+      "arrows, in each problem's panel. Positive results (FPT, XP) are not carried yet.</p>" +
 
       "<h4>Where this site reads the data differently</h4>" +
       "<p>Two reduction rules are corrected (setup times under a single server, and multiprocessor tasks on " +
@@ -1076,8 +1106,10 @@
       "The full model needs to be per parameter, and needs to follow the parameter hierarchy -- a reduction " +
       "that is safe for " + code("#p") + " is also safe for every parameter that bounds " + code("#p") + ".</p>" +
       "<h4>What it enables</h4>" +
-      "<p>With that recorded, parameterized hardness and tractability can be propagated across a map the way " +
-      "classical hardness already is, each inferred result showing the chain of reductions it rests on. Gaps " +
+      "<p>A first, conservative version is already live: parameterized hardness is carried along The Scheduling " +
+      "Zoo's own arrows whose kind is known to keep the parameter bounded (Documentation → Inherited hardness). " +
+      "With safety recorded per reduction, hardness and tractability can be propagated across every map the way " +
+      "classical hardness is, each inferred result showing the chain of reductions it rests on. Gaps " +
       "become visible too: a problem whose neighbours are W[1]-hard for a parameter along safe arrows, but which " +
       "has no result of its own, is a natural open question.</p>" +
       "</section>" +
@@ -3131,7 +3163,7 @@
     const resultLi = szResultLi;
     const lower = n.classical.filter((r) => r.kind === "lower");
     const upper = n.classical.filter((r) => r.kind === "upper");
-    const forest = buildParamForest(n.params);
+    const forest = buildParamForest(szAllParams(n));
     const paramTreeHtml = buildParamTreeHtml(forest, resultLi);
     const paramDiagram = buildParamDiagramHtml(forest);
     const paramUsedClasses = new Set(forest.labels.map((l) => bestParamComplexityClass(forest.byLabel[l])).filter(Boolean));

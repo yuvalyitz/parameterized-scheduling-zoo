@@ -550,6 +550,130 @@ for (a, b) in hasse_edges:
             added_by = "machine-count"
     edges.append({"from": a, "to": b, "diffs": diffs, "addedByUs": added, "addedBy": added_by})
 
+# ---- OUR inference: carry parameterized HARDNESS (W[1], W[2], para-NP)
+# from a special case up to the problems that generalize it -- but only along
+# arrows known to keep the parameter bounded, which a plain "is a special
+# case" arrow does not guarantee by itself (see Documentation > Arrow rule
+# types). Deliberately conservative: an arrow carries a result only when
+# every field it changes is one of the kinds below, the change is one of
+# The Scheduling Zoo's own one-field rules, and every measure in the
+# parameter is safe for that change. Positive results (FPT, XP) are not
+# carried; neither is anything across machine counts, the online model,
+# preemption or objective changes that only hold at a single threshold.
+#
+# How a general instance is built from the special one, per field:
+# - the same instance, read with a wider value (a chain is an order, p_j=1 is
+#   p_j=p with p=1, ...): every measure keeps its value -> all parameters
+# - padding with data that is constant (weights 1, due dates 0, speeds 1,
+#   eligible sets = all machines, sizes 1, delays 0): count parameters
+#   become 1 and maxima become constants -- still bounded -- except the
+#   measures built from the data being padded, listed as excluded
+ALL_PARAMS = None  # every parameter is safe
+PARAM_SAFE_FIELD_CHANGES = {
+    # field: None = any one-field rule of that field keeps the instance as is
+    "precedence relation": ALL_PARAMS,
+    "processing times": ALL_PARAMS,
+    "due date": ALL_PARAMS,
+    "setup times": ALL_PARAMS,
+    "batching": ALL_PARAMS,
+    "number of jobs": ALL_PARAMS,
+    "time lags": ALL_PARAMS,
+    "communication delay": ALL_PARAMS,
+    "transportation delays": ALL_PARAMS,
+    "deadline": ALL_PARAMS,
+    "job size": ALL_PARAMS,
+    "machine sets": ALL_PARAMS,
+}
+# Padding release dates with r_j = 0 changes the time windows [r_j, d_j] and
+# the slack d_j - r_j - p_j, so the window-based measures are not safe.
+RELEASE_PADDING_EXCLUDES = {"pw(I)", "slackmax"}
+# Machine environments: P inside Q is speeds 1 (same processing times); F
+# inside J is the same instance. Q or P inside R rescales processing times
+# (p_ij = p_j / s_i), so measures of the processing times are not safe.
+TYPE_CHANGE_EXCLUDES = {("P", "Q"): set(), ("F", "J"): set(),
+                        ("Q", "R"): {"pmax", "#p", "rank((pij))", "slackmax"},
+                        ("P", "R"): {"pmax", "#p", "rank((pij))", "slackmax"}}
+# Objectives, (specific, general): only paddings that give exactly the same
+# objective value on every schedule -- weights 1 (X inside wX) and due dates
+# 0 (completion time inside lateness/tardiness). Threshold-only rules (Cmax
+# inside ΣUj, Lmax inside ΣTj) and flow-time rules (which need r_j = 0) are
+# not carried.
+_WEIGHT_PADDING = {("\\sum (1-U_j)", "\\sum w_j(1-U_j)"), ("\\sum C_j", "\\sum w_jC_j"),
+                   ("\\sum T_j", "\\sum w_jT_j"), ("\\sum F_j", "\\sum w_jF_j"), ("F_{\\max}", "\\max w_jF_j")}
+_DUE_DATE_PADDING = {("C_{\\max}", "L_{\\max}"), ("\\sum C_j", "\\sum T_j"), ("\\sum w_jC_j", "\\sum w_jT_j")}
+DUE_DATE_PADDING_EXCLUDES = {"pw(I)", "slackmax"}
+
+
+def param_safe_tokens(general_id, specific_id):
+    """The measures an arrow keeps bounded: ALL_PARAMS, a set of excluded
+    measures (everything else is safe), or False when the arrow is not
+    carried at all."""
+    vg, vs = bases[general_id]["core_vec"], bases[specific_id]["core_vec"]
+    excluded = set()
+    for f in core_fields:
+        g, s = vg[f], vs[f]
+        if g == s:
+            continue
+        if f in PARAM_SAFE_FIELD_CHANGES and (s, g) in simple_reductions[f]:
+            continue
+        if f == "release time" and (s, g) == ("", "r_j"):
+            excluded |= RELEASE_PADDING_EXCLUDES
+            continue
+        if f == "type" and (s, g) in TYPE_CHANGE_EXCLUDES:
+            excluded |= TYPE_CHANGE_EXCLUDES[(s, g)]
+            continue
+        if f == "Objective function" and (s, g) in _WEIGHT_PADDING:
+            continue
+        if f == "Objective function" and (s, g) in _DUE_DATE_PADDING:
+            excluded |= DUE_DATE_PADDING_EXCLUDES
+            continue
+        return False
+    return excluded
+
+
+PARAM_HARDNESS_RANK = {"W1": 1, "W2": 2, "paraNP": 3}
+parents_of = {}
+for (a, b) in hasse_edges:
+    parents_of.setdefault(b, []).append(a)
+node_by_id = {n["id"]: n for n in nodes}
+inherited_count = 0
+for source in nodes:
+    for r in source["params"]:
+        cls = r.get("complexityClass")
+        if cls not in PARAM_HARDNESS_RANK:
+            continue
+        tokens = set(r["param"].split("+"))
+        canon = "+".join(sorted(tokens))
+        # breadth-first up the arrows, so each problem records the shortest
+        # chain the result reaches it by
+        seen, frontier = {source["id"]}, [[source["id"]]]
+        while frontier:
+            next_frontier = []
+            for path in frontier:
+                for parent in parents_of.get(path[-1], []):
+                    if parent in seen:
+                        continue
+                    safe = param_safe_tokens(parent, path[-1])
+                    if safe is False or (safe is not ALL_PARAMS and tokens & safe):
+                        continue
+                    seen.add(parent)
+                    target = node_by_id[parent]
+                    chain = path + [parent]
+                    own = [x for x in target["params"] if "+".join(sorted(x["param"].split("+"))) == canon
+                           and PARAM_HARDNESS_RANK.get(x.get("complexityClass"), 0) >= PARAM_HARDNESS_RANK[cls]]
+                    already = [x for x in target.setdefault("inheritedParams", [])
+                               if "+".join(sorted(x["param"].split("+"))) == canon
+                               and PARAM_HARDNESS_RANK[x["complexityClass"]] >= PARAM_HARDNESS_RANK[cls]]
+                    if not own and not already:
+                        target["inheritedParams"].append(dict(r, inheritedFrom=source["id"], via=list(reversed(chain))))
+                        inherited_count += 1
+                    next_frontier.append(chain)
+            frontier = next_frontier
+for n in nodes:
+    n.setdefault("inheritedParams", [])
+print(f"# inherited parameterized hardness results: {inherited_count} "
+      f"(on {sum(1 for n in nodes if n['inheritedParams'])} problems)", file=sys.stderr)
+
 # ---- the settings filter's own menu data: for every exported beta field,
 # the values that actually occur in this corpus (with schedzoo's own
 # explanation text, and how many problems use each), so the UI can build a
