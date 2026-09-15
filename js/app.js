@@ -21,7 +21,7 @@
   };
 
   const VIEWS = {
-    "/": els.viewSearch,
+    "/search": els.viewSearch,
     "/maps": els.viewMaps,
     "/zoo-maps": els.viewZooMaps,
     "/design": els.viewDesign,
@@ -95,9 +95,11 @@
 
   // ---------- routing ----------
 
+  // The home page is the Scheduling Zoo map: "#/" (or no hash) is read as
+  // "#/schedulingzoo".
   function currentPath() {
     const h = location.hash.replace(/^#/, "");
-    return h || "/";
+    return !h || h === "/" ? "/schedulingzoo" : h;
   }
 
   function route() {
@@ -145,7 +147,7 @@
       return;
     } else if (VIEWS[path]) {
       VIEWS[path].hidden = false;
-      if (path === "/") renderSearch();
+      if (path === "/search") renderSearch();
       if (path === "/docs") renderDocs();
       if (path === "/next") renderNext();
       if (path === "/maps") renderMapsIndex();
@@ -154,9 +156,9 @@
       if (path === "/schedulingzoo") renderSchedulingZoo();
       matched = path;
     } else {
-      els.viewSearch.hidden = false;
-      renderSearch();
-      matched = "/";
+      els.viewSchedulingZoo.hidden = false;
+      renderSchedulingZoo();
+      matched = "/schedulingzoo";
     }
 
     els.navLinks.forEach((a) => {
@@ -576,6 +578,7 @@
       SEARCH_BUILT = false;
       renderSearch();
     });
+    update(); // fill the table for the first time
   }
 
   // One problem's results for ONE parameter (a Search matrix cell): the
@@ -878,9 +881,11 @@
 
       "<h4>What this site actually does today</h4>" +
       "<ul class=\"docs-list\">" +
-      "<li><b>Scheduling Zoo overview:</b> only <i>classical</i> hardness is inherited along arrows. " +
-      "Parameterized results are shown on each node but are never propagated. Nothing unsound -- and nothing " +
-      "inherited either.</li>" +
+      "<li><b>Scheduling Zoo map and Search:</b> classical hardness is inherited along every arrow. " +
+      "Parameterized hardness (W[1], W[2], para-NP) is inherited only along arrows whose kind is known to keep " +
+      "the parameter bounded -- a value restriction, or padding with constant data that doesn't feed the " +
+      "parameter -- and this <b>is</b> checked, arrow by arrow, when the data is built (see Inherited hardness " +
+      "below). FPT, XP and P never transfer.</li>" +
       "<li><b>Hand-curated maps:</b> parameterized hardness (W[1], W[2], para-NP) <i>is</i> inherited upward " +
       "along arrows, for the same parameter. FPT, XP and P correctly never transfer. Every inheritance that " +
       "fires in the current data crosses a type-1 or type-2 arrow, so all of them are sound -- but that is a " +
@@ -2556,12 +2561,12 @@
 
   function renderSchedulingZoo() {
     if (!DATA_SZ) {
-      els.viewSchedulingZoo.innerHTML = '<div class="map-page"><h2 class="page-title">Scheduling Zoo overview</h2><p class="design-intro">Loading…</p></div>';
+      els.viewSchedulingZoo.innerHTML = '<div class="map-page"><p class="design-intro">Loading…</p></div>';
       loadSzData()
         .then(() => renderSchedulingZoo())
         .catch((err) => {
           els.viewSchedulingZoo.innerHTML =
-            '<div class="map-page"><h2 class="page-title">Scheduling Zoo overview</h2>' +
+            '<div class="map-page">' +
             '<p style="color:#c92a2a">Failed to load data/schedulingzoo.json: ' + escapeHtml(String(err)) + "</p></div>";
         });
       return;
@@ -2784,7 +2789,6 @@
     const dropdownUi = captureDropdownUi(els.viewSchedulingZoo);
     els.viewSchedulingZoo.innerHTML =
       '<div class="map-page">' +
-      '<h2 class="page-title">Scheduling Zoo overview</h2>' +
       '<div class="sz-intro">' +
       "<p>Problems are written in Graham's three-field notation:</p>" +
       '<p class="sz-graham" role="img" aria-label="alpha: machine environment, beta: settings, gamma: objective">' +

@@ -584,7 +584,7 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .sz-intro {
   /* As wide as the filter bar and diagram box below it. */
   max-width: none;
-  margin: -0.5rem 0 1.5rem;
+  margin: 1.6rem 0 1.5rem;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.55;
