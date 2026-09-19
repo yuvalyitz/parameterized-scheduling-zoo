@@ -50,6 +50,16 @@ def latex_to_plain(s):
         (r"\\ldots", "…"), (r"\\subseteq", "⊆"), (r"\\cdot", "·"), (r"\\sum", "Σ"), (r"\\#", "#"),
         (r"\\bar\s*d_j", "d̄j"), (r"\\bar\s*d", "d̄"),
         (r"\\textrm\{([^}]*)\}", r"\1"),
+        # Only ever reached from prose explanations, never from a notation
+        # string: \prec is how notation.xml writes the precedence relation
+        # ("if $i\prec j$"), \mu the job shop's machine assignment, and
+        # \not the negation of the \in just below it. Without these the
+        # backslash-stripping at the end of this function silently glued
+        # the command name onto the text ("if iprec j then ...").
+        (r"\\prec", "≺"), (r"\\mu", "μ"), (r"\\not\s*\\in", "∉"),
+        # \cal is a font, not a symbol: drop it but keep what it wrapped,
+        # braces and all, so the subscript passes below still see "M_j".
+        (r"\\cal\s*\{([^}]*)\}", r"\1"), (r"\\cal\s*", ""),
     ]
     for pat, to in repl:
         s = re.sub(pat, to, s)
@@ -60,13 +70,44 @@ def latex_to_plain(s):
     s = s.replace("\\", "")
     s = re.sub(r"\s+", " ", s).strip()
     s = s.replace("Σ ", "Σ")
-    s = re.sub(r"\s*([≤≥∈≠])\s*", r"\1", s)
+    s = re.sub(r"\s*([≤≥∈≠∉≺])\s*", r"\1", s)
     s = re.sub(r"\s*\|\s*", "|", s)
     return s
 
 
+DOI_PREFIX = re.compile(r"^\s*(?:https?://)?(?:dx\.)?doi\.org/", re.I)
+
+
+def doi_url(doi):
+    """A resolvable link from a bibtex DOI field.
+
+    BibTeX's doi field holds the bare identifier (10.xxxx/yyyy), and 20 of the
+    corpus's 27 entries have it that way -- but 7 store a whole
+    https://doi.org/... URL instead, which turns the obvious
+    "https://doi.org/" + doi into https://doi.org/https://doi.org/10...., a
+    link that 404s. So strip the prefix if it is already there. Reported
+    upstream rather than corrected there; see the data note on this site.
+    """
+    if not doi:
+        return None
+    return "https://doi.org/" + DOI_PREFIX.sub("", doi).strip()
+
+
 def bound_to_plain(s):
     return re.sub(r"\$([^$]*)\$", lambda m: latex_to_plain(m.group(1)), s)
+
+
+def explanation_to_plain(s):
+    """One <choice explanation=...> as displayable text.
+
+    notation.xml's <aliases> section defines abbreviations (SETUP, TIMELAG,
+    COMMUNICATIONDELAY) that stand in for a whole sentence inside an
+    explanation, and schedzoo expands them with its own extract.unalias --
+    so we call theirs rather than either re-describing the concept or
+    shipping the raw placeholder, which is what the reader saw before
+    ("equal setup times. SETUP").
+    """
+    return bound_to_plain(extract.unalias(s))
 
 
 extract.read_bibtex()  # internally calls read_xml()
@@ -98,7 +139,7 @@ for section in tree[1]:
     for field in section:
         if field.attrib.get("name") == "type":
             for choice in field:
-                machine_env_explanations[choice.attrib["value"]] = bound_to_plain(choice.attrib.get("explanation", ""))
+                machine_env_explanations[choice.attrib["value"]] = explanation_to_plain(choice.attrib.get("explanation", ""))
 
 # ---- same idea, but for EVERY field -- used to explain, per edge, exactly
 # which dimension(s) a generalization relaxes and what each side of that
@@ -112,7 +153,7 @@ for section in tree[1]:
         if not name:
             continue
         field_choice_explanations[name] = {
-            choice.attrib["value"]: bound_to_plain(choice.attrib.get("explanation", "")) for choice in field
+            choice.attrib["value"]: explanation_to_plain(choice.attrib.get("explanation", "")) for choice in field
         }
 
 
@@ -162,7 +203,7 @@ for (problem_vec, css_class, problem_name, bound, key) in extract.results:
         "author": tools.getattr(bib, "author"),
         "title": tools.clean_bib(tools.getattr(bib, "title")),
         "year": tools.getattr(bib, "year"),
-        "url": bib.get("URL") or (("https://doi.org/" + bib["DOI"]) if "DOI" in bib else None),
+        "url": bib.get("URL") or doi_url(bib.get("DOI")),
     }
     if param_label:
         citation["param"] = param_label
@@ -232,75 +273,45 @@ def all_pairwise_edges():
                 edges.append((b, a))
     return edges
 
-# ---- schedzoo's OWN reduction rules exactly as shipped. Not drawn as-is:
-# kept as the reference every drawn edge is compared against, so an edge one
-# of our rules adds is marked ours, and the edges our correction below
-# removes can be counted.
+# ---- schedzoo's OWN reduction rules exactly as shipped, which is also our
+# baseline: every edge drawn is compared against these, so an edge one of our
+# added rules below makes possible can be marked as ours.
+#
+# This file used to correct two of schedzoo's rules here -- the setup-time
+# chain under a single server, and the multiprocessor-task rule "" -> fix_j
+# -- because each put a problem cited as polynomial above one cited NP-hard.
+# Both corrections were sent upstream and merged (schedulingzoo PR #14), as
+# were the form conditions and the "in in $P$" typo this file used to work
+# around, so all four are gone from here: the submodule now ships them, and
+# carrying our own copy would mean silently applying a fix twice if upstream
+# ever revisited it.
 schedzoo_pairs = set(all_pairwise_edges())
+baseline_pairs = schedzoo_pairs
 
-# ---- OUR correction of schedzoo's setup-time rules. The empty "setup times"
-# value does not mean the same thing everywhere: with no server there is
-# nothing to set up (s=0), but the field only exists under S1
-# (requires="advanced and S1"), and there an unspecified setup time means
-# ARBITRARY s_ij -- a single server whose setups all take zero time would
-# constrain nothing, so S1 would be pointless. Brucker, Knust & Wang (2005)
-# confirm it: F2;S1|p_ij=p|Cmax is NP-hard, which it could not be with zero
-# setups. schedzoo labels the empty value "no setup" and declares
-# "" -> s=1 -> s=s, making arbitrary setups the MOST restricted case; that
-# put P-cited problems above NP-hard ones throughout the F2;S1 family. We
-# drop those rules and chain the other way, s=1 -> s=s -> arbitrary, as a
-# two-field (server, setup times) rule so it only ever fires when S1 is
-# given. The s=1 rule is spelled out rather than composed: schedzoo's
-# extend_complex_reduction never chains a two-field rule with a one-field one
-# (its recursive calls are never iterated).
-S1_SETUP_VALUES = ["s_{ij}=1", "s_{ij}=s", "s_j=1", "s_j=s"]
-SCHEDZOO_EMPTY_SETUP_RULES = {("", v) for v in S1_SETUP_VALUES}
-assert SCHEDZOO_EMPTY_SETUP_RULES <= simple_reductions["setup times"], \
-    "schedzoo's setup-time rules changed upstream -- recheck this correction"
-simple_reductions["setup times"] -= SCHEDZOO_EMPTY_SETUP_RULES
-OUR_S1_SETUP_RULES = {(("S1", v), ("S1", "")) for v in S1_SETUP_VALUES}
-complex_reductions.setdefault(("server", "setup times"), set()).update(OUR_S1_SETUP_RULES)
+# ---- OUR OWN added reduction rules, same gap as the machine-count one
+# below: the "processing times" field has rules BETWEEN restrictions
+# (p_j=1 -> p_j=p, p_j=1 -> p_j\in\{1,2\}, p_{ij}=1 -> p_{ij}=p) but almost
+# none FROM a restriction to the unrestricted field -- only the two values
+# that encode something else entirely (p_{ij}\in\{p_j,\infty\} and
+# p_{kj}=p_j) reduce to "". So equal or unit processing times were not a
+# special case of arbitrary ones: Q||Cmax did not generalize Q|p_j=p|Cmax.
+# Sound in every environment and for every objective in this corpus: an
+# instance with all p_j equal (or all in {1,2}) IS an instance with
+# arbitrary processing times, no padding or transformation involved -- the
+# restriction is on the input, not on what a schedule may do. Only the three
+# rules to "" are stated; p_j=1 -> "" and p_{ij}=1 -> "" then follow from
+# schedzoo's own rules by transitivity. Checked before adding: of the 205
+# relations this makes possible, none places a problem cited P above one
+# cited NP-hard, and none places a pseudo-polynomial one above a strongly
+# NP-hard one (the check that caught the S1 setup-time rule).
+OUR_PROCESSING_TIME_RULES = [("p_j=p", ""), ("p_j\\in\\{1,2\\}", ""), ("p_{ij}=p", "")]
+for pair in OUR_PROCESSING_TIME_RULES:
+    simple_reductions["processing times"].add(pair)
+extract.transitive_closure(simple_reductions["processing times"])
 
-after_s1_pairs = set(all_pairwise_edges())
-print(f"# S1 setup-time correction: removed {len(schedzoo_pairs - after_s1_pairs)} of schedzoo's pairwise "
-      f"edges, added {len(after_s1_pairs - schedzoo_pairs)}", file=sys.stderr)
-
-# ---- OUR correction of schedzoo's multiprocessor-task rule. notation.xml
-# declares "" -> fix_j for the "machine sets" field: a problem with no
-# machine-set constraint is a special case of the same problem where every
-# job needs a GIVEN set of machines at once. Whether that holds depends on
-# the machine environment. In a shop (O/F/J) every operation's machine is
-# already input ("operation O_ij ... on machine i"), which is fix_j with
-# every set of size 1 -- the rule holds. On parallel machines (P/Q/R) an
-# empty field means the SCHEDULER picks one machine per job; fix_j turns
-# that decision into input, and no choice of sets reproduces it without
-# solving the problem. P2||Cmax is NP-hard (Partition) while P2|fix_j|Cmax
-# is in P (Hoogeveen, van de Velde & Veltman 1994, p. 261), so the rule had
-# a polynomial problem "generalizing" an NP-hard one. We drop the one-field
-# rule and keep it for shops only, as a two-field (machine sets, type) rule.
-# F -> J is spelled out too: schedzoo's extend_complex_reduction never
-# composes a two-field rule with the one-field F -> J type rule.
-SCHEDZOO_FIX_J_RULE = ("", "fix_j")
-assert SCHEDZOO_FIX_J_RULE in simple_reductions["machine sets"], \
-    "schedzoo's fix_j rule changed upstream -- recheck this correction"
-simple_reductions["machine sets"].discard(SCHEDZOO_FIX_J_RULE)
-OUR_SHOP_FIX_J_RULES = {
-    (("", particular_type), ("fix_j", general_type))
-    for particular_type, general_type in [("O", "O"), ("F", "F"), ("J", "J"), ("F", "J")]
-}
-complex_reductions.setdefault(("machine sets", "type"), set()).update(OUR_SHOP_FIX_J_RULES)
-
-# ---- baseline pass: schedzoo's rules with both corrections applied -- used
-# below to tell which edges are newly possible because of the machine-count
-# rule we add next.
-baseline_pairs = set(all_pairwise_edges())
-fix_j_removed_by_env = {}
-for (a, b) in after_s1_pairs - baseline_pairs:
-    t = bases[a]["core_vec"]["type"]
-    fix_j_removed_by_env[t] = fix_j_removed_by_env.get(t, 0) + 1
-print(f"# fix_j correction: removed {len(after_s1_pairs - baseline_pairs)} pairwise edges "
-      f"(by environment of the general problem: {fix_j_removed_by_env}), "
-      f"added {len(baseline_pairs - after_s1_pairs)}", file=sys.stderr)
+after_processing_pairs = set(all_pairwise_edges())
+print(f"# processing-time rules: added {len(after_processing_pairs - baseline_pairs)} pairwise edges, "
+      f"removed {len(baseline_pairs - after_processing_pairs)}", file=sys.stderr)
 
 # ---- OUR OWN added reduction rule, layered on top of (never replacing)
 # schedzoo's own data: "number of machines" has ZERO reduction rules in
@@ -344,7 +355,7 @@ def sole_diff_field(general_id, specific_id):
 excluded_multi_field = 0
 full_edges = []
 for pair in augmented_edges:
-    if pair in baseline_pairs:
+    if pair in after_processing_pairs:
         full_edges.append(pair)
     elif sole_diff_field(*pair) == "number of machines":
         full_edges.append(pair)
@@ -353,7 +364,7 @@ for pair in augmented_edges:
 
 print(f"# full pairwise edges (general -> specific): {len(full_edges)}", file=sys.stderr)
 print(f"# of which newly possible only because of our added machine-count rule: "
-      f"{len(set(full_edges) - baseline_pairs)}", file=sys.stderr)
+      f"{len(set(full_edges) - after_processing_pairs)}", file=sys.stderr)
 print(f"# excluded: new edges that combined our rule with another relaxation "
       f"(unverified in combination): {excluded_multi_field}", file=sys.stderr)
 
@@ -397,11 +408,10 @@ print(f"# edges after Hasse reduction: {len(hasse_edges)}", file=sys.stderr)
 # "has a/an ... approximation" or "-competitive", never "solvable").
 RE_STRONG = re.compile(r"strongly NP-(hard|complete)", re.I)
 RE_HARD = re.compile(r"\bis NP-(hard|complete)\b", re.I)
-# "(is|in) (in )?P" -- tolerates a specific, confirmed typo in schedzoo's own
-# text ("in in $P$" for Simons:83, P|pj=p;rj|Lmax -- checked exhaustively:
-# it's the ONLY citation in the whole corpus starting with "in ", so this
-# isn't loosening the pattern generally, just recognizing one known typo).
-RE_P = re.compile(r"^(is|in) (in )?P\b(?!seudo)")
+# "is (in )?P". This used to also accept a leading "in", to tolerate the
+# "in in $P$" typo in Simons:83 (P|pj=p;rj|Lmax); that typo is fixed upstream
+# (schedulingzoo PR #14), so the pattern no longer has to carry it.
+RE_P = re.compile(r"^is (in )?P\b(?!seudo)")
 RE_SOLVABLE_POLY = re.compile(r"\b(is |can be )?(solved|solvable) (in|by)\b[^.]*(O\(|polynomial time\b)", re.I)
 RE_PSEUDO = re.compile(r"^is (in )?Ppseudo\b")
 
@@ -535,17 +545,16 @@ for (a, b) in hasse_edges:
     ]
     # True only when this exact (general, specific) pair was NOT reachable
     # under schedzoo's own rules as shipped. addedBy names the rule of ours
-    # that made it reachable, in the order they were applied: the S1
-    # setup-time correction, the shop-only fix_j correction, or
-    # OUR_MACHINE_COUNT_RULES. Frontend renders these green with that rule's
+    # that made it reachable, in the order they were applied:
+    # OUR_PROCESSING_TIME_RULES or OUR_MACHINE_COUNT_RULES. Frontend renders these green with that rule's
     # note; never marks an edge schedzoo's own data already implied.
+    # (The two correction rules that used to appear here are upstream now --
+    # see the baseline above -- so edges they explain are schedzoo's own.)
     added = (a, b) not in schedzoo_pairs
     added_by = None
     if added:
-        if (a, b) in after_s1_pairs:
-            added_by = "s1-setup"
-        elif (a, b) in baseline_pairs:
-            added_by = "fixj-shop"
+        if (a, b) in after_processing_pairs:
+            added_by = "processing-times"
         else:
             added_by = "machine-count"
     edges.append({"from": a, "to": b, "diffs": diffs, "addedByUs": added, "addedBy": added_by})
@@ -727,35 +736,44 @@ for section_index, section in enumerate(tree[1]):
                     "value": tools.correctxml(c.attrib["value"]),
                     "label": latex_to_plain(tools.correctxml(c.attrib["value"])),
                     "requires": c.attrib.get("requires", ""),
+                    # schedzoo's own wording for what this value means, so the
+                    # site can explain any part of a problem's name (the panel
+                    # makes every token of the alpha|beta|gamma heading
+                    # hoverable). Keyed off the RAW xml attributes, the same
+                    # keys field_choice_explanations was built from -- not the
+                    # correctxml'd ones above, which would miss where the two
+                    # differ. Same text the per-edge diffs and the settings
+                    # menu already carry; this is simply the complete set, so
+                    # nothing has to be re-described in the site's own code.
+                    "explanation": field_choice_explanations.get(
+                        field.attrib["name"], {}).get(c.attrib["value"], ""),
                 }
                 for c in field
             ],
         })
 assert {f["slot"] for f in notation_form} == {"alpha", "beta", "gamma"}, "notation.xml's form sections changed"
 
-# ---- two corrections to those conditions, found by running every problem in
-# the corpus through them (all 719 pass after these, 95 did not before):
-# 1. p_{ij}=1 and p_{ij}=p require "R or J or O", leaving out F -- yet 76
-#    and 18 flow-shop problems use them, and notation.xml's own F
-#    explanation writes processing times as p_ij.
-# 2. index.php's evaluator splits a condition on spaces only, so "(P" in
-#    "advanced and (P or Q or 1)" is read as one unknown atom and
-#    p_j\in\{1,2\} is never offered; spacing the parentheses fixes it.
-OUR_FORM_REQUIRES_FIXES = {("processing times", "p_{ij}=1"), ("processing times", "p_{ij}=p")}
+# ---- two corrections to these conditions used to live here (p_{ij}=1 and
+# p_{ij}=p left F out, and "(P or Q or 1)" was unparseable to an evaluator
+# that splits on spaces). Both are upstream now, with a third of schedzoo's
+# own, so the conditions are taken as shipped -- every problem in the corpus
+# satisfies them, which the check below enforces rather than assumes.
+#
+# The whitespace pass stays: it is not a correction but normalisation for
+# OUR evaluator, which splits a condition into space-separated atoms. Every
+# condition in notation.xml today is already spaced, so this is a no-op on
+# the current file and simply keeps a future unspaced one from being read as
+# one unknown atom.
 for f in notation_form:
     for c in [f] + f["choices"]:
         c["requires"] = re.sub(r"\s+", " ", c["requires"].replace("(", " ( ").replace(")", " ) ")).strip()
-    for c in f["choices"]:
-        if (f["field"], c["value"]) in OUR_FORM_REQUIRES_FIXES:
-            assert c["requires"] == "R or J or O", "notation.xml's p_ij condition changed -- recheck this fix"
-            c["requires"] = "R or J or O or F"
 
 out = {
     "nodes": nodes,
     "notationForm": notation_form,
     # per core field, every (particular, general) value pair the one-field
-    # reduction rules give -- The Scheduling Zoo's own, with our corrections
-    # and machine-count rule applied, transitively closed. Used by the site
+    # reduction rules give -- The Scheduling Zoo's own, with our added
+    # processing-time and machine-count rules, transitively closed. Used by the site
     # to tell when a hand-drawn arrow runs against the rules in some field.
     "fieldReductions": {f: sorted([list(pair) for pair in simple_reductions[f]]) for f in core_fields if simple_reductions[f]},
     "edges": edges,

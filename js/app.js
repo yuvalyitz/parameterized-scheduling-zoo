@@ -44,7 +44,11 @@
     }
     return DATA_SZ_PROMISE;
   }
-  let SZ_EFFECTIVE = null; // lazily computed once DATA_SZ is loaded -- see computeEffectiveClassesForSz
+  let SZ_EFFECTIVE = null; // lazily computed once DATA_SZ is loaded -- see computeEffectiveClassesForSz, and szEffectiveClasses() below
+  let SZ_EFFECTIVE_CORPUS = null; // the same, with the reader's own claims left out
+  // Problems whose class moved only because of a claim -- not claimed
+  // themselves, but downstream (or upstream) of one that was.
+  let SZ_USER_AFFECTED = new Set();
   let SZ_FOCUS_IDS = null; // Set of ids to restrict the overview to (declutter), or null for the full graph
   let SZ_LAST_FILTERS = null; // filter input values to restore across a declutter/reset re-render
   // The live settings dropdown for the CURRENT render, so filter-change
@@ -69,6 +73,14 @@
   let SZ_HIDDEN_IDS = new Set();
   let SZ_HIDDEN_STACK = [];
   let SZ_HIDDEN_REDO_STACK = [];
+  // Nodes picked out with shift-click, to drag (or drag out) as a group.
+  // Cleared whenever the map is re-rendered, since the elements it names
+  // are replaced.
+  let SZ_SELECTED_IDS = new Set();
+  // While the reader is drawing an arrow by hand on the overview:
+  // { from: id or null }, null when not drawing. Cleared by a re-render.
+  let SZ_ARROW_MODE = null;
+  let SZ_ARROW_NOTICE = ""; // one line about the arrow last added or edited
   // Same idea for the hand-curated problem maps, keyed per map id (a user
   // can hide different nodes on different maps without them fighting).
   // Never touches map.nodes/map.edges in data/problems.json.
@@ -130,9 +142,11 @@
     } else if (designMatch) {
       els.viewDesign.hidden = false;
       const mapId = decodeURIComponent(designMatch[1]);
-      els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading…</p></div>';
+      els.viewDesign.innerHTML = '<div class="design-page"><a class="wiki-back" href="#/zoo-maps">&larr; Back to problem maps</a><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading…</p></div>';
       loadSzData().then(() => { openDesignerMap(mapId); renderDesign(); });
-      matched = "/design";
+      // The designer is part of the Problem Maps section rather than a
+      // section of its own, so that is the nav item that lights up.
+      matched = "/zoo-maps";
     } else if (docsMatch) {
       const isNext = docsMatch[1] === "next";
       (isNext ? els.viewNext : els.viewDocs).hidden = false;
@@ -154,7 +168,7 @@
       if (path === "/zoo-maps") renderZooMapsIndex();
       if (path === "/design") renderDesign();
       if (path === "/schedulingzoo") renderSchedulingZoo();
-      matched = path;
+      matched = path === "/design" ? "/zoo-maps" : path;
     } else {
       els.viewSchedulingZoo.hidden = false;
       renderSchedulingZoo();
@@ -377,7 +391,7 @@
       return;
     }
     SEARCH_BUILT = true;
-    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    szEffectiveClasses();
     const root = els.viewSearch;
 
     // A stable, readable row order: machine environment, then notation.
@@ -762,7 +776,208 @@
   // opposed to References (the literature). Written as literal markup rather
   // than driven off a data file: this is prose about the model itself, and
   // it should be edited the way prose is, not squeezed into a JSON schema.
+  // What the corpus's result statements actually SAY, grouped and counted
+  // from the data rather than listed by hand: The Scheduling Zoo has no
+  // result taxonomy to read off (see szResultKindsHtml), so the only honest
+  // way to describe what is in there is to measure it, and to keep
+  // measuring it as the corpus grows.
+  //
+  // Two levels: a category (what the statement is a claim ABOUT), and,
+  // inside it, the vocabulary -- the phrasings that actually occur, each
+  // with what this site makes of it. `scope` says which half of the corpus
+  // a category is counted over: "classical" for statements about a problem
+  // (no bracket), "parameterized" for statements about a problem-and-
+  // parameter pair (written X [k]), "any" for the categories that occur in
+  // both. Within a category the values are meant to be exhaustive, so a
+  // statement matching none of them is counted as "other wording" rather
+  // than quietly dropped.
+  const SZ_RESULT_CATEGORIES = [
+    {
+      name: "Classical complexity",
+      scope: "classical",
+      about: "the problem on its own",
+      becomes: "the problem's class, and so its colour on every map",
+      lead: "These are the only statements that decide a problem's colour. Two of them together say more than " +
+        "either alone: NP-hard with a pseudo-polynomial algorithm is weakly NP-hard, NP-hard without one leaves " +
+        "the weak/strong question open, and a problem with none of these phrases is open.",
+      otherMeans: "not a claim about classical complexity at all -- the approximation, competitive-ratio and " +
+        "other results in the groups below, which are cited on a problem without settling its class",
+      values: [
+        { label: "is in P", re: /^is (in )?P\b(?!seudo)/, means: "P" },
+        { label: "is solvable in <running time>", re: /\b(is |can be )?(solved|solvable) (in|by)\b[^.]*(O\(|polynomial time\b)/i,
+          means: "P — an exact algorithm with a stated polynomial running time is the same claim, phrased differently" },
+        { label: "is in Ppseudo", re: /^is (in )?Ppseudo\b/, means: "pseudo-polynomial; with an NP-hardness result, weakly NP-hard" },
+        { label: "is NP-hard / is NP-complete", re: /\bis\s+NP-(hard|complete)\b/i, means: "at least weakly NP-hard, unless a Ppseudo result makes it weakly NP-hard" },
+        { label: "is strongly NP-hard", re: /strongly NP-(hard|complete)/i, means: "strongly NP-hard — the strongest, and it wins over everything else cited" },
+      ],
+    },
+    {
+      name: "Parameterized complexity",
+      scope: "parameterized",
+      about: "a PAIR: one problem together with one set of parameters, written X [k] or X [k1;k2]",
+      becomes: "the class of that parameter's row in the problem's panel — never the problem's own colour",
+      lead: "Every statement here is about a pair. The same problem can be FPT in one parameter and W[1]-hard in " +
+        "another, so none of these says anything about the problem alone: 1|rj|ΣwjUj is FPT in #p+#d+#r and " +
+        "W[1]-hard in #p, both at once. The parameters are the measures bounded together — m machines, pmax the " +
+        "largest processing time, #p distinct processing times, #d due dates, #r release dates, pw(I) pathwidth.",
+      values: [
+        { label: "is fixed parameter tractable", re: /fixed parameter tractable|\bFPT\b/i, means: "FPT" },
+        { label: "is in P", re: /^is (in )?P\b(?!seudo)/, means: "XP — polynomial for each fixed value of the parameter, which is not FPT" },
+        { label: "is in Ppseudo", re: /^is (in )?Ppseudo\b/, means: "XP, same reading" },
+        { label: "is W[1]-hard / is W[2]-hard", re: /W\[\d/, means: "W[1]- or W[2]-hard (also written \"strongly W[1]-hard\", or \"W[1]-hard even if #w=1\")" },
+        { label: "is NP-hard, is para-NP-complete, or \"does not admit a fixed parameter algorithm unless FPT=para-NP\"",
+          re: /para-?NP|\bis\s+NP-(hard|complete)\b|strongly NP-hard/i, means: "para-NP-hard — hard even for a constant value of the parameter" },
+      ],
+      otherMeans: "stated for the pair, but not in the parameterized vocabulary -- an ETH running-time bound or " +
+        "an approximation result about it, shown as text",
+    },
+    {
+      name: "Approximation",
+      scope: "any",
+      about: "the problem",
+      becomes: "text under the problem's results — it is a real result, but not a claim about which class the problem is in",
+      lead: "Both directions occur: what can be achieved, and what cannot be (under P ≠ NP).",
+      values: [
+        { label: "has a PTAS / EPTAS / FPTAS", re: /PTAS/, means: "an approximation scheme" },
+        { label: "has a polynomial-time r-approximation", re: /(polynomial[- ]time|has an?)[^.]*\bapproximation\b/i, means: "a ratio achieved, sometimes with the method named (LP rounding, α-points)" },
+        { label: "approximation ratio ≤ r / ≥ r, deterministic or randomized", re: /approximation ratio/i, means: "a bound on the best ratio, stated either way" },
+        { label: "is APX-hard", re: /APX-hard/i, means: "no PTAS unless P = NP" },
+        { label: "cannot be approximated below ratio r unless P=NP", re: /cannot be approximated|inapprox/i, means: "an explicit inapproximability threshold" },
+      ],
+    },
+    {
+      name: "Online algorithms, competitive ratio",
+      scope: "any",
+      about: "the problem — but only where the release-time field is online-rj, which makes it an online problem",
+      becomes: "text under the problem's results",
+      lead: "An online problem's jobs are revealed at their release times, so the question is not running time but " +
+        "how far from optimal an algorithm must be. Bounds come in both directions and in both models, and some " +
+        "results buy performance with extra speed rather than with a better ratio.",
+      values: [
+        { label: "has competitive ratio at most c", re: /competitive ratio (at most|≤)/i, means: "an algorithm achieving c" },
+        { label: "competitive ratio at least c / ≥ c", re: /competitive ratio (at least|≥|ge)/i, means: "no algorithm can do better than c" },
+        { label: "deterministic … / randomized …", re: /(deterministic|randomized)[^.]*competitive/i, means: "the two models are stated separately; randomization usually helps" },
+        { label: "is c-competitive", re: /\bis [^.]*-competitive|competitive algorithm/i, means: "the same claim written around a named algorithm" },
+        { label: "(1+ε)-speed, O(1/ε)-competitive", re: /speed/i, means: "resource augmentation: the same ratio bought with faster machines" },
+      ],
+    },
+    {
+      name: "Conditional lower bounds",
+      scope: "any",
+      about: "the problem, or a problem-and-parameter pair",
+      becomes: "text under the problem's results",
+      lead: "Lower bounds that hold under a stronger assumption than P ≠ NP, which is what makes them able to rule " +
+        "out a specific running time rather than just polynomial time. Every one of them in this corpus is " +
+        "stated under ETH; none uses SETH.",
+      values: [
+        { label: "has no 2^o(n)·T^o(m)-time algorithm (under ETH)", re: /\bETH\b|exponential time hypothesis/i, means: "a running-time lower bound under the Exponential Time Hypothesis" },
+        { label: "no PTAS in time … under ETH", re: /(ETH|exponential time hypothesis)[^.]*(PTAS|approximation)|(PTAS|approximation)[^.]*(ETH|exponential time hypothesis)/i, means: "the same idea applied to approximation schemes" },
+        // SETH is the other assumption results like these are usually
+        // stated under; nothing in this corpus uses it, so the row only
+        // appears if something ever does.
+        { label: "… under SETH", re: /SETH/, means: "the Strong Exponential Time Hypothesis" },
+      ],
+    },
+    {
+      name: "Practical solvers",
+      scope: "any",
+      about: "the problem",
+      becomes: "text under the problem's results",
+      lead: "Not complexity claims at all: what has been made to work on real instances. They are kept because they " +
+        "are what the literature says about problems where the theory stops at \"strongly NP-hard\".",
+      values: [
+        { label: "can be solved by a branch-and-bound algorithm", re: /branch-and-bound/i, means: "exact, exponential in the worst case" },
+        { label: "column generation / arc-flow", re: /column generation|arc-flow/i, means: "exact mathematical-programming approaches" },
+        { label: "particle swarm, ant colony, …", re: /swarm|ant.colony|genetic|tabu|heuristic/i, means: "metaheuristics — no guarantee claimed" },
+      ],
+    },
+    {
+      name: "Other remarks",
+      scope: "any",
+      about: "the problem, or the literature about it",
+      becomes: "text under the problem's results",
+      lead: "The long tail: everything the corpus says that is none of the above.",
+      values: [
+        { label: "… has integrality gap ≥ g", re: /integrality gap/i, means: "how far a relaxation can be from the truth" },
+        { label: "proof of […] has a bug", re: /has a bug|is wrong|flaw/i, means: "an editorial note on a cited result, not a result" },
+      ],
+    },
+  ];
+
+  // Every result statement in the corpus, split the way the categories are
+  // scoped: a bracket result (n.params) is about a problem-and-parameter
+  // pair, everything else (n.classical) about the problem itself.
+  function szResultStatements(scope) {
+    if (!DATA_SZ) return [];
+    const out = [];
+    DATA_SZ.nodes.forEach((n) => {
+      if (scope !== "parameterized") (n.classical || []).forEach((r) => out.push(r.bound || ""));
+      if (scope !== "classical") (n.params || []).forEach((r) => out.push(r.bound || ""));
+    });
+    return out;
+  }
+
+  function szResultKindsHtml() {
+    const total = szResultStatements("any").length;
+    const section = (cat) => {
+      const statements = szResultStatements(cat.scope);
+      // A phrasing the corpus never actually uses is left out: this is a
+      // description of what is in the data, not of what could be.
+      const rows = cat.values.map((v) => ({ v: v, hits: statements.filter((s) => v.re.test(s)) }))
+        .filter((r) => !total || r.hits.length);
+      // Anything inside this category's scope that none of its values
+      // matched, so the table can never quietly under-report. For the two
+      // scoped categories that is meaningful (every bracket statement is a
+      // parameterized result); for the rest the scope is the whole corpus,
+      // so it isn't, and it is left out.
+      const claimed = statements.filter((s) => cat.values.some((v) => v.re.test(s)));
+      const unmatched = cat.scope === "any" ? 0 : statements.length - claimed.length;
+      return "<h5>" + escapeHtml(cat.name) + "</h5>" +
+        '<p class="docs-result-about"><b>About:</b> ' + escapeHtml(cat.about) + ". <b>Becomes:</b> " +
+        escapeHtml(cat.becomes) + ".</p>" +
+        "<p>" + escapeHtml(cat.lead) + "</p>" +
+        '<div class="docs-table-wrap"><table class="docs-table">' +
+        "<thead><tr><th>Written as</th>" + (total ? "<th>Statements</th>" : "") +
+        "<th>What this site makes of it</th></tr></thead><tbody>" +
+        rows.map((r) =>
+          "<tr><td><code>" + escapeHtml(r.v.label) + "</code></td>" +
+          (total ? "<td>" + r.hits.length + "</td>" : "") +
+          "<td>" + escapeHtml(r.v.means) + "</td></tr>").join("") +
+        (unmatched
+          ? "<tr><td><i>other wording</i></td>" + (total ? "<td>" + unmatched + "</td>" : "") +
+            "<td>" + escapeHtml(cat.otherMeans || "none of the above matched — left unclassified rather than guessed at") + "</td></tr>"
+          : "") +
+        "</tbody></table></div>";
+    };
+    return "<h4>What kinds of result the corpus contains</h4>" +
+      "<p>The Scheduling Zoo has <mark><b>no result taxonomy</b></mark>. A result is a line of free text in a BibTeX " +
+      "annotation -- <code>$1|online-rj;restarts|ΣCj$ has a deterministic 3/2-competitive algorithm</code> -- " +
+      "and the only distinction its parser draws is <b>positive or negative</b>, decided by scanning the " +
+      "sentence for <code>NP</code>, <code>hard</code>, <code>&gt;=</code>, <code>\\geq</code>, <code>no</code>, " +
+      "<code>cannot</code> or <code>ETH</code>. Everything past that -- strongly versus weakly NP-hard, FPT " +
+      "versus XP -- is this site reading the wording.</p>" +
+      "<p>So the groups below are not categories The Scheduling Zoo assigns; they are what its " +
+      (total ? total + " " : "") + "statements turn out to say when read and counted" +
+      (total ? "" : " (open the Scheduling Zoo map once and these counts fill in from the data)") +
+      ". The first two are the ones this site turns into a class; the rest it shows as the text they are. " +
+      "Counts within a group can overlap, since one sentence can be two things at once -- a lower bound under " +
+      "ETH on an approximation ratio is both.</p>" +
+      SZ_RESULT_CATEGORIES.map(section).join("");
+  }
+
   function renderDocs() {
+    // The result-kind counts are measured from the corpus, so if it hasn't
+    // been fetched yet (a cold load straight to #/docs), fetch it and draw
+    // the page again -- keeping whatever section the address names.
+    if (!DATA_SZ) {
+      loadSzData().then(() => {
+        if (els.viewDocs.hidden) return;
+        renderDocs();
+        const at = /^\/docs\/(.+)$/.exec(currentPath());
+        const target = at && document.getElementById(decodeURIComponent(at[1]));
+        if (target) target.scrollIntoView({ block: "start" });
+      }).catch(() => {});
+    }
     els.viewDocs.innerHTML =
       '<div class="docs-page">' +
       '<h2 class="page-title">Documentation</h2>' +
@@ -774,7 +989,7 @@
       "<h3>Arrow rule types</h3>" +
 
       "<p>Every arrow on this site points from a <b>general</b> problem to a <b>special case</b> of it, and " +
-      "means the same thing in one direction: <b>hardness flows upward</b>, from the special case to the " +
+      "means the same thing in one direction: <mark><b>hardness flows upward</b></mark>, from the special case to the " +
       "general one. If the specific problem is NP-hard, so is the general one, because the general problem " +
       "contains the specific one. Positive results never flow downward -- a polynomial algorithm for the " +
       "general problem does imply one for the special case, but this site does not draw that inference " +
@@ -939,6 +1154,8 @@
       "beneath it: <code>#d+#r</code> above <code>#d+#p+#r</code>.</li>" +
       "</ul>" +
 
+      szResultKindsHtml() +
+
       "<h4>How results are classified</h4>" +
       "<p>The Scheduling Zoo itself only marks a result as positive or negative. This site reads the wording of " +
       "each bound instead, recognizing only its standard phrases:</p>" +
@@ -959,7 +1176,7 @@
       "</ul>" +
 
       "<h4>Inherited hardness</h4>" +
-      "<p>A problem with no classical result of its own takes the hardness of any special case of it -- any " +
+      "<p><mark>A problem with no classical result of its own takes the hardness of any special case of it</mark> -- any " +
       "problem its arrows reach -- that is proven hard. Strongly NP-hard carries over as it is; " +
       "pseudo-polynomial carries over only as at least weakly NP-hard, since its algorithm need not extend to the " +
       "more general problem; P never carries over. A problem's panel says when its class is inherited. " +
@@ -977,12 +1194,12 @@
       "arrows, in each problem's panel. Positive results (FPT, XP) are not carried yet.</p>" +
 
       "<h4>Where this site reads the data differently</h4>" +
-      "<p>Two reduction rules are corrected (setup times under a single server, and multiprocessor tasks on " +
-      "parallel machines), one is added (machine counts), two conditions of the problem-builder form are " +
-      "corrected, and one typo is tolerated. Each is explained, with its " +
-      "evidence, " +
-      'under <a href="#/docs/docs-anomalies">Known data anomalies</a> below. The Scheduling ' +
-      "Zoo's own files are never edited.</p>" +
+      "<p>Two reduction rules are <i>added</i> where The Scheduling Zoo's data has none or gates it too " +
+      "tightly -- machine counts, and equal or unit processing times -- and nothing of theirs is overridden; " +
+      "a doi.org prefix is stripped off seven DOIs so their links resolve. Their reduction rules themselves are " +
+      "taken exactly as shipped. Each difference is explained, with its evidence, under " +
+      '<a href="#/docs/docs-anomalies">Known data anomalies</a> below. The Scheduling Zoo\'s own files are ' +
+      "never edited.</p>" +
       "</section>" +
       szAnomaliesSectionHtml() +
       "</div>";
@@ -1015,6 +1232,29 @@
         const subs = Array.from(sec.querySelectorAll("h4"));
         return "<li>" + link(h3) + (subs.length ? "<ol>" + subs.map((h) => { const l = link(h); used.add(h.id); return "<li>" + l + "</li>"; }).join("") + "</ol>" : "") + "</li>";
       }).join("") + "</ol>";
+
+    // A way back up from every heading the Contents lists. Added AFTER the
+    // list is built, so the link's own text can't end up inside the entry
+    // that names the heading. It scrolls rather than navigating: an href of
+    // "#..." would be read as a route, and re-rendering the page to get
+    // back to the top of it is a lot of work for a scroll.
+    root.querySelectorAll(".docs-section h3, .docs-section h4").forEach((h) => {
+      const back = document.createElement("a");
+      back.className = "docs-back";
+      back.setAttribute("role", "button");
+      back.tabIndex = 0;
+      back.textContent = "↑ Contents";
+      back.title = "Back to the contents";
+      // A plain scroll, not scrollIntoView({behavior:"smooth"}): that is
+      // silently a no-op in some engines (it does nothing at all in the
+      // in-app browser this was tested in), and a link that does nothing is
+      // worse than one that jumps. The animation comes from CSS
+      // scroll-behavior instead, where the engine supports it.
+      const go = () => window.scrollTo(0, Math.max(0, toc.getBoundingClientRect().top + window.scrollY - 12));
+      back.addEventListener("click", go);
+      back.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+      h.appendChild(back);
+    });
   }
 
   // Known data anomalies in The Scheduling Zoo, and how this site reads
@@ -1027,11 +1267,11 @@
       "<h3>Known data anomalies in The Scheduling Zoo</h3>" +
       "<p>Things we spot-checked and found inconsistent, or noteworthy gaps, in The Scheduling Zoo's own data." +
       (SZ_FLAGGED_EDGES.length ? " Arrows we only flag are drawn red and dashed on the Scheduling Zoo map." : "") +
-      " Its source files are left exactly as-is. Four things change how we read them: a single confirmed typo our " +
-      "classifier tolerates, two conditions of the problem-builder form, and two reduction rules we replace with " +
-      "corrected versions -- setup times under a single server, and multiprocessor tasks on parallel machines. " +
-      "Arrows that exist only because of a rule of ours look like any other arrow; clicking one says which rule " +
-      "added it.</p>" +
+      " Its source files are left exactly as-is. Two things change how we read them: two reduction rules we " +
+      "<i>add</i> where their data has none or gates it too tightly -- machine counts, and equal or unit " +
+      "processing times -- and a doi.org prefix stripped off seven DOIs so their links resolve. The rest are " +
+      "recorded and reported, not worked around. Arrows that exist only because of a rule of ours look like " +
+      "any other arrow; clicking one says which rule added it.</p>" +
       SZ_FLAGGED_EDGES.map((f) => {
         const from = byId[f.from], to = byId[f.to];
         return "<h4>Flagged: " + escapeHtml(from ? from.notation : f.from) + " → " + escapeHtml(to ? to.notation : f.to) + "</h4>" +
@@ -1175,6 +1415,104 @@
   // Kept in this browser's localStorage for now -- see the Problem Maps
   // page. A map is { id, title, createdAt, updatedAt, problemIds,
   // positions: {id: {left, top}}, drafts: {id: draft problem}, notations }.
+  // Classifications the reader records themselves, for problems or single
+  // parameters where this site's corpus has nothing (or where they disagree
+  // with it). Kept in this browser only, like saved problem maps, and never
+  // mixed into the cited data: a citation is optional here, so every one of
+  // these is rendered as the reader's own unverified claim, marked as such.
+  const USER_CLASS_KEY = "psz.classifications.v1";
+  function loadUserClassifications() {
+    try {
+      const obj = JSON.parse(localStorage.getItem(USER_CLASS_KEY) || "{}");
+      return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function storeUserClassifications(obj) {
+    try {
+      localStorage.setItem(USER_CLASS_KEY, JSON.stringify(obj));
+    } catch (e) {
+      /* private window, or quota: the page still works, the claim just isn't kept */
+    }
+  }
+  // `label` null for the problem's own classical class, otherwise the
+  // parameter it belongs to.
+  function userClassification(nodeId, label) {
+    const entry = loadUserClassifications()[nodeId];
+    if (!entry) return null;
+    return (label === null || label === undefined ? entry.classical : (entry.params || {})[label]) || null;
+  }
+  function setUserClassification(nodeId, label, value) {
+    const all = loadUserClassifications();
+    const entry = all[nodeId] || (all[nodeId] = {});
+    if (label === null || label === undefined) {
+      if (value) entry.classical = value;
+      else delete entry.classical;
+    } else {
+      const params = entry.params || (entry.params = {});
+      if (value) params[label] = value;
+      else delete params[label];
+    }
+    if (!entry.classical && !Object.keys(entry.params || {}).length) delete all[nodeId];
+    storeUserClassifications(all);
+    // The classical classes are cached across renders and now depend on
+    // these, so they have to be recomputed -- a reader's claim travels to
+    // every problem that generalizes it (and, when it is P, to every
+    // problem it generalizes).
+    SZ_EFFECTIVE = null;
+    SZ_PARAM_CLAIMS = null;
+    designerEffectiveCache = { key: null, classes: null };
+  }
+
+  // Every problem's effective classical class, WITH the reader's own
+  // classifications folded in and superseding the citations. Computed on
+  // demand and cached until a claim invalidates the cache above.
+  //
+  // Always read the classes through this, never off SZ_EFFECTIVE directly:
+  // the variable is null for the whole window between a claim being made
+  // and the next thing that happens to recompute it, and a caller reading
+  // it raw in that window quietly falls back to each problem's own cited
+  // class -- losing the inheritance AND the reader's claim. That is exactly
+  // what the problem maps did: a classification made there repainted the
+  // map from raw corpus classes, so nothing superseded, nothing inherited,
+  // and no arrow ever turned red.
+  function szEffectiveClasses() {
+    if (!SZ_EFFECTIVE && DATA_SZ) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    return SZ_EFFECTIVE || {};
+  }
+
+  // Arrows the reader draws by hand on the Scheduling Zoo overview: each one
+  // claims that `to` is a special case of `from`, described with the same
+  // questionnaire the designer uses (see SZ_REDUCTION_KINDS). Kept in this
+  // browser only, like the classifications above.
+  //
+  // Deliberately NOT part of the model: unlike a classification, a
+  // hand-drawn arrow never moves anybody's complexity around. It is a
+  // reduction the reader is proposing, not evidence -- so it is drawn,
+  // checked against the corpus, and can be sent to the author, but nothing
+  // inherits along it. That is exactly how the designer treats its own
+  // hand-drawn arrows (see designerEffectiveClasses).
+  const SZ_EDGE_KEY = "psz.szEdges.v1";
+  let SZ_USER_EDGES = null;
+  function loadSzUserEdges() {
+    if (SZ_USER_EDGES) return SZ_USER_EDGES;
+    try {
+      const list = JSON.parse(localStorage.getItem(SZ_EDGE_KEY) || "[]");
+      SZ_USER_EDGES = Array.isArray(list) ? list.filter((e) => e && e.from && e.to) : [];
+    } catch (e) {
+      SZ_USER_EDGES = [];
+    }
+    return SZ_USER_EDGES;
+  }
+  function storeSzUserEdges() {
+    try {
+      localStorage.setItem(SZ_EDGE_KEY, JSON.stringify(SZ_USER_EDGES || []));
+    } catch (e) {
+      /* private window, or quota: the arrow still shows, it just isn't kept */
+    }
+  }
+
   const SAVED_MAPS_KEY = "psz.problemMaps.v1";
   function loadSavedMaps() {
     try {
@@ -1416,6 +1754,8 @@
   // results are NOT independently verified here -- every node says so, and
   // links out to the original citation instead of claiming a checked
   // classicalClass/complexityClass.
+  // How wide one band of the diagram may get before it is cut and stacked.
+  const SZ_STRIP_W = 2100;   // how wide one block may get before it is cut
   const SZ_NODE_H = 24, SZ_ROW_H = 46, SZ_MARGIN = 30, SZ_COL_GAP = 12;
   const SZ_FONT_PX = 10.5;
   const SZ_MIN_NODE_W = 60, SZ_MAX_NODE_W = 260;
@@ -1425,8 +1765,9 @@
   // and flag rather than correct: red/dashed on the map, listed at the
   // bottom of the view. Each entry's `from`/`to` are raw ids
   // (DATA_SZ.nodes[].id). Empty for now -- the only such edge,
-  // P2|fixj|Cmax -> P2||Cmax, came from a rule we now correct (see
-  // SZ_FIXJ_SHOP_NOTE), so it is no longer drawn.
+  // P2|fixj|Cmax -> P2||Cmax, came from the fix_j rule, which The Scheduling
+  // Zoo has since corrected (schedulingzoo PR #14), so it is no longer in
+  // their data to draw.
   const SZ_FLAGGED_EDGES = [];
   function szFlaggedEdgeFor(from, to) {
     return SZ_FLAGGED_EDGES.find((f) => f.from === from && f.to === to);
@@ -1436,9 +1777,12 @@
   // below it -- one source of truth for why OUR_MACHINE_COUNT_RULES (see
   // convert_for_pzoo.py) is sound.
   const SZ_MACHINE_COUNT_RULE_NOTE =
-    "The Scheduling Zoo's own \"number of machines\" field has zero reduction rules (see Known data anomalies in the Documentation) -- so we " +
-    "added our own: m reduces to m+1 (1->2->3->4->5->arbitrary), layered on TOP of The Scheduling Zoo's data, never " +
-    "replacing anything they declared. Sound for every objective in this corpus regardless of machine " +
+    "The Scheduling Zoo does declare the chain m reduces to m+1 (1->2->3->4->5->arbitrary), but gated: every " +
+    "one of those rules fires only when the \"bounded number of machines\", \"processing times\" AND \"preemption\" " +
+    "fields are all empty at once, so it never applies to a problem with unit processing times, with equal " +
+    "processing times, or with preemption -- most of the corpus. As a plain one-field rule there is none at " +
+    "all (see Known data anomalies in the Documentation). So we state it ungated, layered on TOP of The " +
+    "Scheduling Zoo's data, never replacing anything they declared. Sound for every objective in this corpus regardless of machine " +
     "environment: for P/Q/R, an m-machine schedule stays valid with an extra machine simply left unused; for " +
     "O/F/J (where machine count = operations per job), pad every job with one zero-duration operation on the " +
     "extra machine -- neither changes any completion time, so the optimum can only get better or stay the same " +
@@ -1449,58 +1793,29 @@
     "original rules first, edge by edge, so a pair already implied by their own data is never wrongly claimed " +
     "as ours.";
 
-  // Shared between the S1 data note and the panel of any edge that exists
-  // only because of our corrected setup-time rule (OUR_S1_SETUP_RULES in
-  // convert_for_pzoo.py). On today's data that rule only removes edges.
-  const SZ_S1_SETUP_NOTE =
-    "What an empty setup-times field means depends on the server. With no server there is nothing to set up " +
-    "(s=0). Under S1 -- one server performs every setup, and setups cannot overlap -- it has to mean ARBITRARY " +
-    "setup times: zero setups would make the server constrain nothing, so S1 would be pointless. The " +
-    "citations agree: Brucker, Knust & Wang (2005) prove F2;S1|pij=p|Cmax NP-hard, which zero setups would " +
-    "make trivial. The Scheduling Zoo's notation.xml labels that value \"no setup\" and declares \"\" -> sij=1 -> sij=s " +
-    "(the same for sj), which makes arbitrary setups the most RESTRICTED case. That put 19 wrong edges in their " +
-    "graph, 14 of them placing a problem cited P above one cited NP-hard (the F2;S1 cluster we used to flag " +
-    "edge by edge). It is also what broke our machine-count rule whenever it combined with another field: 27 " +
-    "contradictions, every one involving S1. Our correction, in our converter only (The Scheduling Zoo's files are " +
-    "untouched): drop the four \"\" -> s rules and chain s=1 -> s=s -> arbitrary, gated on S1 -- a two-field " +
-    "(server, setup times) rule, so it never fires for a problem without a server. Result: those 19 edges " +
-    "are gone, none added, no S1 contradiction remains, and the combined machine-count edges now contradict " +
-    "0 of 170. Suggested upstream fix: replace <reduction from=\"\" to=\"s_{ij}=1\"/> with " +
-    "<reduction from=\"S1;s_{ij}=1\" to=\"S1;not setup times\"/> and " +
-    "<reduction from=\"S1;s_{ij}=s\" to=\"S1;not setup times\"/> (both spelled out: extend_complex_reduction " +
-    "never actually composes rules, its recursive calls are never iterated), likewise for s_j, and relabel " +
-    "the empty choice \"arbitrary setup times\".";
+  // Shared between the processing-times data note and the panel of any edge
+  // that exists only because of those rules (OUR_PROCESSING_TIME_RULES in
+  // convert_for_pzoo.py).
+  const SZ_PROCESSING_TIME_RULE_NOTE =
+    "The Scheduling Zoo's \"processing times\" field has rules BETWEEN its restrictions (pj=1 -> pj=p, " +
+    "pj=1 -> pj∈{1,2}, pij=1 -> pij=p) but hardly any FROM a restriction to the unrestricted field: only the " +
+    "two values that encode something else entirely (pij∈{pj,∞}, the restricted machine model, and pkj=pj) " +
+    "reduce to it. So equal or unit processing times were not a special case of arbitrary ones -- Q||Cmax did " +
+    "not generalize Q|pj=p|Cmax. The same kind of gap as the machine-count one above, so we fill it the same " +
+    "way, in our converter only: pj=p, pj∈{1,2} and pij=p each reduce to arbitrary processing times, which by " +
+    "The Scheduling Zoo's own rules also gives pj=1 and pij=1. Sound in every environment and for every " +
+    "objective here, with nothing to prove: an instance whose processing times all happen to be equal IS an " +
+    "instance with arbitrary processing times -- the restriction is on the input, not on what a schedule may " +
+    "do. Result: 205 more relations, 90 more arrows on the map, 24 problems that had no arrow at all now " +
+    "connected, and none of the new arrows puts a problem cited P above one cited NP-hard, or a " +
+    "pseudo-polynomial one above a strongly NP-hard one -- the check that caught the S1 rule below.";
 
-  // Shared between the fix_j data note and the panel of any edge that exists
-  // only because of our shop-only fix_j rule (OUR_SHOP_FIX_J_RULES in
-  // convert_for_pzoo.py). On today's data that rule only removes edges.
-  const SZ_FIXJ_SHOP_NOTE =
-    "The Scheduling Zoo's notation.xml declares <reduction from=\"\" to=\"fix_j\"/>: a problem with no machine-set " +
-    "constraint is a special case of the same problem where every job needs a given set of machines at once " +
-    "(fixj, multiprocessor tasks). Whether that holds depends on the machine environment. In a shop (O, F, J) " +
-    "every operation's machine is already part of the input -- \"operation Oij must be processed on machine i\" " +
-    "-- so the plain shop is fixj with every set of size one, and the rule holds. On parallel machines (P, Q, R) " +
-    "an empty field means the scheduler chooses one machine per job, while fixj makes the machines part of the " +
-    "input: no choice of sets reproduces that choice without solving the problem (for P2||Cmax, picking the " +
-    "right sets is solving Partition), and a job holding several machines at once has no counterpart the other " +
-    "way. The citations show the break: P2|fixj|Cmax is in P (Hoogeveen, van de Velde & Veltman 1994, p. 261: " +
-    "run the tasks needing both machines first, then each machine's own tasks back to back), yet the rule drew " +
-    "it as generalizing P2||Cmax, which is NP-hard. On the map the rule drew 7 relations on parallel machines, " +
-    "all false -- that one clashed with a citation, the other six sit between hard problems where nothing " +
-    "showed -- while all of its shop relations are true. Our correction, in our converter only (The Scheduling " +
-    "Zoo's files are untouched): drop the one-field rule and keep it for shops only, as a two-field (machine " +
-    "sets, type) rule. Result: the 7 parallel-machine relations, including the arrow we used to flag red, are " +
-    "gone; nothing is added; every shop relation is still on the map; and no arrow now puts a problem cited P " +
-    "above one cited NP-hard. Suggested upstream fix: replace <reduction from=\"\" to=\"fix_j\"/> with " +
-    "<reduction from=\"O;not machine sets\" to=\"O;fix_j\"/>, the same for F and J, and " +
-    "<reduction from=\"F;not machine sets\" to=\"J;fix_j\"/> (spelled out, as extend_complex_reduction never " +
-    "composes rules). Run through The Scheduling Zoo's own parser, that gives exactly the same graph as our " +
-    "correction.";
-
-  // Which of our notes explains a green (added-by-this-site) edge.
+  // Which of our notes explains a green (added-by-this-site) edge. Only two
+  // rules of ours add edges: the two that used to correct The Scheduling
+  // Zoo's own rules are upstream now (schedulingzoo PR #14), so no edge is
+  // attributed to them any more.
   function szAddedEdgeNote(edge) {
-    if (edge.addedBy === "s1-setup") return SZ_S1_SETUP_NOTE;
-    if (edge.addedBy === "fixj-shop") return SZ_FIXJ_SHOP_NOTE;
+    if (edge.addedBy === "processing-times") return SZ_PROCESSING_TIME_RULE_NOTE;
     return SZ_MACHINE_COUNT_RULE_NOTE;
   }
 
@@ -1511,57 +1826,77 @@
   // bottom of this view.
   const SZ_DATA_NOTES = [
     {
-      title: "Typo silently tolerated: \"in in $P$\" for P|pj=p;rj|Lmax",
+      title: "The machine-count reduction chain is gated on three other fields being empty",
       body:
-        "Simons:83's citation for P|pj=p;rj|Lmax literally reads \"in in $P$\" in The Scheduling Zoo's own bib file -- a " +
-        "doubled word, not \"is in $P$\" like its three sibling citations from the very same paper. Confirmed " +
-        "it's the only citation in the whole corpus starting with \"in \". Our classifier now recognizes this " +
-        "specific typo (checked it can't match anything else), so the node shows P as intended -- The Scheduling Zoo's " +
-        "source text itself is untouched.",
+        "Checked both fields that could carry \"a single machine is a special case of m machines\". The \"type\" " +
+        "field (alpha: 1/P/Q/R/O/F/J) has rules only among the multi-machine environments themselves " +
+        "(P->Q->R, F->J); none mention \"1\", because The Scheduling Zoo's own parser never assigns type=\"1\" to " +
+        "a parsed single-machine problem -- it assigns type=\"P\" plus a separate \"number of machines\"=\"1\". " +
+        "And that field has no one-field rule at all. What it does have is the full chain " +
+        "1->2->3->4->5->arbitrary (and ->∞) written as seven multi-field rules, each conditioned on " +
+        "\"not bounded number of machines; not processing times; not preemption\" -- so it fires only for a " +
+        "problem that restricts none of those. Any problem with pj=1, pj=p or pmtn is excluded, which is a " +
+        "large part of the corpus: 1|pj=1;rj|Cmax gets no edge to P|pj=1;rj|Cmax, though m=1 is plainly a " +
+        "special case of arbitrary m, and adding machines cannot hurt a regular objective whatever the " +
+        "processing times are. The gate looks like caution rather than a claim -- nothing about preemption or " +
+        "equal processing times makes an extra machine unsafe. Suggested upstream fix: state the chain " +
+        "ungated, as one-field rules on \"number of machines\".",
     },
     {
-      title: "No reduction rule connects single-machine (\"1\") to multi-machine (\"P\"/\"Q\"/\"R\"/...) problems",
-      body:
-        "Checked both fields that could carry this. The \"type\" field (alpha: 1/P/Q/R/O/F/J) does have " +
-        "reduction rules -- but only among the multi-machine environments themselves (P->Q->R, F->J); none " +
-        "mention \"1\" at all. That's because The Scheduling Zoo's own parser never actually assigns type=\"1\" to a " +
-        "parsed single-machine problem -- it assigns type=\"P\" (same as ordinary parallel-machine problems) " +
-        "plus a separate \"number of machines\"=\"1\". And THAT field's simple_reductions set is completely " +
-        "empty -- no rule for m=1, m=2, m=3, ... being a special case of arbitrary m at all. (One narrow " +
-        "complex reduction exists, but only for one specific combination with three other fields at once.) So " +
-        "no rule declaring \"1 reduces to P\" exists in either place it could live -- not a wrong rule, an " +
-        "absent one. Result: problems that differ ONLY in machine count essentially never get a generalization " +
-        "edge in this graph -- e.g. 1||ΣUj has no edge to P||ΣUj, even though m=1 is obviously a special case " +
-        "of arbitrary m. Not a hand-authored graph (edges genuinely are computed from declared rules, per the " +
-        "\"why so few edges\" question earlier) -- just a dimension The Scheduling Zoo's own reduction data barely covers.",
-    },
-    {
-      title: "We added a reduction rule to fill that gap",
+      title: "We state that chain ungated",
       body: SZ_MACHINE_COUNT_RULE_NOTE,
     },
     {
-      title: "Setup times under a single server (S1): The Scheduling Zoo's reduction rule points the wrong way -- corrected here",
-      body: SZ_S1_SETUP_NOTE,
+      title: "Equal and unit processing times are not declared special cases of arbitrary ones -- rules added here",
+      body: SZ_PROCESSING_TIME_RULE_NOTE,
     },
     {
-      title: "Two of The Scheduling Zoo's form conditions corrected when checking new problems",
+      title: "Seven bibtex entries store a whole URL in the DOI field -- links worked around here",
       body:
-        "The Problem Map Designer only offers to add a new problem when it is well-formed by The Scheduling " +
-        "Zoo's own problem-builder form in notation.xml: one value per field, and every field and value only " +
-        "where its \"requires\" condition holds. Running all 719 problems of the corpus through those conditions " +
-        "rejected 95 of them, for two reasons. First, the unit and equal processing times pij=1 and pij=p require " +
-        "\"R or J or O\", leaving out F, although 76 and 18 flow-shop problems use them and notation.xml's own " +
-        "flow-shop explanation writes processing times as pij. Second, its evaluator splits a condition on spaces " +
-        "only, so \"(P\" in \"advanced and (P or Q or 1)\" is read as an unknown word and pj∈{1,2} is never offered. " +
-        "We read the first as \"R or J or O or F\" and space out the parentheses; with both, all 719 problems are " +
-        "well-formed. Suggested upstream fix: add \"or F\" to those two conditions and write " +
-        "\"advanced and ( P or Q or 1 )\".",
+        "A bibtex doi field holds the bare identifier, 10.xxxx/yyyy, and 20 of the 27 entries with a DOI have " +
+        "it that way. The other seven store \"https://doi.org/10.xxxx/yyyy\" instead, so the usual way of " +
+        "building a link -- https://doi.org/ followed by the identifier -- produced " +
+        "\"https://doi.org/https://doi.org/10....\", which does not resolve. That was 25 broken citation links " +
+        "on this site, on Woeginger 1997, Hanen-Kordon-Alix 2024, Hermelin-Pinedo 2019, Kaul-Mnich-Molter " +
+        "2024, Chen-Marx-Zhang 2017, Knop-Koutecký 2017 and Goldman et al. 2000. Our converter now strips a " +
+        "doi.org prefix before building the link, so every citation here resolves. Suggested upstream fix: " +
+        "store the bare identifier in those seven entries (a URL belongs in the url field).",
     },
     {
-      title: "Multiprocessor tasks (fixj) on parallel machines: The Scheduling Zoo's reduction rule only holds for shops -- corrected here",
-      body: SZ_FIXJ_SHOP_NOTE,
+      title: "Three papers are entered twice, under two bibtex keys",
+      body:
+        "Kaul, Mnich & Molter 2024 appears as both \"KaulMnichMolter:24:Single-Machine-Scheduling-...\" and " +
+        "\"KaulMnichMolter:24:Single-machine-scheduling-...\" -- the same paper, the keys differing only in " +
+        "capitalisation, so The Scheduling Zoo's own duplicate-key check never fires. Each copy carries four " +
+        "results, and the overlap shows up on 1|rj|ΣwjUj, where \"is fixed parameter tractable\" is listed " +
+        "twice for #p+#d+#r and twice for #p+#w+#r. Hoogeveen & Lenstra 1994 is in twice as " +
+        "\"HoogeveenLenstra:94:Three-four\" and \"hoogeveen1994three\", and Davies et al. once as " +
+        "\"davies_scheduling_2020\" and once as \"davies_scheduling_2021\". Nothing is read around here: the " +
+        "duplicates are shown as they are cited, since two entries for one paper is a question about the " +
+        "bibliography, not about the results. Suggested upstream fix: merge each pair.",
+    },
+    {
+      title: "The same parameter set is written in two different orders",
+      body:
+        "1|rj|ΣwjUj carries results for both \"#d+#p+#r\" and \"#p+#d+#r\", and for both \"#p+#d+#w\" and " +
+        "\"#p+#w+#d\" -- the same set of bounded measures, written in a different order, which The Scheduling " +
+        "Zoo treats as two different parameters. (Both pairs come from the duplicated Kaul-Mnich-Molter entry " +
+        "above.) This site nests parameter results by set containment, so the two spellings land in the same " +
+        "place and the panel shows them side by side rather than as unrelated results. Suggested upstream " +
+        "fix: with the duplicate entry merged, the orders agree again.",
     },
   ];
+
+  // The four anomalies this site used to read around -- the setup-time
+  // chain under S1, the fix_j rule on parallel machines, three conditions
+  // of the problem-builder form, and the "in in $P$" typo -- were reported
+  // and fixed in The Scheduling Zoo itself (schedulingzoo PR #14, merged).
+  // The corrections came out of the converter when the submodule was
+  // updated, and regenerating the data from their files as shipped changed
+  // nothing but the typo: the same 719 problems and the same 570 arrows,
+  // which is the check that their fix and ours agree. Nothing about them is
+  // shown on the site any more -- a fixed anomaly is not something a reader
+  // has to be told about, and git remembers the rest.
 
   // One-line hover summary for an edge: which field(s) it relaxes, using
   // schedzoo's own field names (see edge.diffs, computed in
@@ -1651,7 +1986,10 @@
   // OUR_MACHINE_COUNT_RULES in convert_for_pzoo.py); red = flagged
   // inconsistent; gray = schedzoo's own untouched reduction graph.
   const SZ_EDGE_FLAGGED_COLOR = "#cf4444";
-  const SZ_EDGE_COLORS = [MAP_EDGE_COLOR, SZ_EDGE_FLAGGED_COLOR];
+  // Blue marks a classification the reader made themselves -- see the
+  // .user-classified / .user-affected rules in style.css.
+  const USER_CLASS_RING = "#3b82f6";
+  const SZ_EDGE_COLORS = [MAP_EDGE_COLOR, SZ_EDGE_FLAGGED_COLOR, "#3b82f6"];
   function szEdgeStroke(edge, flagged) {
     // Arrows added by a rule of ours look like every other arrow; their
     // panel still says which rule added them.
@@ -2332,7 +2670,10 @@
       const willOpen = panel.hidden;
       root.querySelectorAll(".ms-panel").forEach((p) => (p.hidden = true));
       panel.hidden = !willOpen;
-      if (willOpen) sortByCount();
+      if (willOpen) {
+        sortByCount();
+        placeFilterPanel(toggle, panel);
+      }
     });
     // Closes only when its own button is clicked again (or another
     // dropdown is opened) -- not on outside clicks or while switching values.
@@ -2462,7 +2803,10 @@
       const willOpen = panel.hidden;
       root.querySelectorAll(".ms-panel").forEach((p) => (p.hidden = true));
       panel.hidden = !willOpen;
-      if (willOpen) sortByCount();
+      if (willOpen) {
+        sortByCount();
+        placeFilterPanel(toggle, panel);
+      }
     });
     // Closes only when its own button is clicked again (or another
     // dropdown is opened) -- not on outside clicks or while switching values.
@@ -2502,6 +2846,102 @@
   // bracket) -- never from a merged-in parameterized result ("X [y]") --
   // so a problem schedzoo never classified classically doesn't get
   // painted P/NP-hard just because someone studied a parameter of it.
+  // A generalization can never be easier than the problem it generalizes:
+  // solving the general problem solves the special case too. So these two
+  // pairings are contradictions rather than new information -- the same rule
+  // designerArrowConflict applies to hand-drawn arrows, pulled out here so
+  // the map, the arrows and the classify dialog all judge it identically.
+  const SZ_HARD_CLASSES = ["weakly-NP-hard", "NP-hard-unresolved", "strongly-NP-hard"];
+  function szClassConflict(generalClass, specificClass, generalName, specificName) {
+    if (generalClass === "P" && SZ_HARD_CLASSES.includes(specificClass)) {
+      return "an algorithm for " + generalName + " would also solve the NP-hard " + specificName + " in polynomial time";
+    }
+    if (generalClass === "weakly-NP-hard" && specificClass === "strongly-NP-hard") {
+      return "the pseudo-polynomial algorithm for " + generalName + " would also solve the strongly NP-hard " +
+        specificName + " in pseudo-polynomial time";
+    }
+    return null;
+  }
+  // Two classifications of the SAME problem that cannot both hold.
+  function szClassesDisagree(a, b) {
+    if (!a || !b || a === b || a === "unclaimed" || b === "unclaimed") return false;
+    return !!szClassConflict(a, b, "x", "y") || !!szClassConflict(b, a, "x", "y");
+  }
+
+  // Problems where the model now says something the corpus's own citations
+  // contradict. Since a claim SUPERSEDES the corpus and carries along the
+  // arrows, the two ends of an arrow no longer disagree with each other once
+  // a claim has propagated -- the disagreement has moved to being between
+  // the model and the literature, which is what this reports.
+  function szOverriddenByClaims() {
+    if (!DATA_SZ) return [];
+    szEffectiveClasses();
+    if (!SZ_EFFECTIVE_CORPUS) SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
+    return DATA_SZ.nodes
+      .filter((n) => szClassesDisagree(SZ_EFFECTIVE[n.id], SZ_EFFECTIVE_CORPUS[n.id]))
+      .map((n) => ({
+        id: n.id,
+        notation: n.notation,
+        now: SZ_EFFECTIVE[n.id],
+        cited: SZ_EFFECTIVE_CORPUS[n.id],
+        direct: !!userClassification(n.id, null),
+      }));
+  }
+
+  // The arrows to paint red: those whose two ends cannot both be true. A
+  // general problem being hard while a special case of it is easy is the
+  // normal shape of this graph (P||Cmax is strongly NP-hard, its two-machine
+  // case P2||Cmax is not) and is NOT a conflict -- only the two pairings in
+  // szClassConflict are. Because a claim supersedes the corpus and carries
+  // along the arrows, propagation leaves the model consistent, so this is
+  // rare by construction: it catches the case where the reader has made two
+  // DIRECT claims that contradict each other, neither of which can override
+  // the other. Disagreement with the LITERATURE is a different thing, is per
+  // problem rather than per arrow, and is what szOverriddenByClaims reports.
+  function szConflictingEdges() {
+    if (!DATA_SZ) return [];
+    szEffectiveClasses();
+    const byId = {};
+    DATA_SZ.nodes.forEach((n) => { byId[n.id] = n; });
+    return DATA_SZ.edges.map((e) => {
+      const why = szClassConflict(SZ_EFFECTIVE[e.from], SZ_EFFECTIVE[e.to],
+        (byId[e.from] || {}).notation || e.from, (byId[e.to] || {}).notation || e.to);
+      return why ? { from: e.from, to: e.to, why: why, fromClass: SZ_EFFECTIVE[e.from], toClass: SZ_EFFECTIVE[e.to] } : null;
+    }).filter(Boolean);
+  }
+
+  // Same four properties as szNodeStyle, set directly on an existing node --
+  // used when a classification changes and the map has to follow without a
+  // re-render (which would throw away any dragging the reader has done).
+  function applySzNodeStyle(el, classId) {
+    const cc = classicalClassById(classId);
+    el.style.background = cc && cc.fill ? cc.color : "var(--panel-bg)";
+    el.style.borderColor = cc ? cc.color : "#868e96";
+    el.style.borderStyle = cc ? cc.border || "solid" : "solid";
+    el.style.color = cc && cc.fill ? fillTextColor(cc) : "var(--fg)";
+  }
+  // The filter bar sits directly above the diagram, so a menu that opens
+  // downward covers the very thing being filtered. These open UPWARD, and
+  // only fall back to downward when the toggle is too close to the top of
+  // the window for the menu to fit above it (where opening up would put it
+  // off-screen and out of reach).
+  // Menus taller than the space above are SHRUNK to fit rather than flipped
+  // down -- they scroll inside already, and the settings menu is both the
+  // tallest and the one most worth keeping off the diagram. Flipping down is
+  // reserved for the case where there is so little room above that a menu
+  // there would be unusable.
+  const FILTER_PANEL_MIN_UP = 170;
+  function placeFilterPanel(toggle, panel) {
+    panel.classList.remove("ms-panel-down");
+    panel.style.maxHeight = "";
+    const room = toggle.getBoundingClientRect().top - 12;
+    if (room < FILTER_PANEL_MIN_UP) {
+      panel.classList.add("ms-panel-down");
+      return;
+    }
+    if (panel.scrollHeight > room) panel.style.maxHeight = Math.floor(room) + "px";
+  }
+
   function szNodeStyle(classId) {
     const cc = classicalClassById(classId);
     const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
@@ -2524,7 +2964,10 @@
   // downgrades to NP-hard-unresolved; P doesn't transfer at all). Kept as
   // its own copy (rather than reusing computeEffectiveClasses directly)
   // since it walks DATA_SZ's own id space/edges, not DATA.problems/map.edges.
-  function computeEffectiveClassesForSz(nodes, edges) {
+  // `ignoreUserClaims` gives the corpus's own reading, untouched by anything
+  // the reader has classified -- the panel shows the two side by side, so it
+  // needs both.
+  function computeEffectiveClassesForSz(nodes, edges, ignoreUserClaims) {
     const effective = {};
     const visiting = new Set();
     function resolve(id, cls) {
@@ -2544,9 +2987,93 @@
       effective[id] = result;
       return result;
     }
+    // A classification the reader recorded themselves outranks the corpus,
+    // and from there travels exactly like a cited one.
+    const own = ignoreUserClaims ? {} : loadUserClassifications();
     const cls = {};
-    nodes.forEach((n) => { cls[n.id] = n.classicalClass; });
+    nodes.forEach((n) => {
+      const mine = own[n.id] && own[n.id].classical;
+      cls[n.id] = mine ? mine.classId : n.classicalClass;
+    });
     nodes.forEach((n) => resolve(n.id, cls));
+
+    // Hardness travels UP (above). P travels DOWN: an instance of a problem
+    // solvable in polynomial time is still solvable once restricted, so
+    // every special case of a P problem is in P. Only ever fills in a
+    // problem that has no classification of its own -- and on the corpus
+    // alone it changes nothing (checked: 0 of 719 nodes), because no
+    // unclaimed problem there has a generalization in P. It earns its keep
+    // once the reader classifies something as P themselves.
+    let filled = true;
+    while (filled) {
+      filled = false;
+      edges.forEach((e) => {
+        const specific = effective[e.to];
+        if (specific && specific !== "unclaimed") return;
+        // P carries down as P; a pseudo-polynomial algorithm carries down as
+        // one too -- it still runs on the special case. P is the stronger of
+        // the two, so a special case already known to be in P keeps that.
+        if (effective[e.from] === "P") {
+          effective[e.to] = "P";
+          filled = true;
+        } else if (effective[e.from] === "weakly-NP-hard") {
+          effective[e.to] = "weakly-NP-hard";
+          filled = true;
+        }
+      });
+    }
+
+    // Where a claim disagrees with the corpus, the claim wins -- and so does
+    // everything that follows from it. The passes above only ever fill in a
+    // problem nothing was known about; these ones overwrite a cited class,
+    // because that is what "the reader supersedes our data" means: claiming
+    // a problem is in P puts every special case of it in P, even one cited
+    // as NP-hard, and claiming one is hard makes every problem generalizing
+    // it at least that hard, even one cited as P. Only another DIRECT claim
+    // is immune. Everything reached this way is recorded so the map can show
+    // which problems moved only because of a claim.
+    const claimed = new Set(nodes.filter((x) => own[x.id] && own[x.id].classical).map((x) => x.id));
+    const fromClaim = new Set(claimed);
+    if (claimed.size) {
+      const hardness = { "NP-hard-unresolved": 1, "strongly-NP-hard": 2 };
+      let moved = true;
+      let guard = 0;
+      while (moved && guard <= nodes.length + 2) {
+        moved = false;
+        guard += 1;
+        edges.forEach((e) => {
+          // P on a generalization forces P on each of its special cases.
+          if (effective[e.from] === "P" && fromClaim.has(e.from) &&
+              effective[e.to] !== "P" && !claimed.has(e.to)) {
+            effective[e.to] = "P";
+            fromClaim.add(e.to);
+            moved = true;
+          }
+          // So does a pseudo-polynomial algorithm -- except onto a special
+          // case already in P, which is the better answer of the two.
+          if (effective[e.from] === "weakly-NP-hard" && fromClaim.has(e.from) &&
+              effective[e.to] !== "weakly-NP-hard" && effective[e.to] !== "P" && !claimed.has(e.to)) {
+            effective[e.to] = "weakly-NP-hard";
+            fromClaim.add(e.to);
+            moved = true;
+          }
+          // Hardness on a special case forces at least as much on each
+          // problem that generalizes it.
+          const up = inheritedContribution(effective[e.to]);
+          if (up && fromClaim.has(e.to) && !claimed.has(e.from)) {
+            const current = inheritedContribution(effective[e.from]);
+            if ((hardness[up] || 0) > (hardness[current] || 0)) {
+              effective[e.from] = up;
+              fromClaim.add(e.from);
+              moved = true;
+            }
+          }
+        });
+      }
+    }
+    if (!ignoreUserClaims) {
+      SZ_USER_AFFECTED = new Set(Array.from(fromClaim).filter((id) => !claimed.has(id)));
+    }
     return effective;
   }
 
@@ -2580,6 +3107,9 @@
     // SZ_HIDDEN_STACK declaration up top.
     SZ_HIDDEN_STACK = [];
     SZ_HIDDEN_REDO_STACK = [];
+    // Half-drawn arrows don't survive a redraw either: the origin the reader
+    // picked is about to be replaced by a fresh element somewhere else.
+    SZ_ARROW_MODE = null;
 
     // Declutter mode (SZ_FOCUS_IDS set) restricts the whole layout to a
     // chosen subset of nodes/edges and enlarges everything to fill the
@@ -2602,10 +3132,11 @@
     const ids = nodes.map((n) => n.id);
     const byId = {};
     nodes.forEach((n) => { byId[n.id] = n; });
-    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    szEffectiveClasses();
     const szEffective = SZ_EFFECTIVE;
 
     const widthOf = {};
+    warmTextWidths(ids.map((id) => byId[id].notation), fontPx);
     ids.forEach((id) => {
       const w = measureTextWidthPx(byId[id].notation, fontPx) + 14;
       widthOf[id] = Math.min(maxW, Math.max(minW, Math.ceil(w)));
@@ -2640,52 +3171,603 @@
     });
 
     const pos = {};
-    const boxes = components.map((comp) => {
-      const compSet = new Set(comp);
-      const compEdges = edgesAll.filter((e) => compSet.has(e.from) && compSet.has(e.to));
-      const { row, col } = layoutDag(comp, compEdges);
-      const maxCol = Math.max(0, ...comp.map((id) => col[id]));
-      const maxRow = Math.max(0, ...comp.map((id) => row[id]));
-      const colWidth = {};
-      for (let c = 1; c <= maxCol; c++) {
-        colWidth[c] = Math.max(0, ...comp.filter((id) => col[id] === c).map((id) => widthOf[id]));
-      }
-      const colX = {};
-      colX[1] = 0;
-      for (let c = 2; c <= maxCol; c++) colX[c] = colX[c - 1] + colWidth[c - 1] + colGap;
+
+    // One component, drawn as a layered graph (the classic Sugiyama
+    // pipeline, in the small).
+    //
+    // 1. Rows: the longest path down from the component's roots, so a
+    //    problem always sits below everything that generalizes it. Since
+    //    hardness is what travels upward in this data (see
+    //    inheritedContribution), the hard end of a chain lands at the top
+    //    and never underneath its own special cases.
+    // 2. Edges that skip rows get a dummy node in each row they cross, so
+    //    every edge segment joins neighbouring rows. Dummies reserve a
+    //    narrow slot, which is what keeps a long edge from being dragged
+    //    across a row of unrelated problems.
+    // 3. Order inside a row: barycenter sweeps (each node drifts towards
+    //    the average position of what it connects to) followed by
+    //    transposition (swap neighbours whenever that removes crossings),
+    //    keeping whichever order crossed least.
+    // 4. x positions: the settled order, then a few passes pulling each
+    //    node towards its neighbours' centre without reordering, which
+    //    straightens the long chains.
+    const DUMMY_W = 8;
+    const TRAY_COLS = 3;
+    const PACK_CELL = 10;   // resolution of the packing outline, in pixels
+    function layoutComponent(comp, compEdges, wrapAt) {
+      const allParents = {}, allChildren = {};
+      comp.forEach((id) => { allParents[id] = []; allChildren[id] = []; });
+      compEdges.forEach((e) => { allParents[e.to].push(e.from); allChildren[e.from].push(e.to); });
+
+      // ---- leaves go in a tray under their own parent.
+      // A problem with one generalization and no special cases of its own
+      // adds nothing to the shape of the graph, but ordering it among its
+      // row's hundred siblings drags its one arrow right across the
+      // drawing. Such leaves are taken out of the layering and parked in a
+      // small block directly beneath their parent, which costs vertical
+      // space and buys very short arrows.
+      const tray = {};     // parent -> its leaves
+      const inTray = new Set();
       comp.forEach((id) => {
-        const w = widthOf[id];
-        pos[id] = {
-          left: colX[col[id]] + (colWidth[col[id]] - w) / 2,
-          top: row[id] * rowH,
-          w, h: nodeH,
-        };
+        if (allChildren[id].length === 0 && allParents[id].length === 1) {
+          const parent = allParents[id][0];
+          (tray[parent] = tray[parent] || []).push(id);
+          inTray.add(id);
+        }
       });
-      return {
-        comp,
-        width: (maxCol ? colX[maxCol] + colWidth[maxCol] : widthOf[comp[0]]),
-        height: maxRow * rowH + nodeH,
+      // A parent whose every child is trayed and that has no parent of its
+      // own would be left alone in the layering; that is fine, it just
+      // becomes a one-row block with its tray underneath.
+      const core = comp.filter((id) => !inTray.has(id));
+      if (!core.length) { core.push(comp[0]); inTray.delete(comp[0]); delete tray[comp[0]]; }
+      const coreSet = new Set(core);
+      compEdges = compEdges.filter((e) => coreSet.has(e.from) && coreSet.has(e.to));
+      const trayRows = {};   // parent -> rows of leaves under it
+      const trayW = {};      // parent -> width its tray needs
+      Object.keys(tray).forEach((parent) => {
+        if (!coreSet.has(parent)) { tray[parent].forEach((id) => inTray.delete(id)); delete tray[parent]; return; }
+        const kids = tray[parent];
+        const cols = Math.min(TRAY_COLS, kids.length);
+        const rowsNeeded = Math.ceil(kids.length / cols);
+        let widest = 0;
+        for (let r = 0; r < rowsNeeded; r += 1) {
+          const line = kids.slice(r * cols, (r + 1) * cols);
+          widest = Math.max(widest, line.reduce((sum, id) => sum + widthOf[id] + colGap, 0) - colGap);
+        }
+        trayRows[parent] = rowsNeeded;
+        trayW[parent] = widest;
+      });
+      const leftOver = comp.filter((id) => inTray.has(id) && !tray[allParents[id][0]]);
+      leftOver.forEach((id) => { core.push(id); coreSet.add(id); inTray.delete(id); });
+
+      const parentsOf = {}, childrenOf = {};
+      core.forEach((id) => { parentsOf[id] = []; childrenOf[id] = []; });
+      compEdges.forEach((e) => { parentsOf[e.to].push(e.from); childrenOf[e.from].push(e.to); });
+      comp = core;
+
+      const depth = layoutDag(comp, compEdges).row;
+      comp.forEach((id) => {
+        if (!parentsOf[id].length && childrenOf[id].length) {
+          depth[id] = Math.min(...childrenOf[id].map((c) => depth[c])) - 1;
+        }
+      });
+
+      // ---- proper layering: one slot per row for every edge
+      const slotW = {};              // slot id -> pixel width
+      const minRow = Math.min(...comp.map((id) => depth[id]));
+      const maxRow = Math.max(...comp.map((id) => depth[id]));
+      // rows[r] = the row's slots, left to right. Every row exists, even if
+      // only dummies end up in it.
+      const rows = Array.from({ length: maxRow - minRow + 1 }, () => []);
+      const rowOf = {};
+      comp.forEach((id) => {
+        const r = depth[id] - minRow;
+        rowOf[id] = r;
+        rows[r].push(id);
+        slotW[id] = Math.max(widthOf[id], trayW[id] || 0);
+      });
+      const segsDown = {}, segsUp = {}; // slot -> slots in the row below / above
+      const link = (a, b) => {
+        (segsDown[a] = segsDown[a] || []).push(b);
+        (segsUp[b] = segsUp[b] || []).push(a);
       };
+      let dummies = 0;
+      compEdges.forEach((e) => {
+        let from = e.from;
+        for (let r = rowOf[e.from] + 1; r < rowOf[e.to]; r += 1) {
+          const d = "\u0000dummy" + (dummies += 1);
+          rowOf[d] = r;
+          slotW[d] = DUMMY_W;
+          rows[r].push(d);
+          link(from, d);
+          from = d;
+        }
+        link(from, e.to);
+      });
+
+      // ---- crossings between two neighbouring rows, by counting the
+      // inversions among their edge segments.
+      const indexIn = (r) => {
+        const at = new Map();
+        rows[r].forEach((id, i) => at.set(id, i));
+        return at;
+      };
+      const crossingsBetween = (r) => {
+        if (r < 0 || r + 1 >= rows.length) return 0;
+        const upper = indexIn(r), lower = indexIn(r + 1);
+        const pairs = [];
+        rows[r].forEach((id) => (segsDown[id] || []).forEach((to) => {
+          if (lower.has(to)) pairs.push([upper.get(id), lower.get(to)]);
+        }));
+        pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        let n = 0;
+        for (let i = 0; i < pairs.length; i += 1) {
+          for (let j = i + 1; j < pairs.length; j += 1) {
+            if (pairs[i][1] > pairs[j][1]) n += 1;
+          }
+        }
+        return n;
+      };
+      const totalCrossings = () => {
+        let sum = 0;
+        for (let r = 0; r + 1 < rows.length; r += 1) sum += crossingsBetween(r);
+        return sum;
+      };
+
+      const snapshot = () => rows.map((items) => items.slice());
+      const restore = (snap) => snap.forEach((items, r) => { rows[r] = items.slice(); });
+
+      const barycenter = (r, neighbours) => {
+        const other = indexIn(r + (neighbours === segsUp ? -1 : 1));
+        const at = indexIn(r);
+        const want = new Map();
+        rows[r].forEach((id) => {
+          const ns = (neighbours[id] || []).filter((n) => other.has(n));
+          want.set(id, ns.length ? ns.reduce((sum, n) => sum + other.get(n), 0) / ns.length : at.get(id));
+        });
+        rows[r].sort((a, b) => want.get(a) - want.get(b) || at.get(a) - at.get(b));
+      };
+      // Swap neighbours while that removes crossings with the rows around.
+      const transpose = () => {
+        let improved = true;
+        let guard = 0;
+        while (improved && guard < 12) {
+          improved = false;
+          guard += 1;
+          for (let r = 0; r < rows.length; r += 1) {
+            for (let i = 0; i + 1 < rows[r].length; i += 1) {
+              const before = crossingsBetween(r - 1) + crossingsBetween(r);
+              const items = rows[r];
+              const tmp = items[i]; items[i] = items[i + 1]; items[i + 1] = tmp;
+              const after = crossingsBetween(r - 1) + crossingsBetween(r);
+              if (after < before) improved = true;
+              else { items[i + 1] = items[i]; items[i] = tmp; }
+            }
+          }
+        }
+      };
+
+      let best = snapshot(), bestCost = totalCrossings();
+      for (let pass = 0; pass < 8; pass += 1) {
+        for (let r = 1; r < rows.length; r += 1) barycenter(r, segsUp);
+        for (let r = rows.length - 2; r >= 0; r -= 1) barycenter(r, segsDown);
+        transpose();
+        const cost = totalCrossings();
+        if (cost < bestCost) { bestCost = cost; best = snapshot(); }
+      }
+      restore(best);
+
+      // ---- x positions: pack each row left to right, then pull nodes
+      // towards their neighbours without changing the order.
+      const x = {};
+      // Compact width of each row, and of the component: no row may grow
+      // past this, which is what stops the pulls below from stretching the
+      // drawing sideways pass after pass.
+      const rowWidth = rows.map((items) =>
+        items.reduce((sum, id) => sum + slotW[id] + colGap, 0) - colGap);
+      const compWidth = Math.max(0, ...rowWidth);
+
+      // Place one row: each slot at the position it wants where there is
+      // room, in order, with a gap, clamped into [0, compWidth] and pulled
+      // back left wherever the row has slack.
+      const placeRow = (r, want) => {
+        const items = rows[r];
+        if (!items.length) return;
+        const at = [];
+        let cursor = 0;
+        items.forEach((id, i) => {
+          const wish = want && want.has(id) ? want.get(id) : (x[id] !== undefined ? x[id] : cursor);
+          at[i] = Math.max(wish, cursor);
+          cursor = at[i] + slotW[id] + colGap;
+        });
+        let limit = compWidth;
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+          at[i] = Math.min(at[i], limit - slotW[items[i]]);
+          limit = at[i] - colGap;
+        }
+        cursor = 0;
+        items.forEach((id, i) => {
+          at[i] = Math.max(at[i], cursor);
+          cursor = at[i] + slotW[id] + colGap;
+        });
+        items.forEach((id, i) => { x[id] = at[i]; });
+      };
+      // Start every row centred in the component, then let the pulls move
+      // slots around inside that width.
+      rows.forEach((items, r) => {
+        let cursor = (compWidth - rowWidth[r]) / 2;
+        items.forEach((id) => { x[id] = cursor; cursor += slotW[id] + colGap; });
+      });
+      const centreOf = (id) => x[id] + slotW[id] / 2;
+      const pull = (r, neighbours) => {
+        const want = new Map();
+        rows[r].forEach((id) => {
+          const ns = (neighbours[id] || []).filter((n) => x[n] !== undefined);
+          if (!ns.length) return;
+          const mid = ns.reduce((sum, n) => sum + centreOf(n), 0) / ns.length;
+          want.set(id, Math.max(0, mid - slotW[id] / 2));
+        });
+        placeRow(r, want);
+      };
+      for (let pass = 0; pass < 4; pass += 1) {
+        for (let r = 1; r < rows.length; r += 1) pull(r, segsUp);
+        for (let r = rows.length - 2; r >= 0; r -= 1) pull(r, segsDown);
+      }
+
+      // ---- wrapping: a row wider than SZ_STRIP_W continues on further
+      // lines of its own row, and the next row starts below all of them.
+      // Every arrow still runs downwards -- which is why the diagram is
+      // narrowed this way rather than by cutting it into side-by-side
+      // pieces, where the arrows between the pieces would have to climb.
+      const lines = [];               // one entry per drawn line of nodes
+      rows.forEach((items, r) => {
+        let line = [], lineW = 0;
+        items.forEach((id) => {
+          const need = slotW[id] + (line.length ? colGap : 0);
+          if (line.length && lineW + need > wrapAt) {
+            lines.push({ row: r, items: line, wrapped: true });
+            line = []; lineW = 0;
+          }
+          line.push(id);
+          lineW += line.length === 1 ? slotW[id] : need;
+        });
+        lines.push({ row: r, items: line, wrapped: lines.length && lines[lines.length - 1].row === r });
+      });
+      // Lay each line out left to right, keeping the settled order, and
+      // leave room under every node that carries a tray. No extra gutters
+      // in here: spacing a row out pushes its far end away from whatever it
+      // connects to, and measured over the whole map that cost 18% more
+      // crossings. The arrow-less block at the bottom gets them instead,
+      // where spacing is free.
+      const placed = [];
+      let y = 0;
+      // Centre every line in the block, so a short row sits under the middle
+      // of the row above it rather than hugging the left edge.
+      const lineWidth = lines.map((line) =>
+        line.items.reduce((sum, id) => sum + slotW[id] + colGap, 0) - colGap);
+      const blockWidth = Math.max(0, ...lineWidth);
+      lines.forEach((line, li) => {
+        let cursor = (blockWidth - lineWidth[li]) / 2;
+        const deepestTray = Math.max(0, ...line.items.map((id) => trayRows[id] || 0));
+        line.items.forEach((id) => {
+          const slotMid = cursor + slotW[id] / 2;
+          if (widthOf[id] === undefined) { cursor += slotW[id] + colGap; return; }  // a dummy: it only holds space
+          pos[id] = { left: slotMid - widthOf[id] / 2, top: y, w: widthOf[id], h: nodeH };
+          placed.push(id);
+          const kids = tray[id] || [];
+          const cols = Math.min(TRAY_COLS, kids.length);
+          for (let tr = 0; tr * cols < kids.length; tr += 1) {
+            const kidLine = kids.slice(tr * cols, (tr + 1) * cols);
+            const kidW = kidLine.reduce((sum, kid) => sum + widthOf[kid] + colGap, 0) - colGap;
+            let kidX = slotMid - kidW / 2;
+            kidLine.forEach((kid) => {
+              pos[kid] = { left: kidX, top: y + (tr + 1) * rowH, w: widthOf[kid], h: nodeH };
+              placed.push(kid);
+              kidX += widthOf[kid] + colGap;
+            });
+          }
+          cursor += slotW[id] + colGap;
+        });
+        y += rowH + deepestTray * rowH;
+      });
+      const right = Math.max(...placed.map((id) => pos[id].left + pos[id].w));
+      const left = Math.min(...placed.map((id) => pos[id].left));
+      const bottom = Math.max(...placed.map((id) => pos[id].top));
+      placed.forEach((id) => { pos[id].left -= left; });
+      // The block's outline, column by column: where its problems start and
+      // end vertically. A layered drawing is full of notches -- a row of two
+      // problems next to a row of fourteen -- and the packer uses this to
+      // slide other blocks into them instead of treating the block as one
+      // solid rectangle.
+      // A margin of empty columns on each side so blocks packed next to one
+      // another keep a gap rather than touching.
+      const pad = Math.ceil(compGap / PACK_CELL);
+      const columns = Math.max(1, Math.ceil((right - left) / PACK_CELL)) + 2 * pad;
+      const profile = { top: new Array(columns).fill(Infinity), bottom: new Array(columns).fill(-Infinity), pad: pad };
+      placed.forEach((id) => {
+        const from = Math.max(0, pad + Math.floor(pos[id].left / PACK_CELL));
+        const to = Math.min(columns - 1, pad + Math.ceil((pos[id].left + pos[id].w) / PACK_CELL));
+        for (let c = from; c <= to; c += 1) {
+          profile.top[c] = Math.min(profile.top[c], pos[id].top);
+          profile.bottom[c] = Math.max(profile.bottom[c], pos[id].top + nodeH);
+        }
+      });
+      return { comp: placed, width: right - left, height: bottom + nodeH, profile: profile };
+    }
+
+    // A component that would still be wider than SZ_STRIP_W is split into
+    // clusters first, and each cluster drawn as its own block. The split is
+    // by the graph, not by the picture: clusters grow around a seed, always
+    // taking whichever neighbouring problem is tied to the cluster by the
+    // most arrows, so the arrows that end up between blocks are the few
+    // that were loosest to begin with. Cutting the drawing at a fixed width
+    // instead severed 49 of one component's 198 arrows.
+    function partitionComponent(comp, compEdges, parts) {
+      const adj = {};
+      comp.forEach((id) => { adj[id] = []; });
+      compEdges.forEach((e) => { adj[e.from].push(e.to); adj[e.to].push(e.from); });
+      const target = Math.ceil(comp.length / parts);
+      const left = new Set(comp);
+      const clusters = [];
+      while (left.size) {
+        let seed = null, fewest = Infinity;
+        left.forEach((id) => {
+          const d = adj[id].filter((n) => left.has(n)).length;
+          if (d < fewest) { fewest = d; seed = id; }
+        });
+        const cluster = [];
+        const ties = new Map();   // candidate -> arrows already into the cluster
+        const take = (id) => {
+          cluster.push(id);
+          left.delete(id);
+          ties.delete(id);
+          adj[id].forEach((n) => { if (left.has(n)) ties.set(n, (ties.get(n) || 0) + 1); });
+        };
+        take(seed);
+        while (cluster.length < target && ties.size) {
+          let pick = null, best = -1;
+          ties.forEach((count, id) => { if (count > best) { best = count; pick = id; } });
+          take(pick);
+        }
+        clusters.push(cluster);
+      }
+      return clusters;
+    }
+
+    // Problems with no reduction edge at all (161 of 719 today) carry no
+    // structure to draw, so they are not packed among the components as
+    // one-node boxes -- that is what scattered them through the mosaic.
+    // They go in one block underneath, in rows ordered hardest first.
+    const CLASS_TOP_DOWN = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard", "P", "unclaimed"];
+    const lone = [];
+    const boxes = [];
+    const edgesWithin = (group) => {
+      const set = new Set(group);
+      return edgesAll.filter((e) => set.has(e.from) && set.has(e.to));
+    };
+    components.forEach((comp, group) => {
+      if (comp.length === 1) { lone.push(comp[0]); return; }
+      const compEdges = edgesWithin(comp);
+      const box = layoutComponent(comp, compEdges, Infinity);
+      if (box.width <= SZ_STRIP_W || comp.length < 12) {
+        boxes.push(Object.assign(box, { group: group, seq: 0 }));
+        return;
+      }
+      // Too wide: cut the component into blocks that stack. The cut starts
+      // from clusters grown by connectivity, then every problem is pushed
+      // down to at least the block of its most junior generalization. That
+      // second step is what guarantees a block only ever receives arrows
+      // from blocks above it, so no arrow in the finished diagram points
+      // upwards.
+      const clusters = partitionComponent(comp, compEdges, Math.ceil(box.width / SZ_STRIP_W));
+      const band = {};
+      clusters.forEach((cluster, i) => cluster.forEach((id) => { band[id] = i; }));
+      const parentsIn = {};
+      comp.forEach((id) => { parentsIn[id] = []; });
+      compEdges.forEach((e) => parentsIn[e.to].push(e.from));
+      const compDepth = layoutDag(comp, compEdges).row;
+      const depthOrder = comp.slice().sort((a, b) => compDepth[a] - compDepth[b]);
+      depthOrder.forEach((id) => {
+        parentsIn[id].forEach((p) => { band[id] = Math.max(band[id], band[p]); });
+      });
+      const bandsUsed = Array.from(new Set(Object.values(band))).sort((a, b) => a - b);
+      // Merge neighbouring bands back together while they still fit the
+      // width. Pushing problems down to their generalization's band often
+      // empties a band down to one or two problems, and a stack of those
+      // reads as a pillar: one problem per row with blank space beside it.
+      // Merging neighbours keeps the stacking order, so arrows still point
+      // down.
+      const merged = [];
+      bandsUsed.forEach((b) => {
+        const members = comp.filter((id) => band[id] === b);
+        if (!members.length) return;
+        const last = merged[merged.length - 1];
+        if (last) {
+          const together = last.concat(members);
+          if (layoutComponent(together, edgesWithin(together), Infinity).width <= SZ_STRIP_W) {
+            merged[merged.length - 1] = together;
+            return;
+          }
+        }
+        merged.push(members);
+      });
+      merged.forEach((members, seq) => {
+        let bandBox = layoutComponent(members, edgesWithin(members), Infinity);
+        // Only if a band is still too wide on its own do its rows wrap --
+        // wrapping keeps every arrow pointing down too, it just costs
+        // crossings, so it is the last resort.
+        if (bandBox.width > SZ_STRIP_W) bandBox = layoutComponent(members, edgesWithin(members), SZ_STRIP_W);
+        boxes.push(Object.assign(bandBox, { group: group, seq: seq }));
+      });
     });
 
-    boxes.sort((a, b) => b.comp.length - a.comp.length || b.width * b.height - a.width * a.height);
-    const totalArea = boxes.reduce((s, b) => s + b.width * b.height, 0);
-    const targetWidth = Math.max(1200, Math.sqrt(totalArea * 2.2));
-    let shelfX = 0, shelfY = 0, shelfH = 0, usedWidth = 0;
+    // Shelf-pack the components, tallest first so shelves waste less room,
+    // and aim for a canvas about twice as wide as it is tall.
+    // Pack tallest first so shelves waste less room, but never split up the
+    // blocks that came from one component: they travel together, in order.
+    const groupHeight = {};
+    boxes.forEach((b) => { groupHeight[b.group] = Math.max(groupHeight[b.group] || 0, b.height); });
+    // Online problems (release dates revealed over time) are a family of
+    // their own rather than a restriction of anything on this map, so their
+    // blocks are packed last and therefore land together at the bottom
+    // instead of being scattered wherever they happened to fit.
+    const isOnline = (id) => /online/.test((byId[id] && byId[id].vector && byId[id].vector["release time"]) || "");
+    boxes.forEach((b) => { b.online = b.comp.filter(isOnline).length * 2 > b.comp.length ? 1 : 0; });
+    boxes.sort((a, b) =>
+      a.online - b.online ||
+      groupHeight[b.group] - groupHeight[a.group] || a.group - b.group || a.seq - b.seq);
+    const totalArea = boxes.reduce((s, b) => s + b.width * b.height, 0) +
+      lone.reduce((s, id) => s + (widthOf[id] + colGap) * rowH, 0);
+    // Wide enough to hold the widest component, otherwise roughly square-ish
+    // (a bit wider than tall, which reads better on a screen) and never so
+    // wide that the whole diagram becomes one long band.
+    const widestBox = Math.max(0, ...boxes.map((b) => b.width));
+    const targetWidth = Math.max(1200, widestBox, Math.min(SZ_STRIP_W + 300, Math.sqrt(totalArea * 1.1)));
+    // Pack the blocks against a skyline rather than in shelves: each block
+    // drops into the highest free spot that fits it. A tall narrow chain --
+    // a component that is one problem per row -- then gets short blocks
+    // tucked in beside it instead of leaving a column of blank canvas.
+    const cells = Math.max(1, Math.ceil(targetWidth / PACK_CELL));
+    const skyline = new Float64Array(cells);
+    const groupFloor = {};   // a component's later blocks stay below its earlier ones
+    let usedWidth = 0, usedHeight = 0;
     boxes.forEach((box) => {
-      if (shelfX > 0 && shelfX + box.width > targetWidth) {
-        shelfY += shelfH + compGap;
-        shelfX = 0;
-        shelfH = 0;
+      const prof = box.profile;
+      const span = Math.min(cells, Math.max(1, prof.top.length));
+      const floor = box.seq > 0 ? (groupFloor[box.group] || 0) : 0;
+      // Drop the block into the highest spot where its own outline clears
+      // what is already on the canvas, column by column, so a narrow block
+      // can slide into the notch beside a wide row.
+      let bestX = 0, bestY = Infinity;
+      for (let i = 0; i + span <= cells; i += 1) {
+        let y = floor;
+        for (let c = 0; c < span; c += 1) {
+          if (prof.top[c] === Infinity) continue;
+          y = Math.max(y, skyline[i + c] - prof.top[c]);
+        }
+        if (y < bestY) { bestY = y; bestX = i; }
       }
+      const left = (bestX + prof.pad) * PACK_CELL, top = bestY;
       box.comp.forEach((id) => {
-        pos[id].left += shelfX + margin;
-        pos[id].top += shelfY + margin;
+        pos[id].left += left + margin;
+        pos[id].top += top + margin;
       });
-      shelfX += box.width + compGap;
-      shelfH = Math.max(shelfH, box.height);
-      usedWidth = Math.max(usedWidth, shelfX - compGap);
+      for (let c = 0; c < span; c += 1) {
+        if (prof.bottom[c] === -Infinity) continue;
+        skyline[bestX + c] = Math.max(skyline[bestX + c], top + prof.bottom[c] + compGap);
+      }
+      groupFloor[box.group] = Math.max(groupFloor[box.group] || 0, top + box.height + compGap);
+      box.rect = { left: left, top: top, width: box.width, height: box.height };
+      box.colOffset = bestX;
+      usedWidth = Math.max(usedWidth, left + box.width);
+      usedHeight = Math.max(usedHeight, top + box.height);
     });
+
+    // Centre each block in the free space beside it. The packer drops every
+    // block as far left as it will go, which leaves a block alone on its
+    // line pinned to the left edge with all the room on its right. How far
+    // a block may slide is measured against the same column outlines the
+    // packer used, so interlocked blocks never slide into one another.
+    const occupancy = [];   // column -> [{ top, bottom, box }]
+    boxes.forEach((box) => {
+      const prof = box.profile;
+      for (let c = 0; c < prof.top.length; c += 1) {
+        if (prof.top[c] === Infinity) continue;
+        const col = box.colOffset + c;
+        (occupancy[col] = occupancy[col] || []).push({
+          top: box.rect.top + prof.top[c], bottom: box.rect.top + prof.bottom[c], box: box,
+        });
+      }
+    });
+    const blocked = (box, deltaCells) => {
+      const prof = box.profile;
+      for (let c = 0; c < prof.top.length; c += 1) {
+        if (prof.top[c] === Infinity) continue;
+        const col = box.colOffset + c + deltaCells;
+        if (col < 0 || col >= cells) return true;   // never past the canvas edge
+        const top = box.rect.top + prof.top[c] - compGap;
+        const bottom = box.rect.top + prof.bottom[c] + compGap;
+        const here = occupancy[col] || [];
+        for (let k = 0; k < here.length; k += 1) {
+          if (here[k].box !== box && here[k].top < bottom && top < here[k].bottom) return true;
+        }
+      }
+      return false;
+    };
+    boxes.forEach((box) => {
+      let room = 0, spare = 0;
+      while (spare < cells && !blocked(box, spare + 1)) spare += 1;
+      while (room < cells && !blocked(box, -(room + 1))) room += 1;
+      const shiftCells = Math.round((spare - room) / 2);
+      if (!shiftCells) return;
+      const shift = shiftCells * PACK_CELL;
+      const prof = box.profile;
+      for (let c = 0; c < prof.top.length; c += 1) {
+        const here = occupancy[box.colOffset + c];
+        if (here) occupancy[box.colOffset + c] = here.filter((entry) => entry.box !== box);
+      }
+      box.comp.forEach((id) => { pos[id].left += shift; });
+      box.rect.left += shift;
+      box.colOffset += shiftCells;
+      for (let c = 0; c < prof.top.length; c += 1) {
+        if (prof.top[c] === Infinity) continue;
+        (occupancy[box.colOffset + c] = occupancy[box.colOffset + c] || []).push({
+          top: box.rect.top + prof.top[c], bottom: box.rect.top + prof.bottom[c], box: box,
+        });
+      }
+      usedWidth = Math.max(usedWidth, box.rect.left + box.rect.width);
+    });
+
+    let shelfY = usedHeight, shelfX = 0, shelfH = 0;
+
+    if (lone.length) {
+      // The problems with no arrows at all: one group per complexity,
+      // hardest first, online problems in a group of their own at the end.
+      // Each group starts on its own line, with a gutter every few problems
+      // and a gap between groups, so these do not read as one endless band
+      // of boxes.
+      const GUTTER_EVERY = 6;
+      const groupsOfLone = [];
+      const keyOf = (id) => (isOnline(id) ? "online" : (szEffective[id] || byId[id].classicalClass || "unclaimed"));
+      const order = CLASS_TOP_DOWN.concat(["online"]);
+      order.forEach((key) => {
+        const members = lone.filter((id) => keyOf(id) === key)
+          .sort((a, b) => widthOf[a] - widthOf[b] || a.localeCompare(b));
+        if (members.length) groupsOfLone.push(members);
+      });
+      shelfY += compGap * 2;
+      // Break each group into lines first, so every line can be centred.
+      const blockW = Math.max(targetWidth, usedWidth);
+      groupsOfLone.forEach((members) => {
+        const rowsOfLone = [];
+        let line = [], lineW = 0;
+        members.forEach((id, i) => {
+          const gutter = i && i % GUTTER_EVERY === 0 ? colGap * 2.5 : 0;
+          const need = widthOf[id] + (line.length ? colGap + gutter : 0);
+          if (line.length && lineW + need > blockW) {
+            rowsOfLone.push({ items: line, width: lineW });
+            line = []; lineW = 0;
+          }
+          line.push({ id: id, gap: line.length ? colGap + gutter : 0 });
+          lineW += line.length === 1 ? widthOf[id] : need;
+        });
+        if (line.length) rowsOfLone.push({ items: line, width: lineW });
+        rowsOfLone.forEach((lineOfLone) => {
+          shelfX = (blockW - lineOfLone.width) / 2;
+          lineOfLone.items.forEach((item) => {
+            shelfX += item.gap;
+            pos[item.id] = { left: shelfX + margin, top: shelfY + margin, w: widthOf[item.id], h: nodeH };
+            shelfX += widthOf[item.id];
+            usedWidth = Math.max(usedWidth, shelfX);
+          });
+          shelfY += rowH;
+        });
+        shelfY += compGap;
+      });
+      shelfY -= rowH;
+      shelfY -= rowH + compGap;
+      shelfH = nodeH;
+    }
     const canvasWidth = usedWidth + margin * 2;
     const canvasHeight = shelfY + shelfH + margin * 2;
 
@@ -2721,13 +3803,23 @@
         const a = pos[e.from], b = pos[e.to];
         if (!a || !b) return "";
         const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, 3);
-        const flagged = szFlaggedEdgeFor(e.from, e.to);
+        // Red also covers a contradiction the reader has just created by
+        // classifying something themselves (item: inconsistent claims stay
+        // allowed, but the arrows that disagree say so).
+        const flagged = szFlaggedEdgeFor(e.from, e.to) ||
+          !!szClassConflict(szEffective[e.from], szEffective[e.to], e.from, e.to);
+        // Blue where one of the reader's classifications reaches: either end
+        // claimed, or moved by a claim. A real contradiction still wins the
+        // arrow -- red is a warning and must not be painted over.
+        const claimTouched = !flagged && (
+          userClassification(e.from, null) || userClassification(e.to, null) ||
+          SZ_USER_AFFECTED.has(e.from) || SZ_USER_AFFECTED.has(e.to));
         // Green = an edge that exists ONLY because of OUR added "number of
         // machines" reduction rule (see OUR_MACHINE_COUNT_RULES in
         // convert_for_pzoo.py) -- schedzoo's own data never implied it.
         // Never both flagged and ours: we only ever add edges we've checked
         // are sound (see the data notes below).
-        const stroke = szEdgeStroke(e, flagged);
+        const stroke = claimTouched ? USER_CLASS_RING : szEdgeStroke(e, flagged);
         const dash = flagged ? ' stroke-dasharray="6,3"' : "";
         // Two lines per edge: a wide, invisible one (easy hover/click target
         // -- the visible line alone is too thin to reliably point at) behind
@@ -2749,7 +3841,9 @@
     const nodesHtml = nodes
       .map((n) => {
         const p = pos[n.id];
-        return '<a class="map-node sz-node" data-sz-id="' + escapeHtml(n.id) + '" data-sz-notation="' +
+        return '<a class="map-node sz-node' + (userClassification(n.id, null) ? " user-classified" : "") +
+          (SZ_USER_AFFECTED.has(n.id) ? " user-affected" : "") +
+          '" data-sz-id="' + escapeHtml(n.id) + '" data-sz-notation="' +
           escapeHtml(n.notation.toLowerCase()) + '" data-sz-objective="' +
           escapeHtml(canonicalSzObjective(n.objective)) + '" data-sz-preemption="' + escapeHtml(n.preemption || "__none__") +
           '" data-sz-machine-env="' + escapeHtml(n.machineEnv || "") +
@@ -2828,10 +3922,23 @@
       '<button type="button" id="sz-undo-btn" class="map-history-btn" disabled title="Undo the last node hidden by dragging">↶ Undo</button>' +
       '<button type="button" id="sz-redo-btn" class="map-history-btn" disabled title="Redo the last undone hide">↷ Redo</button>' +
       '<button type="button" id="sz-reset-hidden-btn" class="map-history-btn" disabled title="Bring back every node hidden by dragging off the edge (does not touch the filters)">↺ Restore hidden</button>' +
+      // Same control, same two-click gesture and same reduction
+      // questionnaire as the designer's -- see szArrowPick.
+      '<button type="button" id="sz-add-arrow-btn" class="map-history-btn designer-add-arrow-btn" aria-pressed="false"' +
+      ' title="Add an arrow by hand: click the more general problem, then its special case" aria-label="Add arrow">→+</button>' +
       "</div>" +
       '<button type="button" class="tikz-export-btn" title="Copy this diagram as TikZ code">⧉ TikZ</button>' +
       '<button type="button" class="auto-arrange-btn" title="Recompute node positions from scratch">⇄ Auto-arrange</button>' +
       '<button type="button" class="sz-save-map-btn" title="Save the problems shown here as a new problem map">⊕ Save as a New Problem Map</button>' +
+      // Always in the DOM, shown by szUpdateClaimsBar once the reader has
+      // actually made something of their own -- a classification, or an
+      // arrow drawn by hand. Rendering it conditionally meant the buttons
+      // only turned up on the next full redraw, long after the claim.
+      '<div class="sz-claims-actions" hidden>' +
+      '<button type="button" class="sz-submit-claims-btn" title="Review your own classifications and send them to this site\'s author">' +
+      "&#9993; Send my classifications</button>" +
+      '<button type="button" class="sz-reset-claims-btn" title="Delete every classification you have made in this browser">' +
+      "&#8635; Reset my classifications</button></div>" +
       // Two idempotent buttons, not a toggle -- each always does exactly
       // one thing regardless of current state, so there's no click whose
       // meaning depends on hidden state to track: Apply always narrows to
@@ -2851,6 +3958,10 @@
       nodesHtml +
       "</div></div>" +
       "</div>" +
+      // Filled in place by szUpdateArrowUi (hidden while empty), so adding
+      // an arrow never costs a re-render -- which would throw away whatever
+      // the reader has dragged around.
+      '<p class="designer-arrow-hint sz-arrow-hint" role="status"></p>' +
       '<div class="map-legend">' + szClassLegendHtml + "</div>" +
       // How to read the map and what can be done with it, under the legend.
       '<div class="map-hint sz-map-help"><span class="map-hint-icon">i</span>' +
@@ -2860,12 +3971,18 @@
       '<p><b class="sz-def">Colors</b> show classical complexity. Hardness travels against the arrows, so a problem ' +
       "with no classical result of its own takes the hardness of any special case of it that is proven hard.</p>" +
       '<p><b class="sz-def">Drag</b> a node off the diagram ' +
-      'to hide it from this view -- the data is unchanged. <b class="sz-def">Undo / Redo / Restore hidden</b> ' +
+      'to hide it from this view -- the data is unchanged. <b class="sz-def">Shift-click</b> several nodes, or ' +
+      '<b class="sz-def">drag a box</b> across empty space, to pick out a group: they then move together, and go ' +
+      'off the diagram together. <b class="sz-def">Undo / Redo / Restore hidden</b> ' +
       'brings it back. <b class="sz-def">Apply filter</b> redraws the map with only the problems matching the ' +
-      'filters; <b class="sz-def">Show all</b> returns to the full map.</p></div>' +
+      'filters; <b class="sz-def">Show all</b> returns to the full map.</p>' +
+      '<p><b class="sz-def">→+</b> draws an arrow of your own: click the more general problem, then the special ' +
+      "case it points to, and say what kind of reduction it is. Your arrows are dashed, kept in this browser, and " +
+      "turn red where they contradict the results here -- click one to edit or remove it. They are claims, so " +
+      "nothing inherits along them.</p></div>" +
       "</div>";
 
-    setTimeout(() => fitMapCanvasToWidth(els.viewSchedulingZoo), 0);
+    fitMapCanvasSoon(els.viewSchedulingZoo);
 
     enableSzNodeDragging(els.viewSchedulingZoo.querySelector(".map-canvas"));
 
@@ -2876,6 +3993,13 @@
     els.viewSchedulingZoo.querySelector(".map-edge-svg").addEventListener("click", (ev) => {
       const g = ev.target.closest(".sz-edge");
       if (!g) return;
+      // An arrow the reader drew has no entry in the corpus to explain, so
+      // clicking it reopens their own description of it instead.
+      if (g.classList.contains("sz-user-edge")) {
+        const edge = loadSzUserEdges()[+g.dataset.szUserEdge];
+        if (edge) showDesignerReductionDialog(edge, +g.dataset.szUserEdge, SZ_EDGE_HOST);
+        return;
+      }
       openSchedulingZooEdgePanel(g.dataset.szFrom, g.dataset.szTo);
     });
 
@@ -2902,7 +4026,13 @@
       }
       resetDesignerHidden();
       storyProblemIds = ids;
-      designerUserEdges = [];
+      // Arrows the reader drew here come along, if both their ends made it
+      // onto the map -- copied, so editing them in the designer (where they
+      // are saved with the map) doesn't rewrite the overview's set.
+      const onMap = new Set(ids);
+      designerUserEdges = loadSzUserEdges()
+        .filter((e) => onMap.has(e.from) && onMap.has(e.to))
+        .map((e) => Object.assign({}, e));
       designerArrowMode = null;
       storyPositions = {};
       designerSelectedId = null;
@@ -2929,7 +4059,10 @@
         livePositions[el.dataset.szId] = { left, top, w, h, cx: left + w / 2, cy: top + h / 2 };
       });
       const visibleNodes = nodes.filter((n) => !SZ_HIDDEN_IDS.has(n.id));
-      const visibleEdges = edgesAll.filter((ed) => !SZ_HIDDEN_IDS.has(ed.from) && !SZ_HIDDEN_IDS.has(ed.to));
+      // Arrows drawn by hand go into the export too, like the designer's --
+      // they are part of the picture on screen.
+      const visibleEdges = edgesAll.concat(loadSzUserEdges())
+        .filter((ed) => livePositions[ed.from] && livePositions[ed.to]);
       const code = szMapToTikzCode(visibleNodes, visibleEdges, livePositions, szEffective);
       const original = tikzBtn.textContent;
       copyTextToClipboard(code)
@@ -3055,6 +4188,27 @@
     els.viewSchedulingZoo.querySelector("#sz-undo-btn").addEventListener("click", szUndoHide);
     els.viewSchedulingZoo.querySelector("#sz-redo-btn").addEventListener("click", szRedoHide);
     els.viewSchedulingZoo.querySelector("#sz-reset-hidden-btn").addEventListener("click", szResetHidden);
+    els.viewSchedulingZoo.querySelector(".sz-submit-claims-btn").addEventListener("click", showSubmitClassificationsDialog);
+    els.viewSchedulingZoo.querySelector(".sz-reset-claims-btn").addEventListener("click", showResetClassificationsDialog);
+    szUpdateClaimsBar();
+    els.viewSchedulingZoo.querySelector("#sz-add-arrow-btn").addEventListener("click", () => {
+      SZ_ARROW_MODE = SZ_ARROW_MODE ? null : { from: null };
+      SZ_ARROW_NOTICE = "";
+      szUpdateArrowUi();
+    });
+    // Same escape hatch as the designer's, registered once for the page.
+    if (!window.szArrowEscReady) {
+      window.szArrowEscReady = true;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && SZ_ARROW_MODE && !els.viewSchedulingZoo.hidden && !document.querySelector(".designer-dialog-backdrop")) {
+          SZ_ARROW_MODE = null;
+          szUpdateArrowUi();
+        }
+      });
+    }
+    szUpdateArrowUi();
+    // Last, so it can read the nodes' final positions out of the DOM.
+    szRenderUserEdges();
     restoreDropdownUi(els.viewSchedulingZoo, dropdownUi);
   }
 
@@ -3083,21 +4237,30 @@
     if (resetBtn) resetBtn.disabled = !SZ_HIDDEN_IDS.size;
   }
 
+  // A stack entry is one id, or an array of them when several nodes were
+  // dragged out together -- one Undo then brings the whole set back, which
+  // is what the reader means by "undo that".
   function szUndoHide() {
     if (!SZ_HIDDEN_STACK.length) return;
-    const id = SZ_HIDDEN_STACK.pop();
-    SZ_HIDDEN_IDS.delete(id);
-    SZ_HIDDEN_REDO_STACK.push(id);
-    setSzNodeHidden(els.viewSchedulingZoo.querySelector(".map-canvas"), id, false);
+    const entry = SZ_HIDDEN_STACK.pop();
+    const canvas = els.viewSchedulingZoo.querySelector(".map-canvas");
+    [].concat(entry).forEach((id) => {
+      SZ_HIDDEN_IDS.delete(id);
+      setSzNodeHidden(canvas, id, false);
+    });
+    SZ_HIDDEN_REDO_STACK.push(entry);
     szUpdateHistoryButtons();
   }
 
   function szRedoHide() {
     if (!SZ_HIDDEN_REDO_STACK.length) return;
-    const id = SZ_HIDDEN_REDO_STACK.pop();
-    SZ_HIDDEN_IDS.add(id);
-    SZ_HIDDEN_STACK.push(id);
-    setSzNodeHidden(els.viewSchedulingZoo.querySelector(".map-canvas"), id, true);
+    const entry = SZ_HIDDEN_REDO_STACK.pop();
+    const canvas = els.viewSchedulingZoo.querySelector(".map-canvas");
+    [].concat(entry).forEach((id) => {
+      SZ_HIDDEN_IDS.add(id);
+      setSzNodeHidden(canvas, id, true);
+    });
+    SZ_HIDDEN_STACK.push(entry);
     szUpdateHistoryButtons();
   }
 
@@ -3107,13 +4270,170 @@
   // stepping back"). Separate from the top-right Filter toggle, which only
   // concerns the search-based subset (SZ_FOCUS_IDS).
   function szResetHidden() {
-    if (!SZ_HIDDEN_STACK.length) return;
+    // Driven by SZ_HIDDEN_IDS, the actual set of hidden nodes, NOT by the
+    // undo stack: a stack entry is one id or a whole array of them (a group
+    // dragged out together), so walking the stack passed an array where an
+    // id was expected and left those nodes hidden with no way back.
+    if (!SZ_HIDDEN_IDS.size) return;
     const canvas = els.viewSchedulingZoo.querySelector(".map-canvas");
-    SZ_HIDDEN_STACK.forEach((id) => setSzNodeHidden(canvas, id, false));
+    SZ_HIDDEN_IDS.forEach((id) => setSzNodeHidden(canvas, id, false));
     SZ_HIDDEN_IDS = new Set();
     SZ_HIDDEN_STACK = [];
     SZ_HIDDEN_REDO_STACK = [];
     szUpdateHistoryButtons();
+  }
+
+  // ---- arrows drawn by hand on the overview ----------------------------
+  // Everything here works IN PLACE, without re-rendering: this view lays
+  // itself out from scratch on every render, so a redraw would undo any
+  // dragging the reader has done and bake the current hidden set into a new
+  // layout. Adding an arrow must not cost them that.
+
+  // What showDesignerReductionDialog (and the conflict dialog) act on, so
+  // the same two dialogs serve the designer's arrows and the overview's.
+  const DESIGNER_EDGE_HOST = {
+    edges: () => designerUserEdges,
+    // The designer's arrows are saved with the map, not on their own.
+    changed: () => {},
+    rerender: () => renderDesign(),
+    notice: (text) => { designerArrowNotice = text; },
+  };
+  const SZ_EDGE_HOST = {
+    edges: () => loadSzUserEdges(),
+    changed: () => storeSzUserEdges(),
+    rerender: () => szRenderUserEdges(),
+    notice: (text) => { SZ_ARROW_NOTICE = text; szUpdateArrowUi(); },
+  };
+
+  // "Send" / "Reset my classifications" appear as soon as there is anything
+  // of the reader's own to send or throw away, and go again when there
+  // isn't -- both without a redraw.
+  function szUpdateClaimsBar() {
+    const bar = els.viewSchedulingZoo.querySelector(".sz-claims-actions");
+    if (!bar) return;
+    const claims = Object.keys(loadUserClassifications()).length;
+    const arrows = loadSzUserEdges().length;
+    bar.hidden = !(claims || arrows || userDraftProblems().length);
+    // Reset is about classifications (and, if asked, arrows). Drafted
+    // problems belong to the maps they were drawn on, so they alone are
+    // nothing for it to delete -- and "delete your 0 classifications" is
+    // not a question worth asking.
+    const reset = bar.querySelector(".sz-reset-claims-btn");
+    if (reset) reset.hidden = !(claims || arrows);
+  }
+
+  // Reflects SZ_ARROW_MODE / SZ_ARROW_NOTICE onto the page: the button's
+  // pressed state, the crosshair cursor, the glow on the chosen origin, the
+  // floating instruction, and the one-line result underneath.
+  function szUpdateArrowUi() {
+    const view = els.viewSchedulingZoo;
+    const btn = view.querySelector("#sz-add-arrow-btn");
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", SZ_ARROW_MODE ? "true" : "false");
+    const diagram = view.querySelector(".map-diagram");
+    if (diagram) diagram.classList.toggle("arrow-mode", !!SZ_ARROW_MODE);
+    view.querySelectorAll(".sz-node.arrow-origin").forEach((el) => el.classList.remove("arrow-origin"));
+    if (SZ_ARROW_MODE && SZ_ARROW_MODE.from) {
+      const el = view.querySelector('.sz-node[data-sz-id="' + cssEscape(SZ_ARROW_MODE.from) + '"]');
+      if (el) el.classList.add("arrow-origin");
+    }
+    const old = view.querySelector(".designer-arrow-toast");
+    if (old) old.remove();
+    if (SZ_ARROW_MODE) {
+      const toast = document.createElement("div");
+      toast.className = "designer-arrow-toast";
+      toast.setAttribute("role", "status");
+      toast.innerHTML = "<b>" + (SZ_ARROW_MODE.from ? "Choose Destination Problem" : "Choose Origin Problem") +
+        "</b><span>" + (SZ_ARROW_MODE.from ? "the special case the arrow points to" : "the more general problem the arrow starts from") +
+        " &middot; Esc to cancel</span>";
+      view.appendChild(toast);
+    }
+    const hint = view.querySelector(".sz-arrow-hint");
+    if (hint) hint.textContent = SZ_ARROW_MODE ? "" : SZ_ARROW_NOTICE;
+  }
+
+  // The two-click gesture: origin (the general problem), then destination
+  // (its special case). Clicking the origin again takes it back.
+  function szArrowPick(id) {
+    if (!SZ_ARROW_MODE.from) {
+      SZ_ARROW_MODE.from = id;
+      szUpdateArrowUi();
+      return;
+    }
+    const from = SZ_ARROW_MODE.from;
+    // A problem cannot be a special case of itself.
+    if (id === from) { SZ_ARROW_MODE.from = null; szUpdateArrowUi(); return; }
+    SZ_ARROW_MODE = null;
+    if (loadSzUserEdges().some((e) => e.from === from && e.to === id)) {
+      SZ_ARROW_NOTICE = "That arrow is already on the map.";
+      szUpdateArrowUi();
+      return;
+    }
+    szUpdateArrowUi();
+    showDesignerReductionDialog({ from: from, to: id }, -1, SZ_EDGE_HOST);
+  }
+
+  // Redraws every hand-drawn arrow from the nodes' LIVE positions in the
+  // DOM, so one function serves the first render, an edit, and a removal
+  // (dragging is handled by updateEdgesFor, which finds these lines by the
+  // same data-sz-from/to attributes the corpus arrows carry).
+  //
+  // Built with createElementNS rather than an HTML string: innerHTML on an
+  // SVG element is not something to rely on across browsers.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function szRenderUserEdges() {
+    const view = els.viewSchedulingZoo;
+    const canvas = view.querySelector(".map-canvas");
+    const svg = canvas && canvas.querySelector(".map-edge-svg");
+    if (!svg) return;
+    szUpdateClaimsBar();
+    svg.querySelectorAll("g.sz-user-edge").forEach((g) => g.remove());
+    const boxOf = (id) => {
+      const el = canvas.querySelector('.sz-node[data-sz-id="' + cssEscape(id) + '"]');
+      if (!el || SZ_HIDDEN_IDS.has(id)) return null;
+      const left = parseFloat(el.style.left), top = parseFloat(el.style.top);
+      const halfW = el.offsetWidth / 2, halfH = el.offsetHeight / 2;
+      return { cx: left + halfW, cy: top + halfH, halfW: halfW, halfH: halfH };
+    };
+    loadSzUserEdges().forEach((edge, i) => {
+      // Skipped rather than dropped when an endpoint isn't on this map: the
+      // arrow is still the reader's, it just has nothing to join here (a
+      // filter is applied, or one end was dragged off the edge).
+      const a = boxOf(edge.from), b = boxOf(edge.to);
+      if (!a || !b) return;
+      const conflict = !!designerArrowConflict(edge);
+      const stroke = conflict ? SZ_EDGE_FLAGGED_COLOR : USER_CLASS_RING;
+      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, 3);
+      const g = document.createElementNS(SVG_NS, "g");
+      // `sz-edge` too, so hiding a node hides these along with the rest.
+      g.setAttribute("class", "sz-edge sz-user-edge");
+      g.dataset.szFrom = edge.from;
+      g.dataset.szTo = edge.to;
+      g.dataset.szUserEdge = String(i);
+      const title = document.createElementNS(SVG_NS, "title");
+      title.textContent = "Added by you: " + szReductionSummary(edge) +
+        (conflict ? " -- conflicts with The Scheduling Zoo's data" : "") + ". Click to edit or remove.";
+      g.appendChild(title);
+      ["sz-edge-hit", "sz-edge-visible"].forEach((cls) => {
+        const line = document.createElementNS(SVG_NS, "line");
+        line.setAttribute("class", cls);
+        line.dataset.szFrom = edge.from;
+        line.dataset.szTo = edge.to;
+        line.setAttribute("x1", a.cx);
+        line.setAttribute("y1", a.cy);
+        line.setAttribute("x2", tip.x);
+        line.setAttribute("y2", tip.y);
+        if (cls === "sz-edge-visible") {
+          line.setAttribute("stroke", stroke);
+          line.setAttribute("stroke-width", "2.4");
+          // Dashed, so a claim never reads as a recorded reduction.
+          line.setAttribute("stroke-dasharray", "7,4");
+          line.setAttribute("marker-end", "url(#" + szArrowIdFor(stroke) + ")");
+        }
+        g.appendChild(line);
+      });
+      svg.appendChild(g);
+    });
   }
 
   // "Why does this arrow exist?" -- shows both endpoints' notation and every
@@ -3138,8 +4458,11 @@
     }
 
     els.detailContent.innerHTML =
-      "<h3>" + escapeHtml(from.notation) + " <span style='color:var(--muted);font-weight:400'>generalizes</span> " +
-      escapeHtml(to.notation) + "</h3>" +
+      // Both ends tokenized, sharing the heading's one tooltip -- the arrow
+      // is exactly about which field differs, so being able to point at the
+      // fields is worth more here than anywhere.
+      szNotationHeadingHtml(
+        szNotationPartsHtml(from) + ' <span class="notation-verb">generalizes</span> ' + szNotationPartsHtml(to)) +
       '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">' +
       (edge.addedByUs
         ? "from a reduction rule <b>this site added</b> (not The Scheduling Zoo's own data -- see the note below; every note is under Known data anomalies in the <a href=\"#/docs/docs-anomalies\">Documentation</a>)"
@@ -3159,18 +4482,600 @@
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
     setPanelMinWidth(0);
+    enableNotationTooltips(els.detailContent);
   }
 
+  // Repaints every view that shows classifications, in place, as soon as one
+  // changes -- the reader's claim travels through the inheritance rules, so
+  // it can recolour problems anywhere on the map, not just the one clicked.
+  // The overview's nodes are updated rather than re-rendered so that any
+  // dragging the reader has done survives.
+  function refreshClassificationViews() {
+    SZ_EFFECTIVE = null;
+    designerEffectiveCache = { key: null, classes: null };
+    // Recomputed here, before ANY view is redrawn, rather than inside the
+    // overview's branch below: the problem maps read the same classes (and
+    // the same SZ_USER_AFFECTED, which computing them fills in), so leaving
+    // it to whichever view happened to be open meant a claim made in a
+    // problem map repainted that map from an empty cache.
+    szEffectiveClasses();
+    if (DATA_SZ && !els.viewSchedulingZoo.hidden) {
+      const conflicts = new Set(szConflictingEdges().map((c) => c.from + "\u0000" + c.to));
+      els.viewSchedulingZoo.querySelectorAll(".sz-node").forEach((el) => {
+        const id = el.dataset.szId;
+        applySzNodeStyle(el, SZ_EFFECTIVE[id]);
+        el.classList.toggle("user-classified", !!userClassification(id, null));
+        el.classList.toggle("user-affected", SZ_USER_AFFECTED.has(id));
+      });
+      els.viewSchedulingZoo.querySelectorAll("g.sz-edge").forEach((g) => {
+        const from = g.getAttribute("data-sz-from"), to = g.getAttribute("data-sz-to");
+        const line = g.querySelector(".sz-edge-visible");
+        if (!line) return;
+        const conflict = conflicts.has(from + "\u0000" + to);
+        const claimTouched = !conflict && (
+          userClassification(from, null) || userClassification(to, null) ||
+          SZ_USER_AFFECTED.has(from) || SZ_USER_AFFECTED.has(to));
+        if (conflict) {
+          line.setAttribute("stroke", SZ_EDGE_FLAGGED_COLOR);
+          line.setAttribute("stroke-width", "2.6");
+          line.setAttribute("marker-end", "url(#" + szArrowIdFor(SZ_EDGE_FLAGGED_COLOR) + ")");
+        } else if (claimTouched) {
+          line.setAttribute("stroke", USER_CLASS_RING);
+          line.setAttribute("marker-end", "url(#" + szArrowIdFor(USER_CLASS_RING) + ")");
+        }
+      });
+      // A claim can put a hand-drawn arrow in (or out of) conflict, which is
+      // the arrow's own colour -- redrawn from the live node positions, so
+      // any dragging survives this.
+      szRenderUserEdges();
+    }
+    if (!els.viewDesign.hidden) renderDesign();
+  }
+
+  // Shown when a claim disagrees with something already on the map. It is
+  // never blocked -- an inconsistency the reader means to keep is allowed,
+  // and the arrows that disagree turn red (see szConflictingEdges).
+  function showClassificationConflictAlert(nodeId, conflicts) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<div class="designer-dialog" role="alertdialog" aria-modal="true" aria-labelledby="classify-conflict-title">' +
+      '<h3 id="classify-conflict-title">That contradicts ' +
+      (conflicts.length === 1 ? "a published result" : conflicts.length + " published results") + "</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Either the classification is wrong, or you have a result ' +
+      "worth writing up. Your claim has been kept and now supersedes the citations below, here and everywhere it follows " +
+      "along the arrows. The problems it moved are glowing blue, and the arrows involved are red.</p>" +
+      '<ul class="result-list">' +
+      conflicts.slice(0, 6).map((c) =>
+        "<li><b>" + escapeHtml(c.notation) + "</b> is cited as <b>" + escapeHtml(szClassLabel(c.cited)) +
+        "</b>, but is now <b>" + escapeHtml(szClassLabel(c.now)) + "</b>" +
+        (c.direct ? " because you classified it." : " because that follows from what you classified.") + "</li>").join("") +
+      (conflicts.length > 6 ? "<li>and " + (conflicts.length - 6) + " more</li>" : "") +
+      "</ul>" +
+      '<div class="designer-dialog-actions">' +
+      '<button type="button" class="map-history-btn" data-dialog="undo">Undo my classification</button>' +
+      '<button type="button" class="map-history-btn designer-dialog-report" data-dialog="keep">Keep it</button>' +
+      "</div></div>";
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector('[data-dialog="keep"]').addEventListener("click", close);
+    backdrop.querySelector('[data-dialog="undo"]').addEventListener("click", () => {
+      setUserClassification(nodeId, null, null);
+      close();
+      refreshClassificationViews();
+      openSchedulingZooPanel(nodeId);
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-dialog="keep"]').focus();
+  }
+
+  // The form behind both classify buttons in the Scheduling Zoo panel: the
+  // class pill next to the problem's notation, and each box in the
+  // parameter diagram. `label` null means the problem's own classical
+  // class, otherwise the parameter being classified.
+  // ---- sending classifications to the site's author -------------------
+  // The site is a static page with nowhere to POST to, so "submit" means
+  // opening a prefilled issue on its repository: the reader presses the
+  // button, GitHub's own form appears with everything already written, and
+  // they decide whether to file it. Nothing leaves the browser until they do.
+  const REPO_ISSUES_URL = "https://github.com/yuvalyitz/parameterized-scheduling-zoo/issues/new";
+  // GitHub rejects very long URLs, so a big batch is trimmed in the body and
+  // the JSON stays complete on the clipboard instead.
+  const ISSUE_URL_LIMIT = 6000;
+
+  function userClassificationList() {
+    // The author's most useful column is what the site said before the
+    // reader disagreed, so make sure the corpus-only reading exists.
+    if (DATA_SZ && !SZ_EFFECTIVE_CORPUS) {
+      SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
+    }
+    const all = loadUserClassifications();
+    // A classification can be about a problem the reader drafted, which the
+    // corpus index knows nothing about -- without this its row was headed
+    // by the internal draft id.
+    const drafts = {};
+    userDraftProblems().forEach((d) => { drafts[d.node.id] = d.node; });
+    const rows = [];
+    Object.keys(all).forEach((id) => {
+      const notation = (szNodeIndex()[id] || {}).notation || (drafts[id] || {}).notation || id;
+      const entry = all[id];
+      if (entry.classical) {
+        rows.push({ id: id, notation: notation, what: "classical", parameter: null, draft: !!drafts[id],
+          classId: entry.classical.classId, label: szClassLabel(entry.classical.classId),
+          // What it was before they disagreed: the corpus reading for a
+          // corpus problem, and for a draft what the rules alone make of it.
+          cited: drafts[id]
+            ? szClassLabel(draftInferredClass(drafts[id], true))
+            : SZ_EFFECTIVE_CORPUS ? szClassLabel(SZ_EFFECTIVE_CORPUS[id]) : null,
+          source: entry.classical.source || "", note: entry.classical.note || "", at: entry.classical.at });
+      }
+      Object.keys(entry.params || {}).forEach((param) => {
+        const claim = entry.params[param];
+        const cls = classById(claim.classId);
+        rows.push({ id: id, notation: notation, what: "parameterized", parameter: param,
+          classId: claim.classId, label: cls ? cls.label : claim.classId, cited: null,
+          source: claim.source || "", note: claim.note || "", at: claim.at });
+      });
+    });
+    return rows;
+  }
+
+  function classificationIssueBody(rows) {
+    const lines = ["Recorded on the Parameterized Scheduling Zoo and sent from the site.", ""];
+    if (rows.length) {
+      lines.push("| problem | claim | source | note |", "| --- | --- | --- | --- |");
+      rows.forEach((r) => {
+        const claim = r.parameter ? r.label + " for " + r.parameter : r.label +
+          (r.cited ? (r.draft ? " (a problem they drafted; the rules give it " : " (this site currently says ") + r.cited + ")" : "");
+        lines.push("| `" + r.notation + "` | " + claim + " | " + (r.source || "--") + " | " + (r.note || "--") + " |");
+      });
+    }
+    const arrows = loadSzUserEdges();
+    if (arrows.length) {
+      lines.push("", "Reductions drawn by hand on the map (each says the second problem is a special case of the first):", "",
+        "| general | special case | the reduction | note |", "| --- | --- | --- | --- |");
+      arrows.forEach((e) => {
+        const notation = (id) => ((szNodeIndex()[id] || {}).notation || id);
+        lines.push("| `" + notation(e.from) + "` | `" + notation(e.to) + "` | " + szReductionSummary(e) + " | " + (e.note || "--") + " |");
+      });
+    }
+    const drafts = userDraftProblems();
+    if (drafts.length) {
+      lines.push("", "Problems drafted in the designer -- written in The Scheduling Zoo's own notation, but not in the corpus:", "",
+        "| problem | fields | class the rules give it | drafted on |", "| --- | --- | --- | --- |");
+      drafts.forEach((d) => {
+        // Always the rules' own answer here; where they classified it
+        // themselves that claim is in the table above, with this as the
+        // reading it overrode.
+        lines.push("| `" + d.node.notation + "` | " + (draftFieldsSummary(d.node) || "--") + " | " +
+          szClassLabel(draftInferredClass(d.node, true)) + " | " + (d.maps.join(", ") || "--") + " |");
+      });
+    }
+    lines.push("", "<details><summary>The same thing as JSON</summary>", "",
+      "```json", JSON.stringify(submissionJson(), null, 2), "```", "</details>");
+    return lines.join("\n");
+  }
+
+  // Problems the reader DRAFTED: ones they wrote in The Scheduling Zoo's own
+  // notation that the corpus doesn't have. Gathered from every saved problem
+  // map plus whatever the designer is holding right now (a map may not have
+  // been saved yet), de-duplicated by id -- the id is derived from the
+  // notation, so the same problem drafted on two maps is one problem here.
+  function userDraftProblems() {
+    const byId = {};
+    const add = (node, where) => {
+      if (!node || !node.id) return;
+      const row = byId[node.id] || (byId[node.id] = { node: node, maps: [] });
+      if (where && row.maps.indexOf(where) === -1) row.maps.push(where);
+    };
+    loadSavedMaps().forEach((m) => {
+      Object.keys(m.drafts || {}).forEach((id) => add(m.drafts[id], m.title || "untitled map"));
+    });
+    Object.keys(designerDraftNodes).forEach((id) => {
+      add(designerDraftNodes[id], storyProblemIds.indexOf(id) !== -1 ? (designerMapTitle.trim() || "the designer, unsaved") : null);
+    });
+    return Object.keys(byId).map((id) => byId[id]);
+  }
+
+  // The class the reduction rules give a drafted problem, for ANY draft --
+  // including one saved on a map that isn't currently open, which
+  // designerClassOf can say nothing about (it only relates the drafts on
+  // the map in front of the reader). Same two rules, against the corpus:
+  // P travels down to a special case, hardness travels up from one.
+  function draftInferredClass(node, ignoreClaim) {
+    const claim = ignoreClaim ? null : userClassification(node.id, null);
+    if (claim) return claim.classId;
+    if (!DATA_SZ || !node.vector) return "unclaimed";
+    szEffectiveClasses();
+    let result = null;
+    DATA_SZ.nodes.forEach((other) => {
+      if (SZ_EFFECTIVE[other.id] === "P" && szVectorReduces(node.vector, other.vector)) result = "P";
+    });
+    if (result) return result;
+    DATA_SZ.nodes.forEach((other) => {
+      if (szVectorReduces(other.vector, node.vector)) result = strongerOf(result, inheritedContribution(SZ_EFFECTIVE[other.id]));
+    });
+    return result || "unclaimed";
+  }
+
+  // One drafted problem's fields, written the way its name is read.
+  function draftFieldsSummary(node) {
+    const tokens = szNotationTokens(node);
+    if (!tokens) return "";
+    return tokens.filter((t) => !t.sep && t.field)
+      .map((t) => szFieldName(t.field).toLowerCase() + ": " + t.text).join("; ");
+  }
+
+  // Everything of the reader's own, in one object: what Copy as JSON puts on
+  // the clipboard and what the issue body carries.
+  function submissionJson() {
+    const arrows = loadSzUserEdges();
+    const drafts = userDraftProblems();
+    const out = { classifications: loadUserClassifications() };
+    if (arrows.length) out.arrows = arrows;
+    // The whole node, not just the name: it carries the field assignment
+    // the name was built from, which is what makes it reproducible here.
+    if (drafts.length) out.draftProblems = drafts.map((d) => d.node);
+    return out;
+  }
+
+  function showSubmitClassificationsDialog() {
+    const rows = userClassificationList();
+    const arrows = loadSzUserEdges();
+    const drafts = userDraftProblems();
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    const body = classificationIssueBody(rows);
+    const issueTitle = rows.length
+      ? "Classifications from a reader (" + rows.length +
+        (arrows.length ? " + " + arrows.length + " arrows" : "") +
+        (drafts.length ? " + " + drafts.length + " drafted problems" : "") + ")"
+      : arrows.length
+        ? "Reductions drawn by a reader (" + arrows.length + ")"
+        : "Problems drafted by a reader (" + drafts.length + ")";
+    const url = REPO_ISSUES_URL + "?title=" + encodeURIComponent(issueTitle) +
+      "&labels=" + encodeURIComponent("classification") + "&body=" + encodeURIComponent(body);
+    const tooLong = url.length > ISSUE_URL_LIMIT;
+    backdrop.innerHTML =
+      '<div class="designer-dialog" role="dialog" aria-modal="true" aria-labelledby="submit-title">' +
+      '<h3 id="submit-title">Send ' +
+      [rows.length ? rows.length + " classification" + (rows.length === 1 ? "" : "s") : "",
+        arrows.length ? arrows.length + " hand-drawn arrow" + (arrows.length === 1 ? "" : "s") : "",
+        drafts.length ? drafts.length + " drafted problem" + (drafts.length === 1 ? "" : "s") : ""]
+        .filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1") + " to the author</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.6rem">These are yours, kept in this browser. Sending ' +
+      "opens a new issue on this site's repository with them filled in -- nothing is sent until you press submit there.</p>" +
+      '<ul class="result-list">' +
+      rows.slice(0, 12).map((r) =>
+        "<li><b>" + escapeHtml(r.notation) + "</b> &mdash; " + escapeHtml(r.label) +
+        (r.parameter ? " for " + escapeHtml(r.parameter) : "") +
+        (r.cited ? ' <span class="detail-class-aside">(' + (r.draft ? "the rules give it " : "this site says ") +
+          escapeHtml(r.cited) + ")</span>" : "") +
+        (r.source ? ' <span class="detail-class-aside">&middot; ' + escapeHtml(r.source) + "</span>" : "") +
+        "</li>").join("") +
+      (rows.length > 12 ? "<li>and " + (rows.length - 12) + " more</li>" : "") +
+      arrows.slice(0, 6).map((e) => {
+        const notation = (id) => ((szNodeIndex()[id] || {}).notation || id);
+        return "<li><b>" + escapeHtml(notation(e.from)) + " &rarr; " + escapeHtml(notation(e.to)) +
+          '</b> <span class="detail-class-aside">your arrow &middot; ' + escapeHtml(szReductionSummary(e)) + "</span></li>";
+      }).join("") +
+      (arrows.length > 6 ? "<li>and " + (arrows.length - 6) + " more arrows</li>" : "") +
+      drafts.slice(0, 6).map((d) =>
+        "<li><b>" + escapeHtml(d.node.notation) + '</b> <span class="detail-class-aside">your drafted problem &middot; ' +
+        escapeHtml(szClassLabel(draftInferredClass(d.node, true))) + " by the rules" +
+        (d.maps.length ? " &middot; on " + escapeHtml(d.maps.join(", ")) : "") + "</span></li>").join("") +
+      (drafts.length > 6 ? "<li>and " + (drafts.length - 6) + " more drafted problems</li>" : "") +
+      "</ul>" +
+      (tooLong
+        ? '<p class="designer-relations-empty">That is too much to carry in a link, so the issue will open with a ' +
+          "short note -- use Copy as JSON and paste it in there.</p>"
+        : "") +
+      '<div class="designer-dialog-actions">' +
+      '<button type="button" class="map-history-btn" data-dialog="cancel">Close</button>' +
+      '<button type="button" class="map-history-btn" data-dialog="copy">Copy as JSON</button>' +
+      '<a class="map-history-btn designer-dialog-report" data-dialog="send" target="_blank" rel="noopener" href="' +
+      escapeHtml(tooLong
+        ? REPO_ISSUES_URL + "?title=" + encodeURIComponent(issueTitle) +
+          "&labels=" + encodeURIComponent("classification") +
+          "&body=" + encodeURIComponent("Paste the JSON copied from the site here.")
+        : url) + '">Open an issue &rarr;</a>' +
+      "</div></div>";
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    const copyBtn = backdrop.querySelector('[data-dialog="copy"]');
+    copyBtn.addEventListener("click", () => {
+      copyTextToClipboard(JSON.stringify(submissionJson(), null, 2));
+      copyBtn.textContent = "Copied";
+    });
+    document.body.appendChild(backdrop);
+  }
+
+  // The live state of the overview's filter controls, saved from outside
+  // renderSchedulingZoo (which has its own saveSzFilterState over the
+  // controls it just wired). Without this, a redraw triggered from anywhere
+  // else snaps every switch back to whatever was saved the last time Apply
+  // was pressed.
+  function saveSzFilterStateNow() {
+    const input = els.viewSchedulingZoo.querySelector("#sz-filter");
+    if (!input || !szValueDropdowns || !szSettingsControl) return;
+    SZ_LAST_FILTERS = {
+      q: input.value,
+      machineEnv: szValueDropdowns[0].getSelected(),
+      objective: szValueDropdowns[1].getSelected(),
+      settings: szSettingsControl.getSelected(),
+    };
+  }
+
+  // The way out of everything the reader has recorded here. Destructive and
+  // not undoable, so it says exactly what will go and asks first. The
+  // hand-drawn arrows are a separate kind of claim, so they are a separate
+  // (unticked) choice rather than being swept away with the rest.
+  function showResetClassificationsDialog() {
+    const rows = userClassificationList();
+    const arrows = loadSzUserEdges();
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<div class="designer-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-claims-title">' +
+      '<h3 id="reset-claims-title">Delete your ' +
+      (rows.length ? rows.length + " classification" + (rows.length === 1 ? "" : "s") : "work here") + "?</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Everything you have classified in this browser ' +
+      "goes, and every problem it moved falls back to what The Scheduling Zoo's data says. This cannot be undone -- " +
+      "if you want to keep a copy, close this and use <b>Send my classifications</b> &rarr; Copy as JSON first.</p>" +
+      (arrows.length
+        ? '<label class="designer-reduction-option"><input type="checkbox" class="reset-claims-arrows">' +
+          "<span><b>Also delete my " + arrows.length + " hand-drawn arrow" + (arrows.length === 1 ? "" : "s") +
+          "</b><small>Arrows you drew with →+. Left alone unless you tick this.</small></span></label>"
+        : "") +
+      '<div class="designer-dialog-actions">' +
+      '<button type="button" class="map-history-btn" data-dialog="cancel">Keep them</button>' +
+      '<button type="button" class="map-history-btn designer-dialog-report" data-dialog="reset">Delete</button>' +
+      "</div></div>";
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    backdrop.querySelector('[data-dialog="reset"]').addEventListener("click", () => {
+      const alsoArrows = backdrop.querySelector(".reset-claims-arrows");
+      storeUserClassifications({});
+      // Same invalidation setUserClassification does: the inherited classes
+      // are cached and every one of them may now be different.
+      SZ_EFFECTIVE = null;
+      SZ_PARAM_CLAIMS = null;
+      designerEffectiveCache = { key: null, classes: null };
+      if (alsoArrows && alsoArrows.checked) { SZ_USER_EDGES = []; storeSzUserEdges(); }
+      close();
+      els.detailPanel.hidden = true;
+      els.detailOverlay.hidden = true;
+      // A full redraw, unlike the in-place refresh a single claim gets: the
+      // two buttons at the bottom of the diagram are gone now, and so is
+      // every blue ring and glow on the map.
+      saveSzFilterStateNow();
+      renderSchedulingZoo();
+      if (!els.viewDesign.hidden) renderDesign();
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-dialog="cancel"]').focus();
+  }
+
+  function showClassifyDialog(nodeId, label, notation) {
+    const isClassical = label === null || label === undefined;
+    const classes = isClassical
+      ? DATA.classicalClasses.filter((c) => c.id !== "unclaimed")
+      : DATA.complexityClasses;
+    const existing = userClassification(nodeId, label) || {};
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<form class="designer-dialog" role="dialog" aria-modal="true" aria-labelledby="classify-title">' +
+      '<h3 id="classify-title">' +
+      (isClassical
+        ? "Classify <span class=\"designer-reduction-problem\">" + escapeHtml(notation) + "</span>"
+        : "Classify <span class=\"designer-reduction-problem\">" + escapeHtml(notation) +
+          "</span> for parameter <span class=\"designer-reduction-problem\">" + escapeHtml(label) + "</span>") +
+      "</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.6rem">Kept in this browser only, and shown as your own ' +
+      "claim rather than a cited result. A source is optional.</p>" +
+      "<fieldset><legend>Class</legend>" +
+      classes.map((c) =>
+        '<label class="designer-reduction-option"><input type="radio" name="cls" value="' + escapeHtml(c.id) + '"' +
+        (c.id === existing.classId ? " checked" : "") + "><span><b>" + escapeHtml(c.label) + "</b></span></label>").join("") +
+      "</fieldset>" +
+      '<label class="designer-reduction-note">Source <small>(optional -- paper, DOI, or "own proof")</small>' +
+      '<input type="text" class="sz-filter" name="source" value="' + escapeHtml(existing.source || "") + '"></label>' +
+      '<label class="designer-reduction-note">Note <small>(optional)</small>' +
+      '<input type="text" class="sz-filter" name="note" value="' + escapeHtml(existing.note || "") + '"></label>' +
+      '<div class="designer-dialog-actions">' +
+      (existing.classId ? '<button type="button" class="map-history-btn classify-remove">Remove my classification</button>' : "") +
+      '<button type="button" class="map-history-btn" data-dialog="cancel">Cancel</button>' +
+      '<button type="submit" class="map-history-btn designer-dialog-report">Save</button>' +
+      "</div></form>";
+    const form = backdrop.querySelector("form");
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    form.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    const removeBtn = form.querySelector(".classify-remove");
+    if (removeBtn) removeBtn.addEventListener("click", () => {
+      setUserClassification(nodeId, label, null);
+      close();
+      refreshClassificationViews();
+      openSchedulingZooPanel(nodeId);
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const picked = form.querySelector('input[name="cls"]:checked');
+      if (!picked) return;
+      setUserClassification(nodeId, label, {
+        classId: picked.value,
+        source: form.source.value.trim(),
+        note: form.note.value.trim(),
+        at: new Date().toISOString(),
+      });
+      close();
+      refreshClassificationViews();
+      openSchedulingZooPanel(nodeId);
+      // Only a classical claim can contradict an arrow; a parameterized one
+      // says nothing about the classical class the arrows are judged on.
+      if (isClassical) {
+        const overridden = szOverriddenByClaims();
+        if (overridden.length) showClassificationConflictAlert(nodeId, overridden);
+      }
+    });
+    document.body.appendChild(backdrop);
+    const first = form.querySelector('input[name="cls"]:checked') || form.querySelector('input[name="cls"]');
+    if (first) first.focus();
+  }
+
+  // The Scheduling Zoo's own wording for what one value of one field means,
+  // from notation.xml's <choice explanation=...> (see the notation_form loop
+  // in convert_for_pzoo.py). Its text, not ours -- this site never
+  // re-describes the corpus's own vocabulary.
+  function szChoiceExplanation(field, value) {
+    const f = szFormField(field);
+    const c = f && f.choices.find((x) => x.value === value);
+    return (c && c.explanation) || "";
+  }
+
+  // A problem's name broken into the parts it is built from: each token of
+  // the alpha|beta|gamma heading paired with the field it fills and that
+  // field's value, so every one of them can be explained on its own.
+  //
+  // Driven by the node's own fields rather than by parsing the string:
+  // `notation` is BUILT from `vector` / `settings` / `preemption`, so
+  // matching a displayed token back to the (field, value) behind it is
+  // exact rather than a guess at what "p-batch(∞)" might be. Checked over
+  // the whole corpus: all 719 names split with nothing left unmatched, and
+  // every resulting token has an explanation.
+  //
+  // Returns a flat list of { sep } separators and { text, field, value }
+  // parts, or null when the name isn't the three-slot form (then the panel
+  // just prints it as it always did).
+  function szNotationTokens(n) {
+    const slots = String(n.notation || "").split("|");
+    if (slots.length !== 3) return null;
+    const out = [];
+    const part = (field, value, text) => out.push({ text: text, field: field, value: value });
+    const sep = (s) => out.push({ sep: s });
+    const vec = n.vector || {};
+
+    // alpha: the machine environment, its machine count written straight
+    // after it ("P2"), then any ";"-separated extras (robot, server).
+    const alphaSegs = slots[0].split(";");
+    const head = alphaSegs[0];
+    if (head === "1") {
+      // A single machine is one idea, not "parallel machines, of which 1":
+      // notation.xml has its own "1" choice, with its own explanation.
+      part("type", "1", head);
+    } else if (n.machineEnv && head.indexOf(n.machineEnv) === 0) {
+      part("type", n.machineEnv, n.machineEnv);
+      const count = head.slice(n.machineEnv.length);
+      if (count) part("number of machines", vec["number of machines"], count);
+    } else {
+      part(null, null, head);
+    }
+    alphaSegs.slice(1).forEach((seg) => {
+      sep(";");
+      const field = ["robot", "server"].find((f) => vec[f] && szChoiceLabel(f, vec[f]) === seg);
+      part(field || null, field ? vec[field] : null, seg);
+    });
+
+    // beta: the settings, in the order the name writes them. Preemption is
+    // kept apart from `settings` on the node, but it is a beta field like
+    // any other here.
+    sep("|");
+    if (slots[1]) {
+      const byLabel = {};
+      Object.keys(n.settings || {}).forEach((f) => { byLabel[szChoiceLabel(f, n.settings[f])] = f; });
+      if (n.preemption) byLabel[szChoiceLabel("preemption", n.preemption)] = "preemption";
+      slots[1].split(";").forEach((seg, i) => {
+        if (i) sep(";");
+        const field = byLabel[seg];
+        part(field || null, field ? (field === "preemption" ? n.preemption : n.settings[field]) : null, seg);
+      });
+    }
+    sep("|");
+    part("Objective function", vec["Objective function"], slots[2]);
+    return out;
+  }
+
+  // One problem's name as hoverable (and focusable, and tappable) tokens.
+  // Falls back to the plain name whenever it can't be split.
+  function szNotationPartsHtml(n) {
+    const tokens = szNotationTokens(n);
+    if (!tokens) return escapeHtml(n.notation);
+    return tokens.map((t) => t.sep
+      ? '<span class="notation-sep">' + escapeHtml(t.sep) + "</span>"
+      : '<span class="notation-part" tabindex="0" role="button"' +
+        ' data-field="' + escapeHtml(t.field || "") + '" data-value="' + escapeHtml(t.value || "") + '">' +
+        escapeHtml(t.text) + "</span>").join("");
+  }
+
+  // A heading built out of those tokens, with ONE tooltip under the whole
+  // heading rather than one per token -- no clamping against the panel's
+  // edge, and nothing to reposition when a long name wraps. `inner` lets a
+  // heading hold more than one name (the arrow panel's "X generalizes Y"),
+  // all of them sharing that one tooltip.
+  function szNotationHeadingHtml(inner) {
+    return '<h3 class="detail-notation">' + inner +
+      '<span class="notation-tip" role="status" hidden></span></h3>';
+  }
+
+  function enableNotationTooltips(root) {
+    root.querySelectorAll(".detail-notation").forEach((head) => {
+      const tip = head.querySelector(".notation-tip");
+      if (!tip) return;
+      const clear = () => head.querySelectorAll(".notation-part.active").forEach((x) => x.classList.remove("active"));
+      const show = (el) => {
+        const field = el.dataset.field;
+        const explanation = field ? szChoiceExplanation(field, el.dataset.value) : "";
+        // Even with no prose to show, naming the field the token fills is
+        // worth saying -- it is half of what the reader is asking.
+        tip.innerHTML = "<b>" + escapeHtml(el.textContent) + "</b>" +
+          (field ? ' <span class="notation-tip-field">' + escapeHtml(szFieldName(field).toLowerCase()) + "</span>" : "") +
+          (explanation ? "<br>" + escapeHtml(explanation) : "");
+        tip.hidden = false;
+        clear();
+        el.classList.add("active");
+      };
+      const hide = () => { tip.hidden = true; clear(); };
+      head.querySelectorAll(".notation-part").forEach((el) => {
+        el.addEventListener("mouseenter", () => show(el));
+        el.addEventListener("mouseleave", hide);
+        el.addEventListener("focus", () => show(el));
+        el.addEventListener("blur", hide);
+        // For touch, where there is no hover: tap to open, tap again to close.
+        el.addEventListener("click", () => (el.classList.contains("active") ? hide() : show(el)));
+      });
+    });
+  }
+
+  // Opens for a problem the reader DRAFTED as readily as for a corpus one
+  // -- same panel, minus the citations it cannot have. Without this, the
+  // one kind of problem whose classification needs explaining (it is
+  // entirely inferred) was the one kind you could not open.
   function openSchedulingZooPanel(nodeId) {
-    const n = DATA_SZ.nodes.find((x) => x.id === nodeId);
+    const n = DATA_SZ.nodes.find((x) => x.id === nodeId) || designerDraftNodes[nodeId];
     if (!n) return;
     const resultLi = szResultLi;
     const lower = n.classical.filter((r) => r.kind === "lower");
     const upper = n.classical.filter((r) => r.kind === "upper");
     const forest = buildParamForest(szAllParams(n));
-    const paramTreeHtml = buildParamTreeHtml(forest, resultLi);
-    const paramDiagram = buildParamDiagramHtml(forest);
-    const paramUsedClasses = new Set(forest.labels.map((l) => bestParamComplexityClass(forest.byLabel[l])).filter(Boolean));
+    const paramTreeHtml = buildParamTreeHtml(forest, resultLi, n.id);
+    const paramDiagram = buildParamDiagramHtml(forest, n.id);
+    // Every class the CITATIONS put on this problem, plus any the reader has
+    // claimed. A union, never a replacement: a claim colours the reader's own
+    // box, but it must not drop a class the sources still assert from the
+    // legend -- that would read as the cited result having changed.
+    const paramUsedClasses = new Set(forest.labels
+      .flatMap((l) => [bestParamComplexityClass(forest.byLabel[l]), (userParamClass(n.id, l) || {}).classId])
+      .filter(Boolean));
     const paramLegendHtml = paramUsedClasses.size
       ? '<p style="margin:0.4rem 0 0;font-size:0.8rem">' +
         DATA.complexityClasses.filter((c) => paramUsedClasses.has(c.id)).map((c) =>
@@ -3179,25 +5084,73 @@
           ";border:1.5px " + (c.border || "solid") + " " + c.color + '"></span>' + escapeHtml(c.label) + "</span>"
         ).join("") + "</p>"
       : "";
-    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    szEffectiveClasses();
     const isDirect = n.classicalClass && n.classicalClass !== "unclaimed";
     const effClassId = SZ_EFFECTIVE[n.id];
     const cc = classicalClassById(effClassId);
     const ccLabel = !effClassId || effClassId === "unclaimed" ? "open" : (cc ? cc.label : effClassId);
-    const ccPillHtml = '<span class="class-pill" style="' + classPillStyle(cc) + '">' + escapeHtml(ccLabel) + "</span>" +
-      (!isDirect && effClassId && effClassId !== "unclaimed"
-        ? ' <span style="color:var(--muted);font-size:0.8rem">(inherited: generalizes at least one node in this graph classified ' + escapeHtml(cc ? cc.label : effClassId) + ")</span>"
-        : "");
+    const mine = userClassification(n.id, null);
+    const mineClass = mine ? classicalClassById(mine.classId) : null;
+    // The reader's own classification and the corpus one are two different
+    // claims about the same problem, so they get a labelled line each rather
+    // than two pills in a row -- which read as one classification stuttering.
+    // The reader's line only exists once they have actually made a claim.
+    if (!SZ_EFFECTIVE_CORPUS) SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
+    const szClassId = SZ_EFFECTIVE_CORPUS[n.id];
+    const szOwnClass = classicalClassById(szClassId);
+    const szOwnLabel = !szClassId || szClassId === "unclaimed" ? "open" : (szOwnClass ? szOwnClass.label : szClassId);
+    const classRow = (label, pill, trailing) =>
+      '<div class="detail-class-row"><span class="detail-class-label">' + label + "</span>" + pill +
+      (trailing ? ' <span class="detail-class-aside">' + trailing + "</span>" : "") + "</div>";
+    // A drafted problem has no corpus reading to show -- nobody has cited
+    // anything about a problem the reader has just invented. What it has
+    // instead is whatever the map around it settles, so that is the second
+    // row, with the reasoning that produced it (see designerClassReason).
+    const draftClassId = n.draft ? designerClassOf(n.id) : null;
+    const draftClass = n.draft ? classicalClassById(draftClassId) : null;
+    const draftReason = n.draft ? designerClassReason(n.id) : null;
+    const ccPillHtml =
+      (mine
+        ? classRow("your classification",
+            '<button type="button" class="class-pill classify-btn classify-mine" title="Click to change or remove it" style="' +
+            classPillStyle(mineClass) + '">' + escapeHtml(mineClass ? mineClass.label : mine.classId) + "</button>",
+            "unverified" + (mine.source ? " &middot; " + escapeHtml(mine.source) : ""))
+        : "") +
+      (n.draft
+        ? classRow("from this map",
+            '<button type="button" class="class-pill classify-btn" title="Classify this problem yourself" style="' +
+            classPillStyle(draftClass) + '">' +
+            escapeHtml(!draftClassId || draftClassId === "unclaimed" ? "open" : (draftClass ? draftClass.label : draftClassId)) +
+            "</button>",
+            draftReason ? escapeHtml(draftReason.summary) : "nothing on this map settles it yet")
+        : classRow("Scheduling Zoo classification",
+            '<button type="button" class="class-pill classify-btn" title="Classify this problem yourself" style="' +
+            classPillStyle(szOwnClass) + '">' + escapeHtml(szOwnLabel) + "</button>",
+            !isDirect && szClassId && szClassId !== "unclaimed"
+              ? "inherited: generalizes at least one problem classified " + escapeHtml(szOwnClass ? szOwnClass.label : szClassId)
+              : ""));
 
-    const machineEnvExpl = (DATA_SZ.machineEnvExplanations || {})[n.machineEnv];
-
+    // The machine environment used to be explained in a paragraph of its
+    // own here. Every part of the name is explained on hover now (see
+    // szNotationHeadingHtml), the machine environment included, so what is
+    // left to say is where to look.
     els.detailContent.innerHTML =
-      "<h3>" + escapeHtml(n.notation) + " " + ccPillHtml + "</h3>" +
-      '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">from <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">schedulingzoo.lip6.fr</a> -- ' +
-      "not independently verified by this site; classification above is this site's own reading of The Scheduling Zoo's " +
-      "cited text, not a category The Scheduling Zoo assigns itself.</p>" +
-      (machineEnvExpl ? '<p style="color:var(--muted);font-size:0.85rem"><b>' + escapeHtml(n.machineEnv) +
-        "</b> — " + escapeHtml(machineEnvExpl) + " (The Scheduling Zoo's own wording)</p>" : "") +
+      szNotationHeadingHtml(szNotationPartsHtml(n)) + ccPillHtml +
+      (n.draft
+        ? '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">a problem <b>you drafted</b> — it is not in ' +
+          "The Scheduling Zoo's corpus, so there is nothing cited about it. It is a well-formed name in their own " +
+          "notation, though, so the reduction rules place it among the corpus problems, and that is where the " +
+          "classification above comes from.</p>"
+        : '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">from <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">schedulingzoo.lip6.fr</a> -- ' +
+          "not independently verified by this site; classification above is this site's own reading of The Scheduling Zoo's " +
+          "cited text, not a category The Scheduling Zoo assigns itself.</p>") +
+      (szNotationTokens(n)
+        ? '<p class="notation-hint">Point at any part of the name above — the machine environment, each setting, ' +
+          "the objective — for what it means, in The Scheduling Zoo's own wording.</p>"
+        : "") +
+      // A draft's whole evidence, so it comes before the (empty) citation
+      // sections rather than after them.
+      (draftReason ? draftReasonHtml(draftReason) : "") +
       (lower.length ? '<div class="detail-field"><h4>Classical hardness results</h4><ul class="result-list">' + lower.map(resultLi).join("") + "</ul></div>" : "") +
       (upper.length ? '<div class="detail-field"><h4>Classical positive / algorithmic results</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
       (paramTreeHtml ? '<div class="detail-field"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
@@ -3207,7 +5160,10 @@
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
     setPanelMinWidth(paramDiagram ? paramDiagram.width : 0);
-    if (paramDiagram) enableSzParamDiagramDragging(els.detailContent.querySelector(".param-tree-wrap"));
+    if (paramDiagram) enableSzParamDiagramDragging(els.detailContent.querySelector(".param-tree-wrap"), n.id, n.notation);
+    els.detailContent.querySelectorAll(".classify-btn").forEach((b) =>
+      b.addEventListener("click", () => showClassifyDialog(n.id, null, n.notation)));
+    enableNotationTooltips(els.detailContent);
   }
 
   // Every schedzoo parameterized result is tagged with a combined-parameter
@@ -3262,15 +5218,34 @@
     return { byLabel, labels, parentOf, childrenOf, roots };
   }
 
-  function buildParamTreeHtml(forest, resultLi) {
+  function buildParamTreeHtml(forest, resultLi, nodeId) {
     if (!forest.labels.length) return "";
     function renderLabel(label, depth) {
       const rs = forest.byLabel[label];
       const pl = rs.filter((r) => r.kind === "lower");
       const pu = rs.filter((r) => r.kind === "upper");
       const kids = forest.childrenOf[label].slice().sort();
+      // Stated as the reader's own line, above citations that are left
+      // exactly as they are -- a claim never edits what a source says.
+      const mine = nodeId ? userParamClass(nodeId, label) : null;
+      const mineCls = mine ? classById(mine.classId) : null;
       return '<div class="sz-param-group" style="margin-left:' + depth * 0.9 + 'rem">' +
         "<h5>parameter: " + escapeHtml(label) + "</h5>" +
+        (mine
+          ? '<div class="detail-class-row"><span class="detail-class-label">' +
+            (mine.direct ? "your classification" : "follows from your classification") + "</span>" +
+            '<span class="class-pill" style="' + classPillStyle(mineCls) + '">' +
+            escapeHtml(mineCls ? mineCls.label : mine.classId) + "</span>" +
+            '<span class="detail-class-aside">' +
+            (mine.direct
+              ? "unverified" + (mine.source ? " &middot; " + escapeHtml(mine.source) : "")
+              : mine.viaParam
+              ? "of " + escapeHtml(mine.viaParam) + " on this problem, which bounds " +
+                (PARAM_UPPER_BOUNDS.includes(mine.classId) ? "less" : "more")
+              : "of " + escapeHtml((szNodeIndex()[mine.from] || {}).notation || mine.from) +
+                ", carried along arrows that keep " + escapeHtml(label) + " bounded") +
+            (pl.length || pu.length ? " &middot; the citations below are unchanged" : "") + "</span></div>"
+          : "") +
         (pl.length ? '<ul class="result-list">' + pl.map(resultLi).join("") + "</ul>" : "") +
         (pu.length ? '<ul class="result-list">' + pu.map(resultLi).join("") + "</ul>" : "") +
         kids.map((k) => renderLabel(k, depth + 1)).join("") +
@@ -3313,7 +5288,7 @@
     return best;
   }
 
-  function buildParamDiagramHtml(forest) {
+  function buildParamDiagramHtml(forest, nodeId) {
     const ids = forest.labels;
     if (!ids.length) return null;
     const edgeList = ids.filter((id) => forest.parentOf[id]).map((id) => ({ from: forest.parentOf[id], to: id }));
@@ -3337,22 +5312,32 @@
     const height = SZ_PT_MARGIN * 2 + maxRow * SZ_PT_ROW_H + SZ_PT_NODE_H;
 
     const arrowId = "sz-param-tree-arrow";
-    const defs = '<defs><marker id="' + arrowId + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
-      '<path d="' + STEALTH_ARROW_PATH + '" fill="' + MAP_EDGE_COLOR + '" /></marker></defs>';
+    const claimArrowId = "sz-param-tree-arrow-claim";
+    const ptMarker = (id, fill) => '<marker id="' + id + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+      '<path d="' + STEALTH_ARROW_PATH + '" fill="' + fill + '" /></marker>';
+    const defs = "<defs>" + ptMarker(arrowId, MAP_EDGE_COLOR) + ptMarker(claimArrowId, USER_CLASS_RING) + "</defs>";
 
     const linesSvg = edgeList.map((e) => {
       const a = pos[e.from], b = pos[e.to];
       if (!a || !b) return "";
       const acx = a.left + a.w / 2, acy = a.top + a.h / 2, bcx = b.left + b.w / 2, bcy = b.top + b.h / 2;
       const tip = pullBackToRect(acx, acy, bcx, bcy, b.w / 2, b.h / 2, 3);
+      // Blue when either end carries one of the reader's classifications --
+      // the same blue that rings the boxes, so an arrow reading "this is
+      // yours" matches the boxes it joins.
+      const claimed = nodeId && (userParamClass(nodeId, e.from) || userParamClass(nodeId, e.to));
       return '<line data-sz-pt-from="' + escapeHtml(e.from) + '" data-sz-pt-to="' + escapeHtml(e.to) +
         '" x1="' + acx + '" y1="' + acy + '" x2="' + tip.x + '" y2="' + tip.y +
-        '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.5" marker-end="url(#' + arrowId + ')" />';
+        '" stroke="' + (claimed ? USER_CLASS_RING : MAP_EDGE_COLOR) + '" stroke-width="' + (claimed ? "2" : "1.5") +
+        '" marker-end="url(#' + (claimed ? claimArrowId : arrowId) + ')" />';
     }).join("");
 
     const nodesSvg = ids.map((id) => {
       const rs = forest.byLabel[id];
-      const classId = bestParamComplexityClass(rs);
+      // The reader's own classification wins in their own browser, and is
+      // drawn with a dashed outline so it never passes for a cited result.
+      const ownClaim = nodeId ? userParamClass(nodeId, id) : null;
+      const classId = ownClaim ? ownClaim.classId : bestParamComplexityClass(rs);
       const cls = classId ? classById(classId) : null;
       const filled = cls && cls.fill;
       const bg = cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
@@ -3360,9 +5345,22 @@
       const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
       const textColor = filled && !cls.opacity ? fillTextColor(cls) : cls && (filled || cls.opacity) ? "#111" : "var(--fg)";
       const p = pos[id];
-      const title = id + (cls ? " — " + cls.label : rs.some((r) => r.kind === "lower") || rs.some((r) => r.kind === "upper") ? " — result recorded, not classified into FPT/XP/W-hierarchy (see list below)" : "");
-      return '<g class="sz-pt-node" data-sz-pt-id="' + escapeHtml(id) + '" data-x="' + p.left + '" data-y="' + p.top + '" transform="translate(' + p.left + "," + p.top + ')">' +
+      const title = id + (cls ? " — " + cls.label : rs.some((r) => r.kind === "lower") || rs.some((r) => r.kind === "upper") ? " — result recorded, not classified into FPT/XP/W-hierarchy (see list below)" : "") +
+        (ownClaim
+          ? ownClaim.direct
+            ? " (yours, unverified" + (ownClaim.source ? ": " + ownClaim.source : "") + ")"
+            : " (follows from your classification of " +
+              (ownClaim.viaParam || (szNodeIndex()[ownClaim.from] || {}).notation || ownClaim.from) + ")"
+          : "") +
+        (nodeId ? " — click to classify" : "");
+      return '<g class="sz-pt-node' + (nodeId ? " sz-pt-classify" : "") + '" data-sz-pt-id="' + escapeHtml(id) + '" data-x="' + p.left + '" data-y="' + p.top + '" transform="translate(' + p.left + "," + p.top + ')">' +
         "<title>" + escapeHtml(title) + "</title>" +
+        // Blue ring OUTSIDE the box, wider than it, exactly as on the map:
+        // the class still owns the fill and the border, blue means "mine".
+        (ownClaim
+          ? '<rect x="-3.5" y="-3.5" width="' + (p.w + 7) + '" height="' + (p.h + 7) + '" rx="8" fill="none" stroke="' +
+            USER_CLASS_RING + '" stroke-width="3"' + (ownClaim.direct ? "" : ' stroke-opacity="0.45"') + " />"
+          : "") +
         '<rect width="' + p.w + '" height="' + p.h + '" rx="5" style="fill:' + bg + ";stroke:" + border + '"' + dash + ' stroke-width="1.5" />' +
         '<text x="' + p.w / 2 + '" y="' + (p.h / 2 + 4) + '" text-anchor="middle" font-size="' + SZ_PT_FONT_PX + '" font-weight="600" style="fill:' + textColor + '">' +
         escapeHtml(id) + "</text></g>";
@@ -3396,7 +5394,7 @@
     });
   }
 
-  function enableSzParamDiagramDragging(wrap) {
+  function enableSzParamDiagramDragging(wrap, nodeId, notation) {
     const svg = wrap && wrap.querySelector(".sz-param-tree-svg");
     if (!svg) return;
     layoutSzParamDiagramEdges(svg);
@@ -3408,16 +5406,24 @@
         e.preventDefault();
         drag = { g, startX: e.clientX, startY: e.clientY, x0: parseFloat(g.dataset.x), y0: parseFloat(g.dataset.y) };
       });
+      // A click that didn't move the box offers to classify that parameter.
+      if (nodeId) g.addEventListener("click", () => {
+        if (drag && drag.moved) return;
+        showClassifyDialog(nodeId, g.dataset.szPtId, notation);
+      });
     });
     document.addEventListener("pointermove", (e) => {
       if (!drag) return;
+      if (Math.abs(e.clientX - drag.startX) > 4 || Math.abs(e.clientY - drag.startY) > 4) drag.moved = true;
       const x = drag.x0 + (e.clientX - drag.startX), y = drag.y0 + (e.clientY - drag.startY);
       drag.g.setAttribute("transform", "translate(" + x + "," + y + ")");
       drag.g.dataset.x = x;
       drag.g.dataset.y = y;
       layoutSzParamDiagramEdges(svg);
     });
-    document.addEventListener("pointerup", () => { drag = null; });
+    // Cleared a tick later so the click that follows pointerup can still
+    // see whether the box was dragged or merely clicked.
+    document.addEventListener("pointerup", () => { setTimeout(() => { drag = null; }, 0); });
   }
 
   // A parameter is only meaningful for a problem if every dimension it
@@ -3893,6 +5899,9 @@
     const vals = [], ops = [];
     let last = "";
     (expr + " ;").split(" ").forEach((raw) => {
+      // notation.xml writes negation as "not"; it used to spell one
+      // condition "no number of machines", which schedulingzoo PR #14
+      // regularised. The alias stays so an older notation.xml still reads.
       const tok = raw === "no" ? "not" : raw;
       const prio = priority.indexOf(tok);
       if (prio !== -1) {
@@ -4245,7 +6254,7 @@
     const fromId = edge.from, toId = edge.to;
     const a = storyNodeById(fromId), b = storyNodeById(toId);
     if (!a || !b || !SZ_EFFECTIVE) return null;
-    const ca = SZ_EFFECTIVE[fromId] || a.classicalClass, cb = SZ_EFFECTIVE[toId] || b.classicalClass;
+    const ca = designerClassOf(fromId), cb = designerClassOf(toId);
     const hard = ["weakly-NP-hard", "NP-hard-unresolved", "strongly-NP-hard"];
     if (ca === "P" && hard.includes(cb)) {
       return { general: a, specific: b, generalClass: ca, specificClass: cb,
@@ -4290,6 +6299,207 @@
     if (pairs.has(value + "\u0001" + than)) return "narrower";
     if (pairs.has(than + "\u0001" + value)) return "wider";
     return "unknown";
+  }
+
+  // Every field a problem vector can carry: the problem-builder form's own
+  // fields (its three sections are exactly the non-parameter fields), plus
+  // any field seen in a corpus vector, in case the two ever drift apart.
+  let SZ_VECTOR_FIELDS = null;
+  function szVectorFields() {
+    if (!SZ_VECTOR_FIELDS || SZ_VECTOR_FIELDS.data !== DATA_SZ) {
+      const fields = new Set((DATA_SZ.notationForm || []).map((f) => f.field));
+      (DATA_SZ.nodes || []).forEach((node) => Object.keys(node.vector || {}).forEach((f) => fields.add(f)));
+      SZ_VECTOR_FIELDS = { data: DATA_SZ, fields: Array.from(fields) };
+    }
+    return SZ_VECTOR_FIELDS.fields;
+  }
+
+  // A parameterized claim supersedes the corpus for its own problem, and then
+  // travels the way parameterized results always travel here: a hardness
+  // (W[1], W[2], para-NP) upward to the problems that generalize it, an
+  // upper bound (P, FPT, XP) downward to its special cases -- and only along
+  // arrows that keep THAT parameter bounded (szParamSafeFor). Returns, for
+  // every problem the claims reach, what they say about each parameter.
+  const PARAM_UPPER_BOUNDS = ["P", "FPT", "XP"];
+  let SZ_PARAM_CLAIMS = null;
+  function szParamClaimMap() {
+    if (SZ_PARAM_CLAIMS) return SZ_PARAM_CLAIMS;
+    const out = {};
+    if (!DATA_SZ) return out;
+    const record = (id, param, value) => {
+      const forNode = out[id] || (out[id] = {});
+      // A direct claim on a problem always beats one that merely reached it.
+      if (!forNode[param] || (!forNode[param].direct && value.direct)) forNode[param] = value;
+    };
+    const all = loadUserClassifications();
+    Object.keys(all).forEach((claimedId) => {
+      const params = (all[claimedId] || {}).params || {};
+      Object.keys(params).forEach((param) => {
+        const claim = params[param];
+        record(claimedId, param, { classId: claim.classId, source: claim.source, direct: true, from: claimedId });
+        const upward = !PARAM_UPPER_BOUNDS.includes(claim.classId);
+        const seen = new Set([claimedId]);
+        let frontier = [claimedId];
+        while (frontier.length) {
+          const next = [];
+          frontier.forEach((current) => {
+            DATA_SZ.edges.forEach((e) => {
+              const step = upward ? (e.to === current ? e.from : null) : (e.from === current ? e.to : null);
+              if (!step || seen.has(step)) return;
+              const general = upward ? step : current;
+              const specific = upward ? current : step;
+              if (szParamSafeFor(general, specific, param) !== true) return;
+              seen.add(step);
+              next.push(step);
+              record(step, param, { classId: claim.classId, source: claim.source, direct: false, from: claimedId });
+            });
+          });
+          frontier = next;
+        }
+      });
+    });
+    SZ_PARAM_CLAIMS = out;
+    return out;
+  }
+  // What the reader's claims say about one parameter of one problem: their
+  // own claim, or one that reached it along parameter-safe arrows.
+  // ... or one that follows from a claim about a DIFFERENT parameter of the
+  // same problem. That is containment between the parameter sets themselves,
+  // the nesting the panel's diagram draws: #d+#p bounds everything #p bounds
+  // and more. Bounding fewer things can only make a problem harder, so
+  // hardness for the bigger set carries to every subset of it (para-NP-hard
+  // for #d+#p means para-NP-hard for #p), while an algorithm needing only
+  // the smaller set still runs when more is bounded, so FPT/XP/P carries the
+  // other way, to every superset.
+  const paramParts = (label) =>
+    new Set(String(label).split("+").map((t) => t.trim()).filter(Boolean));
+  const paramSubsetOf = (a, b) => a.size < b.size && Array.from(a).every((t) => b.has(t));
+  function userParamClass(nodeId, param) {
+    const forNode = szParamClaimMap()[nodeId] || {};
+    if (forNode[param]) return forNode[param];
+    const mine = paramParts(param);
+    let implied = null;
+    Object.keys(forNode).forEach((other) => {
+      if (implied) return;
+      const claim = forNode[other];
+      const theirs = paramParts(other);
+      const carries = PARAM_UPPER_BOUNDS.includes(claim.classId)
+        ? paramSubsetOf(theirs, mine)
+        : paramSubsetOf(mine, theirs);
+      if (carries) implied = Object.assign({}, claim, { direct: false, viaParam: other });
+    });
+    return implied;
+  }
+
+  // ---- which measures an arrow keeps bounded -------------------------
+  // A parameterized result only travels along an arrow that leaves the
+  // parameter bounded: W[1]-hardness for #p carries up to a problem that
+  // generalizes it only if the generalization still has #p under control.
+  // The corpus's own inherited results are worked out by param_safe_tokens()
+  // in scripts/convert_for_pzoo.py; this is that rule ported, because a
+  // classification the reader makes here has to travel the same way and the
+  // converter cannot be re-run in the browser. Validated against the corpus:
+  // it reproduces every one of schedzoo's own inherited results.
+  // NOTE: two copies of one rule. Exporting the per-arrow answer from the
+  // converter into schedulingzoo.json would remove this duplicate -- worth
+  // doing next time that file is regenerated.
+  const PARAM_SAFE_ANY = true; // any one-field rule of this field keeps the instance as it is
+  const PARAM_SAFE_FIELD_CHANGES = {
+    "precedence relation": PARAM_SAFE_ANY,
+    "processing times": PARAM_SAFE_ANY,
+    "due date": PARAM_SAFE_ANY,
+    "setup times": PARAM_SAFE_ANY,
+    "batching": PARAM_SAFE_ANY,
+    "number of jobs": PARAM_SAFE_ANY,
+    "time lags": PARAM_SAFE_ANY,
+    "communication delay": PARAM_SAFE_ANY,
+    "transportation delays": PARAM_SAFE_ANY,
+    "deadline": PARAM_SAFE_ANY,
+    "job size": PARAM_SAFE_ANY,
+    "machine sets": PARAM_SAFE_ANY,
+  };
+  // Padding release dates with r_j = 0 moves the windows [r_j, d_j] and the
+  // slack, so window-based measures do not survive it.
+  const RELEASE_PADDING_EXCLUDES = ["pw(I)", "slackmax"];
+  // P inside Q is speeds 1, F inside J is the same instance; Q or P inside R
+  // rescales the processing times, so measures of those do not survive.
+  const TYPE_CHANGE_EXCLUDES = {
+    "P|Q": [], "F|J": [],
+    "Q|R": ["pmax", "#p", "rank((pij))", "slackmax"],
+    "P|R": ["pmax", "#p", "rank((pij))", "slackmax"],
+  };
+  const WEIGHT_PADDING = ["\\sum (1-U_j)|\\sum w_j(1-U_j)", "\\sum C_j|\\sum w_jC_j",
+    "\\sum T_j|\\sum w_jT_j", "\\sum F_j|\\sum w_jF_j", "F_{\\max}|\\max w_jF_j"];
+  const DUE_DATE_PADDING = ["C_{\\max}|L_{\\max}", "\\sum C_j|\\sum T_j", "\\sum w_jC_j|\\sum w_jT_j"];
+  const DUE_DATE_PADDING_EXCLUDES = ["pw(I)", "slackmax"];
+
+  // true  -> every measure survives this arrow
+  // Set   -> every measure except these survives
+  // false -> the arrow carries no parameterized result at all
+  function szParamSafeTokens(generalId, specificId) {
+    const byId = szNodeIndex();
+    const g = byId[generalId], sp = byId[specificId];
+    if (!g || !sp) return false;
+    const vg = g.vector || {}, vs = sp.vector || {};
+    const excluded = new Set();
+    const fields = szVectorFields();
+    for (let i = 0; i < fields.length; i += 1) {
+      const f = fields[i];
+      const gv = vg[f] || "", sv = vs[f] || "";
+      if (gv === sv) continue;
+      const rules = (DATA_SZ.fieldReductions || {})[f] || [];
+      const isRule = rules.some((pair) => pair[0] === sv && pair[1] === gv);
+      if (PARAM_SAFE_FIELD_CHANGES[f] === PARAM_SAFE_ANY && isRule) continue;
+      if (f === "release time" && sv === "" && gv === "r_j") {
+        RELEASE_PADDING_EXCLUDES.forEach((t) => excluded.add(t));
+        continue;
+      }
+      if (f === "type" && TYPE_CHANGE_EXCLUDES[sv + "|" + gv]) {
+        TYPE_CHANGE_EXCLUDES[sv + "|" + gv].forEach((t) => excluded.add(t));
+        continue;
+      }
+      if (f === "Objective function" && WEIGHT_PADDING.includes(sv + "|" + gv)) continue;
+      if (f === "Objective function" && DUE_DATE_PADDING.includes(sv + "|" + gv)) {
+        DUE_DATE_PADDING_EXCLUDES.forEach((t) => excluded.add(t));
+        continue;
+      }
+      return false;
+    }
+    return excluded.size ? excluded : true;
+  }
+  function szParamSafeFor(generalId, specificId, param) {
+    const safe = szParamSafeTokens(generalId, specificId);
+    if (safe === false) return false;
+    if (safe === true) return true;
+    // A combined parameter (#p+#r) survives only if each part does.
+    return String(param).split("+").every((t) => !safe.has(t.trim()));
+  }
+
+  let SZ_NODE_INDEX = null;
+  function szNodeIndex() {
+    if (!SZ_NODE_INDEX) {
+      SZ_NODE_INDEX = {};
+      (DATA_SZ ? DATA_SZ.nodes : []).forEach((n) => { SZ_NODE_INDEX[n.id] = n; });
+    }
+    return SZ_NODE_INDEX;
+  }
+
+  // Is the `specific` problem a particular case of the `general` one? The
+  // same test The Scheduling Zoo's search makes: every field of the specific
+  // problem must equal the general one's, or be a special case of it by that
+  // field's reduction rules. A field with no rules (preemption, say) has to
+  // match exactly, and an unrelated pair of values in any field means no.
+  //
+  // One-field rules only (DATA_SZ.fieldReductions). The two-field rules --
+  // setup times under S1, fix_j in a shop, our machine-count rule -- are
+  // already baked into DATA_SZ.edges between corpus problems, so a pair that
+  // needs one of those is related only when both ends are corpus problems.
+  function szVectorReduces(specific, general) {
+    if (!specific || !general) return false;
+    return szVectorFields().every((field) => {
+      const relation = szFieldRelation(field, specific[field] || "", general[field] || "");
+      return relation === "same" || relation === "narrower";
+    });
   }
 
   function szValueLabel(field, value) {
@@ -4371,8 +6581,12 @@
     return rel.every((r) => r === "same" || r === "narrower") && rel.includes("narrower") ? "restriction" : "unsure";
   }
 
-  // `index` -1 adds a new arrow; otherwise it edits designerUserEdges[index].
-  function showDesignerReductionDialog(edge, index) {
+  // `index` -1 adds a new arrow; otherwise it edits host.edges()[index].
+  // `host` says whose arrows these are -- the designer's (the default) or
+  // the Scheduling Zoo overview's -- since both draw arrows by hand and ask
+  // exactly the same questions about them. See DESIGNER_EDGE_HOST.
+  function showDesignerReductionDialog(edge, index, host) {
+    host = host || DESIGNER_EDGE_HOST;
     const a = storyNodeById(edge.from), b = storyNodeById(edge.to);
     const editing = index >= 0;
     const kind = edge.kind || szGuessReductionKind(edge.from, edge.to);
@@ -4431,10 +6645,11 @@
     form.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
     const remove = form.querySelector(".designer-reduction-remove");
     if (remove) remove.addEventListener("click", () => {
-      designerUserEdges.splice(index, 1);
-      designerArrowNotice = "";
+      host.edges().splice(index, 1);
+      host.changed();
+      host.notice("");
       close();
-      renderDesign();
+      host.rerender();
     });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -4446,16 +6661,18 @@
       };
       close();
       let at = index;
-      if (editing) designerUserEdges[index] = next;
-      else { designerUserEdges.push(next); at = designerUserEdges.length - 1; }
+      const edges = host.edges();
+      if (editing) edges[index] = next;
+      else { edges.push(next); at = edges.length - 1; }
+      host.changed();
       const implied = DATA_SZ.nodes.some((n) => n.id === next.from) && szDescendants(next.from).has(next.to);
       const reverse = DATA_SZ.nodes.some((n) => n.id === next.to) && szDescendants(next.to).has(next.from);
-      designerArrowNotice = (editing ? "Updated " : "Added ") + a.notation + " → " + b.notation + " (" + szReductionSummary(next) + ")." +
+      host.notice((editing ? "Updated " : "Added ") + a.notation + " → " + b.notation + " (" + szReductionSummary(next) + ")." +
         (implied ? " The Scheduling Zoo's reductions already imply it." : "") +
-        (reverse ? " The Scheduling Zoo records the opposite direction, so together they would make the two problems equivalent." : "");
-      renderDesign();
+        (reverse ? " The Scheduling Zoo records the opposite direction, so together they would make the two problems equivalent." : ""));
+      host.rerender();
       const conflict = designerArrowConflict(next);
-      if (conflict) showDesignerConflictDialog(conflict, at);
+      if (conflict) showDesignerConflictDialog(conflict, at, host);
     });
     document.body.appendChild(backdrop);
     form.querySelector('input[name="kind"]:checked').focus();
@@ -4514,7 +6731,8 @@
     return SZ_REPORT_ISSUE_URL + "?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body.slice(0, 6000));
   }
 
-  function showDesignerConflictDialog(c, edgeIndex) {
+  function showDesignerConflictDialog(c, edgeIndex, host) {
+    host = host || DESIGNER_EDGE_HOST;
     const backdrop = document.createElement("div");
     backdrop.className = "designer-dialog-backdrop";
     backdrop.innerHTML =
@@ -4546,10 +6764,11 @@
     backdrop.querySelector(".designer-dialog-report").addEventListener("click", close);
     backdrop.querySelector('[data-dialog="keep"]').addEventListener("click", close);
     backdrop.querySelector('[data-dialog="remove"]').addEventListener("click", () => {
-      designerUserEdges.splice(edgeIndex, 1);
-      designerArrowNotice = "";
+      host.edges().splice(edgeIndex, 1);
+      host.changed();
+      host.notice("");
       close();
-      renderDesign();
+      host.rerender();
     });
     document.body.appendChild(backdrop);
     backdrop.querySelector(".designer-dialog-report").focus();
@@ -4583,7 +6802,8 @@
     const specific = DATA_SZ.edges.filter((edge) => edge.from === node.id).map((edge) => DATA_SZ.nodes.find((item) => item.id === edge.to)).filter(Boolean);
     const button = (item, kind) => '<button type="button" class="designer-relation-btn" data-designer-relation="' + escapeHtml(item.id) + '"><span>' + escapeHtml(item.notation) + '</span><small>' + kind + '</small></button>';
     return '<div class="designer-relations"><div class="designer-relations-title">Selected: ' + escapeHtml(node.notation) + '</div>' +
-      (node.draft ? '<span class="designer-draft-label">Draft node</span>' : '<button type="button" class="reset-btn designer-details-btn" id="designer-details">Open details</button>') +
+      (node.draft ? '<span class="designer-draft-label">Draft node</span>' : "") +
+      '<button type="button" class="reset-btn designer-details-btn" id="designer-details">Open details</button>' +
       '<div class="designer-relations-group"><b>Generalize</b>' + (general.length ? general.map((item) => button(item, "generalization")).join("") : '<span class="designer-relations-empty">No direct generalization in the adjusted graph.</span>') + '</div>' +
       '<div class="designer-relations-group"><b>Specialize</b>' + (specific.length ? specific.map((item) => button(item, "specialization")).join("") : '<span class="designer-relations-empty">No direct specialization in the adjusted graph.</span>') + '</div></div>';
   }
@@ -4628,6 +6848,135 @@
     return full.filter((edge) => !visible.some((middle) => middle !== edge.from && middle !== edge.to && reachOf(edge.from).has(middle) && reachOf(middle).has(edge.to)));
   }
 
+  // A drafted problem carries no citation of its own, but the map often
+  // settles its complexity anyway, in either direction along the arrows:
+  // P travels DOWN (an instance of a problem solvable in polynomial time is
+  // still solvable in polynomial time once restricted), hardness travels UP
+  // (SZ_EFFECTIVE already does that among corpus problems -- see
+  // inheritedContribution). Corpus problems keep the class they already
+  // have; only drafts are filled in here, from the rule-derived relations
+  // (designerRelationPairs), never from hand-drawn arrows, which are claims
+  // the reader is still making rather than data.
+  let designerEffectiveCache = { key: null, classes: null };
+  function designerEffectiveClasses() {
+    const pairs = designerRelationPairs();
+    const cacheKey = storyProblemIds.slice().sort().join(",") + "|" + pairs.length;
+    if (designerEffectiveCache.key === cacheKey) return designerEffectiveCache.classes;
+    const classes = {};
+    const classOf = (id) => {
+      if (classes[id] !== undefined) return classes[id];
+      const node = storyNodeById(id);
+      return szEffectiveClasses()[id] || (node && node.classicalClass) || "unclaimed";
+    };
+    const drafts = storyProblemIds.filter((id) => (storyNodeById(id) || {}).draft);
+    // A draft the reader has classified themselves keeps that class, and
+    // hands it on to the other drafts like any other settled problem --
+    // same rule as everywhere else on the site: their claim supersedes.
+    drafts.forEach((id) => {
+      const claim = userClassification(id, null);
+      if (claim) classes[id] = claim.classId;
+    });
+    // One draft can settle another, so keep going until nothing changes.
+    for (let pass = 0; pass < drafts.length + 1; pass += 1) {
+      let changed = false;
+      drafts.forEach((id) => {
+        if (classes[id] && classes[id] !== "unclaimed") return;
+        let result = null;
+        pairs.forEach((edge) => {
+          if (edge.to === id && classOf(edge.from) === "P") result = "P";
+        });
+        if (!result) {
+          pairs.forEach((edge) => {
+            if (edge.from === id) result = strongerOf(result, inheritedContribution(classOf(edge.to)));
+          });
+        }
+        if (result && result !== classes[id]) { classes[id] = result; changed = true; }
+      });
+      if (!changed) break;
+    }
+    designerEffectiveCache = { key: cacheKey, classes: classes };
+    return classes;
+  }
+
+  // WHY a drafted problem has the class it has -- the same two rules
+  // designerEffectiveClasses applies, but keeping the problems that did the
+  // settling so the panel can name them. A draft is the one kind of problem
+  // whose class is pure inference, so this is the whole of its evidence.
+  //
+  // The witnesses are drawn from the rule-derived relations over the WHOLE
+  // corpus, not just what is on the map: a draft is related to every problem
+  // the notation places it against, whether or not the reader put it there.
+  function designerClassReason(id) {
+    const node = storyNodeById(id);
+    if (!node || !node.draft) return null;
+    const claim = userClassification(id, null);
+    if (claim) {
+      return { classId: claim.classId, own: true, via: [],
+        summary: "your own classification -- nothing is inherited over it" };
+    }
+    const classId = designerEffectiveClasses()[id];
+    if (!classId || classId === "unclaimed") return null;
+    const label = szClassLabel(classId);
+    const pairs = designerRelationPairs();
+    const named = (x) => (storyNodeById(x) || {}).notation || x;
+    if (classId === "P") {
+      // P travels DOWN: restricting a problem solvable in polynomial time
+      // leaves it solvable in polynomial time.
+      const via = pairs.filter((e) => e.to === id && designerClassOf(e.from) === "P").map((e) => e.from);
+      if (via.length) {
+        return { classId: classId, direction: "down", via: via,
+          summary: "inherited: a special case of " + named(via[0]) + ", which is in P" +
+            (via.length > 1 ? " (and " + (via.length - 1) + " more)" : "") };
+      }
+    }
+    // Hardness travels UP: a hard special case makes the general problem
+    // at least as hard.
+    const via = pairs.filter((e) => e.from === id && inheritedContribution(designerClassOf(e.to)) === classId).map((e) => e.to);
+    if (via.length) {
+      return { classId: classId, direction: "up", via: via,
+        summary: "inherited: generalizes " + named(via[0]) + ", which is " + szClassLabel(designerClassOf(via[0])) +
+          (via.length > 1 ? " (and " + (via.length - 1) + " more)" : "") };
+    }
+    return { classId: classId, via: [], summary: "inherited, but the problems it came from are no longer here" };
+  }
+
+  // The same reasoning spelled out under the heading, with every problem
+  // that settled it named and classified.
+  function draftReasonHtml(reason) {
+    if (reason.own) {
+      return '<div class="detail-field"><h4>Where this classification comes from</h4>' +
+        '<p style="margin:0">You classified this problem yourself, so that is what the map uses. Remove your ' +
+        "classification to see what the reduction rules make of it instead.</p></div>";
+    }
+    if (!reason.via.length) {
+      return '<div class="detail-field"><h4>Where this classification comes from</h4>' +
+        '<p style="margin:0">' + escapeHtml(reason.summary) + "</p></div>";
+    }
+    const down = reason.direction === "down";
+    return '<div class="detail-field"><h4>Where this classification comes from</h4>' +
+      '<p style="margin:0 0 0.4rem">Nothing is cited about this problem. It takes its class from ' +
+      (down
+        ? "a problem it is a <b>special case of</b> -- restricting a problem solvable in polynomial time leaves it solvable in polynomial time"
+        : "a <b>special case of it</b> -- an instance of the special case is an instance of this one, so this one is at least as hard") +
+      ":</p><ul class='result-list'>" +
+      reason.via.slice(0, 8).map((x) => {
+        const cls = classicalClassById(designerClassOf(x));
+        return "<li><b>" + escapeHtml((storyNodeById(x) || {}).notation || x) + "</b> &mdash; " +
+          '<span style="color:' + (cls ? cls.color : "var(--fg)") + '">' + escapeHtml(szClassLabel(designerClassOf(x))) + "</span>" +
+          '<span class="detail-class-aside"> &middot; ' + (down ? "this problem is a special case of it" : "a special case of this problem") + "</span></li>";
+      }).join("") +
+      (reason.via.length > 8 ? "<li>and " + (reason.via.length - 8) + " more</li>" : "") +
+      "</ul></div>";
+  }
+
+  // The class to paint a problem in the designer with: a draft's inherited
+  // one when the map settles it, otherwise the corpus class.
+  function designerClassOf(id) {
+    const node = storyNodeById(id);
+    return designerEffectiveClasses()[id] ||
+      szEffectiveClasses()[id] || (node && node.classicalClass) || "unclaimed";
+  }
+
   let designerRelationCache = { key: null, pairs: null };
   function designerRelationPairs() {
     const cacheKey = DATA_SZ.edges.length + "|" + storyProblemIds.filter((id) => designerDraftNodes[id]).sort().join(",");
@@ -4636,28 +6985,13 @@
     const nodeById = new Map((DATA_SZ.nodes || []).map((node) => [node.id, node]));
     storyProblemIds.forEach((id) => { const node = storyNodeById(id); if (node) nodeById.set(id, node); });
     const nodes = Array.from(nodeById.values());
-    const precedenceRelations = [
-      ["prec", "chains"], ["prec", "outtree"], ["prec", "intree"], ["prec", "tree"],
-      ["outtree", "chains"], ["intree", "chains"], ["tree", "chains"],
-    ];
-    nodes.forEach((from) => nodes.forEach((to) => {
-      if (from.id === to.id) return;
-      const a = String(from.notation || "").split("|");
-      const b = String(to.notation || "").split("|");
-      if (a.length !== 3 || b.length !== 3 || a[0] !== b[0] || a[2] !== b[2]) return;
-      const general = new Set(a[1].split(/[;|]+/).filter(Boolean));
-      const specific = new Set(b[1].split(/[;|]+/).filter(Boolean));
-      const generalWithoutProcessing = new Set(Array.from(general).filter((value) => value !== "pj=p"));
-      const specificWithoutProcessing = new Set(Array.from(specific).filter((value) => value !== "pj=1"));
-      if (general.has("pj=p") && specific.has("pj=1") && Array.from(generalWithoutProcessing).every((value) => specificWithoutProcessing.has(value))) {
-        pairs.push({ from: from.id, to: to.id });
-      }
-      const generalShape = Array.from(general).find((value) => precedenceRelations.some((relation) => relation[0] === value));
-      const specificShape = Array.from(specific).find((value) => precedenceRelations.some((relation) => relation[1] === value));
-      const sameOtherFields = Array.from(general).filter((value) => value !== generalShape).every((value) => specific.has(value));
-      if (generalShape && specificShape && sameOtherFields && precedenceRelations.some((relation) => relation[0] === generalShape && relation[1] === specificShape)) {
-        pairs.push({ from: from.id, to: to.id });
-      }
+    // A drafted problem is in no precomputed edge, so relate it to the rest
+    // by the rules themselves, field by field (szVectorReduces).
+    const drafts = nodes.filter((node) => node.draft);
+    drafts.forEach((draft) => nodes.forEach((other) => {
+      if (draft.id === other.id) return;
+      if (szVectorReduces(draft.vector, other.vector)) pairs.push({ from: other.id, to: draft.id });
+      if (szVectorReduces(other.vector, draft.vector)) pairs.push({ from: draft.id, to: other.id });
     }));
     designerRelationCache = { key: cacheKey, pairs: pairs };
     return pairs;
@@ -4673,12 +7007,33 @@
     const height = Math.max(480, ...Object.values(positions).map((p) => p.top + nodeH + MAP_MARGIN));
     const marker = (id, style) => '<marker id="' + id + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="' + STEALTH_ARROW_PATH + '" style="' + style + '" /></marker>';
     const arrowDef = "<defs>" + marker("designer-map-arrow", "fill:" + MAP_EDGE_COLOR) + marker("designer-user-arrow", "fill:var(--accent)") +
-      marker("designer-conflict-arrow", "fill:" + SZ_EDGE_FLAGGED_COLOR) + "</defs>";
+      marker("designer-conflict-arrow", "fill:" + SZ_EDGE_FLAGGED_COLOR) +
+      marker("designer-claim-arrow", "fill:" + USER_CLASS_RING) + "</defs>";
     const lines = designerMapEdges().map((edge) => {
       const a = positions[edge.from], b = positions[edge.to];
       if (!a || !b) return "";
       const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
-      return '<line data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y + '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="2" marker-end="url(#designer-map-arrow)" />';
+      // An arrow derived from the reduction rules still turns red when the
+      // classifications at its two ends contradict each other -- the same
+      // rule the hand-drawn arrows below are judged by, and the same one the
+      // Scheduling Zoo map uses. Reclassifying a problem yourself is what
+      // usually causes this.
+      const conflict = szClassConflict(designerClassOf(edge.from), designerClassOf(edge.to),
+        (storyNodeById(edge.from) || {}).notation || edge.from,
+        (storyNodeById(edge.to) || {}).notation || edge.to);
+      // Blue where a classification of the reader's reaches, red where two
+      // of them cannot both hold -- a contradiction outranks the blue.
+      const claimTouched = !conflict && (
+        userClassification(edge.from, null) || userClassification(edge.to, null) ||
+        SZ_USER_AFFECTED.has(edge.from) || SZ_USER_AFFECTED.has(edge.to));
+      const stroke = conflict ? SZ_EDGE_FLAGGED_COLOR : claimTouched ? USER_CLASS_RING : MAP_EDGE_COLOR;
+      const markerId = conflict ? "designer-conflict-arrow" : claimTouched ? "designer-claim-arrow" : "designer-map-arrow";
+      return '<line data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+        '" stroke="' + stroke + '" stroke-width="' + (conflict || claimTouched ? "2.6" : "2") + '"' +
+        (conflict ? ' stroke-dasharray="6,3"' : "") +
+        ' marker-end="url(#' + markerId + ')">' +
+        (conflict ? "<title>" + escapeHtml("Contradiction: " + conflict) + "</title>" : "") +
+        "</line>";
     }).join("") +
     // Arrows added by hand: dashed, in the accent color, or red when they
     // conflict with The Scheduling Zoo's results. Click one to remove it.
@@ -4695,11 +7050,11 @@
     }).join("");
     const nodes = visibleIds.map((id) => {
       const p = storyNodeById(id);
-      const cc = classicalClassById(SZ_EFFECTIVE[id] || p.classicalClass);
+      const cc = classicalClassById(designerClassOf(id));
       const pos = positions[id];
       const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
       const text = cc && cc.fill ? fillTextColor(cc) : null;
-      return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
+      return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (userClassification(id, null) ? " user-classified" : "") + (SZ_USER_AFFECTED.has(id) ? " user-affected" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
     }).join("");
     const controls = '<div class="map-history-controls">' +
       '<button type="button" class="map-undo-btn map-history-btn" disabled title="Undo the last hidden node">↶ Undo</button>' +
@@ -4721,7 +7076,7 @@
       : "";
     return '<div class="map-diagram designer-map-diagram' + (designerArrowMode ? " arrow-mode" : "") + '">' + controls + '<div class="map-canvas-wrap"><div class="map-canvas" style="width:' + width + 'px;height:' + height + 'px"><svg class="map-edge-svg" width="' + width + '" height="' + height + '">' + arrowDef + lines + '</svg>' + nodes + '</div></div></div>' +
       (arrowHint ? '<p class="designer-arrow-hint" role="status">' + escapeHtml(arrowHint) + "</p>" : "") + arrowToast +
-      '<p class="map-hint"><span class="map-hint-icon">i</span> Drag nodes to arrange them. Drag a node past the diagram edge to hide it; Undo, Redo, or Restore hidden brings it back.</p>';
+      '<p class="map-hint"><span class="map-hint-icon">i</span> Click a node to select it, double-click one for its citations and results. Drag nodes to arrange them. Drag a node past the diagram edge to hide it; Undo, Redo, or Restore hidden brings it back.</p>';
   }
 
   function autoArrangeDesigner() {
@@ -4742,7 +7097,14 @@
       if (designerArrowMode) { designerArrowPick(id); return; }
       designerSelectedId = id;
       renderDesign();
-    }, () => !!designerArrowMode);
+    }, () => !!designerArrowMode, (id) => {
+      // While an arrow is being drawn the second click is not a second
+      // endpoint -- a problem can't be a special case of itself.
+      if (designerArrowMode) return;
+      // Drafts open too: the panel shows where their class comes from,
+      // which is the one thing a drafted problem really needs explaining.
+      if (storyNodeById(id)) openSchedulingZooPanel(id);
+    });
     view.querySelector(".designer-add-arrow-btn").addEventListener("click", () => {
       designerArrowMode = designerArrowMode ? null : { from: null };
       designerArrowNotice = "";
@@ -4761,7 +7123,7 @@
         }
       });
     }
-    setTimeout(() => fitMapCanvasToWidth(view), 0);
+    fitMapCanvasSoon(view);
     view.querySelector(".auto-arrange-btn").addEventListener("click", () => { autoArrangeDesigner(); renderDesign(); });
     view.querySelector(".designer-clear-btn").addEventListener("click", () => { storyProblemIds = []; storyPositions = {}; designerUserEdges = []; designerArrowMode = null; designerArrowNotice = ""; designerSelectedId = null; MAP_HIDDEN_IDS[DESIGNER_MAP_ID] = new Set(); MAP_HIDDEN_STACK[DESIGNER_MAP_ID] = []; MAP_HIDDEN_REDO_STACK[DESIGNER_MAP_ID] = []; renderDesign(); });
     view.querySelector(".map-undo-btn").addEventListener("click", () => mapUndoHide(DESIGNER_MAP_ID, view));
@@ -5332,23 +7694,29 @@
     });
   }
 
+  const BACK_TO_MAPS = '<a class="wiki-back" href="#/zoo-maps">&larr; Back to problem maps</a>';
   function renderDesign() {
     if (!DATA_SZ) {
-      els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading Scheduling Zoo problems…</p></div>';
+      els.viewDesign.innerHTML = '<div class="design-page"><a class="wiki-back" href="#/zoo-maps">&larr; Back to problem maps</a><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading Scheduling Zoo problems…</p></div>';
       loadSzData().then(() => {
-        if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+        szEffectiveClasses();
         renderDesign();
       });
       return;
     }
-    if (!SZ_EFFECTIVE) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    szEffectiveClasses();
     const dropdownUi = captureDropdownUi(els.viewDesign);
-    els.viewDesign.innerHTML = '<div class="design-page"><h2 class="page-title">Problem Map Designer</h2>' + designerMapBarHtml() + renderDesignerMap() + designerRelationControls() + renderDesignerSearch() + '</div>';
+    // Adding or removing a problem re-renders the whole page, which would
+    // otherwise scroll it -- the results list changes height under the
+    // cursor. Put the page back where the reader left it.
+    const scrollY = window.scrollY;
+    els.viewDesign.innerHTML = '<div class="design-page">' + BACK_TO_MAPS + '<h2 class="page-title">Problem Map Designer</h2>' + designerMapBarHtml() + renderDesignerMap() + designerRelationControls() + renderDesignerSearch() + '</div>';
     enableDesignerMapBar();
     enableDesignerMap();
     enableDesignerRelations();
     enableDesignerSearch();
     restoreDropdownUi(els.viewDesign, dropdownUi);
+    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
     return;
 
     if (!sandboxGraph) resetSandboxGraph();
@@ -5520,7 +7888,7 @@
     const resetBtn = document.getElementById("design-reset");
     if (resetBtn) resetBtn.addEventListener("click", () => { resetSandboxGraph(); renderDesign(); });
 
-    setTimeout(() => fitMapCanvasToWidth(els.viewDesign), 0);
+    fitMapCanvasSoon(els.viewDesign);
   }
 
   // Small helper so the classical-status line can show a colored pill for
@@ -5769,11 +8137,77 @@
   // notation on one line -- keeping every node in a map at the same font
   // size instead of shrinking outliers (which is how nodes used to handle
   // long notations, and made the diagram look inconsistent).
+  // Measured by laying the text out in a hidden span, NOT with canvas
+  // measureText. Firefox rounds every glyph's advance to a whole device
+  // pixel in canvas but not in DOM layout: on a Retina window at
+  // devicePixelRatio 1.818 that is ~0.3px per character, so Firefox called
+  // a 16-character notation 96.88px where Chrome and Safari both said
+  // 91.94px. These widths decide node widths, node widths decide block
+  // widths, and block widths decide band splitting, wrapping and packing --
+  // so that 5.4% made Firefox draw a different, 230px taller, far messier
+  // diagram from the same data. Laid out in the DOM the three browsers
+  // agree to a tenth of a pixel (91.94 / 92.05), and rounding to whole
+  // pixels here puts them on the same integer.
+  //
+  // Scaling a big measurement down instead (measure at 20x, divide by 20)
+  // does NOT work: -apple-system is San Francisco, which is optically
+  // sized, and the Display cut used above ~20px is ~11% tighter than the
+  // Text cut -- it measures the wrong typeface.
+  const MAP_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+  const _textWidths = new Map();
+  let _measureBox = null;
+
+  // Measures every string that isn't cached yet in ONE reflow: all the
+  // spans are appended before any width is read. Reading each one as it is
+  // added instead makes the browser re-lay-out the page every time -- 235ms
+  // for the overview's 719 notations, against 11ms batched.
+  function warmTextWidths(texts, fontPx) {
+    if (!document.body) return;
+    const missing = [];
+    const seen = new Set();
+    texts.forEach((text) => {
+      const key = fontPx + "|" + text;
+      if (_textWidths.has(key) || seen.has(key)) return;
+      seen.add(key);
+      missing.push(text);
+    });
+    if (!missing.length) return;
+    if (!_measureBox) {
+      _measureBox = document.createElement("div");
+      _measureBox.setAttribute("aria-hidden", "true");
+      _measureBox.style.cssText =
+        "position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre;" +
+        "font-weight:600;font-family:" + MAP_FONT_STACK + ";";
+      document.body.appendChild(_measureBox);
+    }
+    _measureBox.style.fontSize = fontPx + "px";
+    _measureBox.textContent = "";
+    const spans = missing.map((text) => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      _measureBox.appendChild(span);
+      _measureBox.appendChild(document.createElement("br"));
+      return span;
+    });
+    spans.forEach((span, i) => {
+      _textWidths.set(fontPx + "|" + missing[i], Math.round(span.getBoundingClientRect().width));
+    });
+    _measureBox.textContent = "";
+  }
+
   function measureTextWidthPx(text, fontPx) {
+    const key = fontPx + "|" + text;
+    const cached = _textWidths.get(key);
+    if (cached !== undefined) return cached;
+    warmTextWidths([text], fontPx);
+    const measured = _textWidths.get(key);
+    if (measured !== undefined) return measured;
+    // No document to lay out in (called before body exists): canvas is
+    // wrong in Firefox by the margin above, but it is better than nothing.
     if (!_measureCanvas) _measureCanvas = document.createElement("canvas");
     const ctx = _measureCanvas.getContext("2d");
-    ctx.font = "600 " + fontPx + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
-    return ctx.measureText(text).width;
+    ctx.font = "600 " + fontPx + "px " + MAP_FONT_STACK;
+    return Math.round(ctx.measureText(text).width);
   }
 
 
@@ -6179,7 +8613,8 @@
       nodesHtml +
       "</div></div>" +
       "</div>" +
-      '<p class="map-hint"><span class="map-hint-icon">i</span> Drag a node past the diagram\'s edge to hide it, ' +
+      '<p class="map-hint"><span class="map-hint-icon">i</span> Double-click a node for its citations and ' +
+      "parameterized results. Drag a node past the diagram's edge to hide it, " +
       "along with its edges, from this view only -- nothing in the underlying data changes. Undo / Redo / " +
       "Restore hidden (top-left of the diagram) step through or undo those hides.</p>" +
       '<div class="map-legend">' + classLegendHtml + "</div>" +
@@ -6191,7 +8626,7 @@
     // always see zero available space and skip scaling entirely. setTimeout
     // (not requestAnimationFrame, which can be starved when the tab isn't
     // actively painting) just needs to run after that synchronous unhide.
-    setTimeout(() => fitMapCanvasToWidth(els.viewMap), 0);
+    fitMapCanvasSoon(els.viewMap);
     enableMapNodeDragging(els.viewMap.querySelector(".map-canvas"), nodeW, nodeH, id);
 
     const arrangeBtn = els.viewMap.querySelector(".auto-arrange-btn");
@@ -6295,6 +8730,20 @@
   // just enough to fit within the panel with no horizontal scrollbar --
   // canvas.dataset.scale is read live by the drag handler below so mouse
   // deltas still map 1:1 to screen movement while shrunk.
+  // Scale a diagram to fit BEFORE the browser paints whenever its view is
+  // already on screen. Going through setTimeout leaves one painted frame
+  // where the diagram is full size and flush left (fitMapCanvasToWidth sets
+  // both the transform and the centering margin), which reads as a jitter
+  // every time a view re-renders -- and the designer re-renders on every
+  // click, since selecting a node redraws it. The deferred call is still
+  // needed the first time a hidden view is shown: route() un-hides it right
+  // after render, so until then clientWidth is 0 and there is no width to
+  // fit into.
+  function fitMapCanvasSoon(viewEl) {
+    if (viewEl && viewEl.clientWidth > 0) fitMapCanvasToWidth(viewEl);
+    else setTimeout(() => fitMapCanvasToWidth(viewEl), 0);
+  }
+
   function fitMapCanvasToWidth(viewEl) {
     viewEl = viewEl || els.viewMap;
     const wrap = viewEl.querySelector(".map-canvas-wrap");
@@ -6337,7 +8786,11 @@
   const MAP_DRAG_LISTENERS = {};
   // `dragDisabled`, when given and true, makes a press a plain click -- the
   // designer uses it while picking the ends of a new arrow.
-  function enableMapNodeDragging(canvas, nodeW, nodeH, mapId, viewEl, onSelect, dragDisabled) {
+  // Timestamp of the last click on any map node, shared across renders --
+  // see the click handler below for why it can't live in the closure.
+  const MAP_DOUBLE_CLICK_MS = 400;
+  let MAP_LAST_NODE_CLICK = { id: null, at: 0 };
+  function enableMapNodeDragging(canvas, nodeW, nodeH, mapId, viewEl, onSelect, dragDisabled, onOpen) {
     viewEl = viewEl || els.viewMap;
     if (!canvas) return;
     if (MAP_DRAG_LISTENERS[mapId]) MAP_DRAG_LISTENERS[mapId].abort();
@@ -6382,14 +8835,32 @@
           moved: false,
         };
       });
-      // A click always opens the side panel in place instead of navigating
-      // (a real page nav would be jarring while reviewing a map); dragging
-      // suppresses this via drag.moved below.
+      // DOUBLE click opens the side panel, in place rather than navigating
+      // (a real page nav would be jarring while reviewing a map). Single
+      // click is left to the view: the designer selects the node with it,
+      // and on a plain map it does nothing, so arranging a diagram never
+      // throws a panel over the top of it. Dragging suppresses both via
+      // drag.moved below.
+      //
+      // Detected from timestamps instead of a "dblclick" listener because
+      // the designer re-renders the entire view on the first click (to move
+      // the selection), which replaces this element before a native
+      // dblclick could be dispatched on it. Hence MAP_LAST_NODE_CLICK at
+      // module scope: it has to outlive the closure each render throws away.
       el.addEventListener("click", (e) => {
         e.preventDefault();
         if (drag && drag.moved) return;
-        if (onSelect) onSelect(el.dataset.problemId);
-        else openProblemPanel(el.dataset.problemId);
+        const id = el.dataset.problemId;
+        const now = Date.now();
+        const doubled = MAP_LAST_NODE_CLICK.id === id && now - MAP_LAST_NODE_CLICK.at < MAP_DOUBLE_CLICK_MS;
+        // Reset after opening, so a third click doesn't count as another
+        // double with the second.
+        MAP_LAST_NODE_CLICK = doubled ? { id: null, at: 0 } : { id: id, at: now };
+        if (doubled) {
+          (onOpen || openProblemPanel)(id);
+          return;
+        }
+        if (onSelect) onSelect(id);
       });
     });
 
@@ -6496,13 +8967,33 @@
       });
     }
 
+    // The nodes moving in this drag: the whole selection when the node
+    // under the cursor belongs to it, otherwise just that node.
+    function dragGroupFor(id) {
+      if (!SZ_SELECTED_IDS.has(id)) return [id];
+      return Array.from(SZ_SELECTED_IDS).filter((x) => !SZ_HIDDEN_IDS.has(x));
+    }
+    function markSelected(id, on) {
+      const el = canvas.querySelector('.sz-node[data-sz-id="' + cssEscape(id) + '"]');
+      if (el) el.classList.toggle("sz-selected", on);
+    }
     canvas.querySelectorAll(".sz-node").forEach((el) => {
+      el.classList.toggle("sz-selected", SZ_SELECTED_IDS.has(el.dataset.szId));
       el.addEventListener("pointerdown", (e) => {
         if (e.button !== undefined && e.button !== 0) return;
         e.preventDefault();
+        // While an arrow is being drawn a node is a target to click, not
+        // something to move -- see szArrowPick in the click handler.
+        if (SZ_ARROW_MODE) return;
+        const id = el.dataset.szId;
+        const group = dragGroupFor(id).map((gid) => {
+          const gel = canvas.querySelector('.sz-node[data-sz-id="' + cssEscape(gid) + '"]');
+          return gel && { id: gid, el: gel, left0: parseFloat(gel.style.left), top0: parseFloat(gel.style.top),
+            halfW: gel.offsetWidth / 2, halfH: gel.offsetHeight / 2 };
+        }).filter(Boolean);
         drag = {
           el,
-          id: el.dataset.szId,
+          id: id,
           startX: e.clientX,
           startY: e.clientY,
           left0: parseFloat(el.style.left),
@@ -6510,13 +9001,93 @@
           halfW: el.offsetWidth / 2,
           halfH: el.offsetHeight / 2,
           moved: false,
+          group: group,
         };
       });
       el.addEventListener("click", (e) => {
         e.preventDefault();
         if (drag && drag.moved) return;
-        openSchedulingZooPanel(el.dataset.szId);
+        const id = el.dataset.szId;
+        if (SZ_ARROW_MODE) { szArrowPick(id); return; }
+        // Shift- (or cmd/ctrl-) click builds the selection instead of
+        // opening the panel; a plain click clears it and opens the panel as
+        // before.
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          if (SZ_SELECTED_IDS.has(id)) { SZ_SELECTED_IDS.delete(id); markSelected(id, false); }
+          else { SZ_SELECTED_IDS.add(id); markSelected(id, true); }
+          szUpdateHistoryButtons();
+          return;
+        }
+        if (SZ_SELECTED_IDS.size) {
+          Array.from(SZ_SELECTED_IDS).forEach((x) => markSelected(x, false));
+          SZ_SELECTED_IDS = new Set();
+          szUpdateHistoryButtons();
+        }
+        openSchedulingZooPanel(id);
       });
+    });
+
+    // ---- drag a box over empty canvas to select everything inside it ----
+    // Positions are read and written in canvas units, so every client
+    // coordinate is divided by the canvas's scale first (the whole diagram
+    // is drawn shrunk -- see fitMapCanvasToWidth); without that the box
+    // lands nowhere near the cursor on a map that has been scaled down.
+    let marquee = null;
+    const toCanvas = (clientX, clientY) => {
+      const scale = parseFloat(canvas.dataset.scale) || 1;
+      const r = canvas.getBoundingClientRect();
+      return { x: (clientX - r.left) / scale, y: (clientY - r.top) / scale };
+    };
+    const nodeBoxes = () => Array.from(canvas.querySelectorAll(".sz-node"))
+      .filter((el) => !el.classList.contains("node-hidden"))
+      .map((el) => ({ el: el, id: el.dataset.szId,
+        left: parseFloat(el.style.left), top: parseFloat(el.style.top),
+        w: el.offsetWidth, h: el.offsetHeight }));
+
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      if (e.target.closest(".sz-node")) return;   // a node drag, not a box
+      if (SZ_ARROW_MODE) return;                  // picking an arrow's ends
+      const start = toCanvas(e.clientX, e.clientY);
+      const box = document.createElement("div");
+      box.className = "sz-marquee";
+      canvas.appendChild(box);
+      marquee = { start: start, box: box, additive: e.shiftKey || e.metaKey || e.ctrlKey, moved: false };
+      if (!marquee.additive) {
+        SZ_SELECTED_IDS.forEach((id) => markSelected(id, false));
+        SZ_SELECTED_IDS = new Set();
+      }
+    });
+
+    document.addEventListener("pointermove", (e) => {
+      if (!marquee) return;
+      const now = toCanvas(e.clientX, e.clientY);
+      const left = Math.min(marquee.start.x, now.x), top = Math.min(marquee.start.y, now.y);
+      const width = Math.abs(now.x - marquee.start.x), height = Math.abs(now.y - marquee.start.y);
+      if (width > 3 || height > 3) marquee.moved = true;
+      marquee.box.style.left = left + "px";
+      marquee.box.style.top = top + "px";
+      marquee.box.style.width = width + "px";
+      marquee.box.style.height = height + "px";
+      // Anything the box touches counts, so a node only half covered is in.
+      nodeBoxes().forEach((n) => {
+        const hit = n.left < left + width && left < n.left + n.w && n.top < top + height && top < n.top + n.h;
+        const selected = hit || (marquee.additive && SZ_SELECTED_IDS.has(n.id));
+        n.el.classList.toggle("sz-selected", selected);
+      });
+    });
+
+    document.addEventListener("pointerup", () => {
+      if (!marquee) return;
+      const box = marquee.box;
+      const wasDrag = marquee.moved;
+      marquee = null;
+      box.remove();
+      if (!wasDrag) { szUpdateHistoryButtons(); return; }
+      SZ_SELECTED_IDS = new Set(
+        Array.from(canvas.querySelectorAll(".sz-node.sz-selected")).map((el) => el.dataset.szId)
+      );
+      szUpdateHistoryButtons();
     });
 
     document.addEventListener("pointermove", (e) => {
@@ -6528,14 +9099,19 @@
       // click counted as a drag and the click was swallowed.
       if (Math.abs(e.clientX - drag.startX) > 5 || Math.abs(e.clientY - drag.startY) > 5) drag.moved = true;
       if (!drag.moved) return;
-      const left = drag.left0 + dx, top = drag.top0 + dy;
-      drag.el.style.left = left + "px";
-      drag.el.style.top = top + "px";
-      updateEdgesFor(drag.id, left + drag.halfW, top + drag.halfH, drag.halfW, drag.halfH);
-      // Dragging past the diagram's own frame arms the node for deletion --
-      // dropping it there hides it (and its edges) from this view only.
+      // Every node in the group moves by the same delta, so a selection
+      // keeps its shape.
+      drag.group.forEach((g) => {
+        const left = g.left0 + dx, top = g.top0 + dy;
+        g.el.style.left = left + "px";
+        g.el.style.top = top + "px";
+        updateEdgesFor(g.id, left + g.halfW, top + g.halfH, g.halfW, g.halfH);
+      });
+      // Dragging past the diagram's own frame arms the node -- or the whole
+      // group -- for deletion; dropping it there hides them (and their
+      // edges) from this view only.
       const outOfFrame = nodeDraggedOutOfFrame(wrap, e.clientX, e.clientY);
-      drag.el.classList.toggle("delete-armed", outOfFrame);
+      drag.group.forEach((g) => g.el.classList.toggle("delete-armed", outOfFrame));
       if (wrap) wrap.classList.toggle("delete-armed", outOfFrame);
     });
 
@@ -6546,15 +9122,19 @@
         // BEFORE hiding -- setSzNodeHidden just toggles display:none, it
         // doesn't touch left/top, so without this the node would reappear
         // wherever it was dropped (off-canvas) instead of where it was.
-        drag.el.style.left = drag.left0 + "px";
-        drag.el.style.top = drag.top0 + "px";
-        updateEdgesFor(drag.id, drag.left0 + drag.halfW, drag.top0 + drag.halfH, drag.halfW, drag.halfH);
-        SZ_HIDDEN_IDS.add(drag.id);
-        SZ_HIDDEN_STACK.push(drag.id);
+        drag.group.forEach((g) => {
+          g.el.style.left = g.left0 + "px";
+          g.el.style.top = g.top0 + "px";
+          updateEdgesFor(g.id, g.left0 + g.halfW, g.top0 + g.halfH, g.halfW, g.halfH);
+          SZ_HIDDEN_IDS.add(g.id);
+          setSzNodeHidden(canvas, g.id, true);
+          g.el.classList.remove("delete-armed", "sz-selected");
+          SZ_SELECTED_IDS.delete(g.id);
+        });
+        // One stack entry for the whole group, so one Undo restores it all.
+        SZ_HIDDEN_STACK.push(drag.group.length === 1 ? drag.group[0].id : drag.group.map((g) => g.id));
         SZ_HIDDEN_REDO_STACK = [];
-        setSzNodeHidden(canvas, drag.id, true);
         szUpdateHistoryButtons();
-        drag.el.classList.remove("delete-armed");
         drag = null;
         return;
       }
