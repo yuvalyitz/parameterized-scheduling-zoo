@@ -39,6 +39,13 @@
 
 * { box-sizing: border-box; }
 
+/* NO `html { scroll-behavior: smooth }` here, however tempting it looks for
+   the Contents links. Measured: in the engine this was tested in it does
+   not animate the scroll, it cancels it -- window.scrollTo() and
+   scrollIntoView() both become no-ops, which breaks jumping to a section,
+   the docs deep links, and the scroll-to-top on every route change. An
+   animation is not worth navigation. */
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -407,7 +414,9 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   flex: none;
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--bg);
+  /* Ink, not var(--bg): on the light theme that would be white on yellow,
+     which is about 1.6:1. Dark on yellow reads in both themes. */
+  color: #2b1d00;
   background: var(--hl);
   border-radius: 6px;
   padding: 0.15rem 0.5rem;
@@ -456,7 +465,10 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
 .docs-back {
   flex: none;
   margin-left: auto;
-  align-self: center;
+  /* Top-aligned, not centred: a heading that wraps to two lines on a narrow
+     screen would otherwise park this in the middle of the gap beside it. */
+  align-self: flex-start;
+  margin-top: 0.25rem;
   font-size: 0.72rem;
   font-weight: 400;
   letter-spacing: 0.02em;
