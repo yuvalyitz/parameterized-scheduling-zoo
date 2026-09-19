@@ -1165,6 +1165,8 @@
       "<code>is NP-hard</code> alone → at least weakly NP-hard; <code>is in P</code> or a stated polynomial " +
       "running time → P. NP-complete counts as NP-hard, hardness wins when both kinds are cited, and a problem " +
       "with none of these phrases is open.</li>" +
+      "<li><b>Online</b> (<code>online-rj</code> in the release-time field): its own class, whatever the rest says. " +
+      "An online problem is not on the P/NP-hard scale at all &mdash; see below.</li>" +
       "<li><b>Parameterized</b> (bracket): <code>is fixed parameter tractable</code> → FPT; " +
       "<code>is in P</code> or <code>is in Ppseudo</code> → XP, read as solvable for every fixed value of the " +
       "parameter, which does not make it FPT; <code>W[1]-hard</code> / <code>W[2]-hard</code> → W[1]- / " +
@@ -1173,6 +1175,45 @@
       "listed as text without a class.</li>" +
       "<li><b>Several results for one parameter.</b> The strongest is shown: para-NP-hard, then W[2]-hard, " +
       "W[1]-hard, FPT, XP.</li>" +
+      "</ul>" +
+
+      "<h4>Online problems are measured on a different axis</h4>" +
+      "<p>An online problem &mdash; <code>online-rj</code> in the release-time field, 18 of them here &mdash; has its " +
+      "jobs revealed at their release times. What limits an algorithm is then <mark><b>what it does not yet know, not " +
+      "how long it may compute</b></mark>, and those are two different scarcities: <b>NP-hardness</b> bounds " +
+      "computation while handing you the whole input, a <b>competitive ratio</b> bounds information while granting " +
+      "you unlimited computation.</p>" +
+      "<p>That makes a competitive ratio <b>unconditional</b>. “No deterministic algorithm beats the golden ratio " +
+      "for 1|online-rj;pj=1;dj≤rj+2|ΣwjUj” is an adversary argument: it holds against an algorithm with an " +
+      "NP oracle, and nothing in it turns on P ≠ NP. Which is why the corpus states these as plain numbers &mdash; " +
+      "2, 3/2, 25/3, φ, Ω(√n) &mdash; rather than as conditional claims.</p>" +
+      "<p>“Is it NP-hard?” still has answers for an online problem, but they are about something else: the " +
+      "<i>offline</i> version can be NP-hard (usually the interesting question); the algorithm's own per-step " +
+      "computation can be NP-hard, which is why the literature separates ratios achieved by polynomial-time online " +
+      "algorithms from those needing unbounded computation (every algorithm cited here is efficient); and " +
+      "“is there an online algorithm with ratio ≤ c” is a third question this corpus does not record. " +
+      "None of those is the problem's own colour, so these 18 carry a class of their own rather than being called " +
+      "open &mdash; which is what this site used to do, and it was a misstatement: several of them have a " +
+      "<i>tight</i> ratio.</p>" +
+      "<p>They also form an <b>island in the arrow graph</b>: The Scheduling Zoo declares no reduction between " +
+      "<code>online-rj</code> and an ordinary release date, so no hardness ever flows across the divide. That is " +
+      "right, and worth keeping deliberately &mdash; the same instances with less information is neither a special " +
+      "case nor a generalization in the sense these arrows mean.</p>" +
+
+      "<h4>What a parameterized result says about the classical one</h4>" +
+      "<p>Two of them say something, and they say different things.</p>" +
+      '<ul class="docs-list">' +
+      "<li><b>para-NP-hardness settles it.</b> para-NP-hard means NP-hard already at a <i>constant</i> value of the " +
+      "parameter, so the general problem contains an NP-hard special case and is itself NP-hard. Whether it is " +
+      "strongly or weakly so does not follow &mdash; the hardness proof at that constant may or may not need large " +
+      "numbers &mdash; so it lands as <mark>at least weakly NP-hard</mark>, which is exactly what that class is for.</li>" +
+      "<li><b>W-hardness does not.</b> <mark>W[1]-hard does not imply NP-hard</mark>: W-hardness is proved by " +
+      "fpt-reductions, not polynomial ones. What it does imply is that the problem is <b>not in P</b> unless " +
+      "FPT = W[1], because a polynomial-time algorithm would already be an FPT algorithm for every parameter at " +
+      "once (take f(k) = 1), and a W[1]-hard problem in FPT would collapse the two classes. \u201CNot in P\u201D is " +
+      "weaker than \u201CNP-hard\u201D, though &mdash; a problem can be neither &mdash; so this site leaves such a " +
+      "problem\u2019s class open and says so in its panel rather than promoting it. (W[2]-hardness implies " +
+      "W[1]-hardness, so the same sentence covers both.)</li>" +
       "</ul>" +
 
       "<h4>Inherited hardness</h4>" +
@@ -3538,7 +3579,7 @@
     // structure to draw, so they are not packed among the components as
     // one-node boxes -- that is what scattered them through the mosaic.
     // They go in one block underneath, in rows ordered hardest first.
-    const CLASS_TOP_DOWN = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard", "P", "unclaimed"];
+    const CLASS_TOP_DOWN = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard", "P", "online", "unclaimed"];
     const lone = [];
     const boxes = [];
     const edgesWithin = (group) => {
@@ -3607,15 +3648,88 @@
     // blocks that came from one component: they travel together, in order.
     const groupHeight = {};
     boxes.forEach((b) => { groupHeight[b.group] = Math.max(groupHeight[b.group] || 0, b.height); });
-    // Online problems (release dates revealed over time) are a family of
-    // their own rather than a restriction of anything on this map, so their
-    // blocks are packed last and therefore land together at the bottom
-    // instead of being scattered wherever they happened to fit.
+    // Online problems are a family of their own -- the same instances with
+    // less information, which is neither a restriction nor a generalization
+    // of anything else here, so they share no arrow with the rest of the
+    // map. That makes them the most MOVABLE thing on it -- nothing
+    // constrains where they sit -- so they are merged into one block and
+    // fitted into a hole the arrow-bound components left behind, after
+    // everything else has been placed and centred. See the online block's
+    // own pass further down.
     const isOnline = (id) => /online/.test((byId[id] && byId[id].vector && byId[id].vector["release time"]) || "");
     boxes.forEach((b) => { b.online = b.comp.filter(isOnline).length * 2 > b.comp.length ? 1 : 0; });
-    boxes.sort((a, b) =>
-      a.online - b.online ||
+    const onlineBoxes = boxes.filter((b) => b.online);
+    const offlineBoxes = boxes.filter((b) => !b.online);
+    offlineBoxes.sort((a, b) =>
       groupHeight[b.group] - groupHeight[a.group] || a.group - b.group || a.seq - b.seq);
+
+    // The whole online family is merged into ONE block: its own chains
+    // tiled side by side, with its arrow-less problems filling the last
+    // rows. Packed as a single unit it stays together -- scattering these
+    // across the canvas as separate blocks loses the one thing their
+    // colour is telling the reader -- while still being placed by the
+    // ordinary packer, so it drops into whatever hole it fits rather than
+    // reserving space for itself.
+    //
+    // Built to a given WIDTH, because the right shape depends on the shape
+    // of the gaps left in the map: a fixed roughly-square target made a
+    // tall tower, and a skyline is mostly wide shallow notches. The
+    // candidates are tried against the packed skyline below and the one
+    // that costs the least height wins.
+    const loneOnline = lone.filter(isOnline);
+    onlineBoxes.sort((a, b) => b.height - a.height || b.width - a.width);
+    // The members' positions inside their own component blocks, kept so
+    // each candidate shape can be built from the same starting point --
+    // otherwise every rebuild would stack another offset on the last.
+    const onlineSeed = {};
+    onlineBoxes.forEach((b) => b.comp.forEach((id) => {
+      onlineSeed[id] = { left: pos[id].left, top: pos[id].top, w: pos[id].w, h: pos[id].h };
+    }));
+    loneOnline.forEach((id) => { onlineSeed[id] = { left: 0, top: 0, w: widthOf[id], h: nodeH }; });
+    const buildOnlineBlock = (target) => {
+      if (!onlineBoxes.length && !loneOnline.length) return null;
+      Object.keys(onlineSeed).forEach((id) => { pos[id] = Object.assign({}, onlineSeed[id]); });
+      const members = [];
+      let x = 0, y = 0, rowTall = 0;
+      // A problem with no arrows has never been through layoutComponent,
+      // so it has no pos entry yet -- it would otherwise be placed
+      // straight onto the shelf.
+      const put = (id, left, top) => {
+        pos[id] = pos[id] || { left: 0, top: 0, w: widthOf[id], h: nodeH };
+        pos[id].left = left;
+        pos[id].top = top;
+        members.push(id);
+      };
+      onlineBoxes.forEach((box) => {
+        if (x && x + box.width > target) { x = 0; y += rowTall + compGap; rowTall = 0; }
+        box.comp.forEach((id) => put(id, pos[id].left + x, pos[id].top + y));
+        x += box.width + compGap;
+        rowTall = Math.max(rowTall, box.height);
+      });
+      if (members.length) { y += rowTall + compGap; x = 0; }
+      loneOnline.slice().sort((a, b) => widthOf[b] - widthOf[a] || a.localeCompare(b)).forEach((id) => {
+        if (x && x + widthOf[id] > target) { x = 0; y += rowH; }
+        put(id, x, y);
+        x += widthOf[id] + colGap;
+      });
+      if (!members.length) return null;
+      const left = Math.min(...members.map((id) => pos[id].left));
+      const right = Math.max(...members.map((id) => pos[id].left + pos[id].w));
+      const bottom = Math.max(...members.map((id) => pos[id].top + pos[id].h));
+      members.forEach((id) => { pos[id].left -= left; });
+      const pad = Math.ceil(compGap / PACK_CELL);
+      const columns = Math.max(1, Math.ceil((right - left) / PACK_CELL)) + 2 * pad;
+      const profile = { top: new Array(columns).fill(Infinity), bottom: new Array(columns).fill(-Infinity), pad: pad };
+      members.forEach((id) => {
+        const from = Math.max(0, pad + Math.floor(pos[id].left / PACK_CELL));
+        const to = Math.min(columns - 1, pad + Math.ceil((pos[id].left + pos[id].w) / PACK_CELL));
+        for (let c = from; c <= to; c += 1) {
+          profile.top[c] = Math.min(profile.top[c], pos[id].top);
+          profile.bottom[c] = Math.max(profile.bottom[c], pos[id].top + nodeH);
+        }
+      });
+      return { comp: members, width: right - left, height: bottom, profile: profile, group: -1, seq: 0 };
+    };
     const totalArea = boxes.reduce((s, b) => s + b.width * b.height, 0) +
       lone.reduce((s, id) => s + (widthOf[id] + colGap) * rowH, 0);
     // Wide enough to hold the widest component, otherwise roughly square-ish
@@ -3631,7 +3745,8 @@
     const skyline = new Float64Array(cells);
     const groupFloor = {};   // a component's later blocks stay below its earlier ones
     let usedWidth = 0, usedHeight = 0;
-    boxes.forEach((box) => {
+    // Where a block would land, without putting it there.
+    const findSpot = (box) => {
       const prof = box.profile;
       const span = Math.min(cells, Math.max(1, prof.top.length));
       const floor = box.seq > 0 ? (groupFloor[box.group] || 0) : 0;
@@ -3647,6 +3762,11 @@
         }
         if (y < bestY) { bestY = y; bestX = i; }
       }
+      return { x: bestX, y: bestY, span: span };
+    };
+    const placeBox = (box) => {
+      const prof = box.profile;
+      const { x: bestX, y: bestY, span } = findSpot(box);
       const left = (bestX + prof.pad) * PACK_CELL, top = bestY;
       box.comp.forEach((id) => {
         pos[id].left += left + margin;
@@ -3661,7 +3781,9 @@
       box.colOffset = bestX;
       usedWidth = Math.max(usedWidth, left + box.width);
       usedHeight = Math.max(usedHeight, top + box.height);
-    });
+    };
+    // Everything arrow-bound first, so the holes exist.
+    offlineBoxes.forEach(placeBox);
 
     // Centre each block in the free space beside it. The packer drops every
     // block as far left as it will go, which leaves a block alone on its
@@ -3669,7 +3791,7 @@
     // a block may slide is measured against the same column outlines the
     // packer used, so interlocked blocks never slide into one another.
     const occupancy = [];   // column -> [{ top, bottom, box }]
-    boxes.forEach((box) => {
+    offlineBoxes.forEach((box) => {
       const prof = box.profile;
       for (let c = 0; c < prof.top.length; c += 1) {
         if (prof.top[c] === Infinity) continue;
@@ -3694,7 +3816,7 @@
       }
       return false;
     };
-    boxes.forEach((box) => {
+    offlineBoxes.forEach((box) => {
       let room = 0, spare = 0;
       while (spare < cells && !blocked(box, spare + 1)) spare += 1;
       while (room < cells && !blocked(box, -(room + 1))) room += 1;
@@ -3718,20 +3840,94 @@
       usedWidth = Math.max(usedWidth, box.rect.left + box.rect.width);
     });
 
+    // ---- the online family, fitted into a real hole ----------------------
+    // Placed here, after the centring pass, and against the actual
+    // geometry rather than the skyline. The packer above can only ever see
+    // a skyline -- one height per column -- so the best it can do is drop a
+    // block below everything in a column, and this family kept getting
+    // shoved to the foot of the map even when there was an obvious gap
+    // further up. Centring then slides blocks sideways, which opens more
+    // holes still. Searching the placed outlines directly is what lets the
+    // block sit in a gap that has problems ABOVE it, not just beside it.
+    //
+    // The shape is searched too: the same problems tiled at a range of
+    // widths, since which shape fits depends entirely on the holes that
+    // happen to be there.
+    if (onlineBoxes.length || loneOnline.length) {
+      // The highest position at column `i` where the block's own outline
+      // clears every block already placed. Candidate heights are 0 and the
+      // underside of each outline in the columns it would cover -- a
+      // resting place is always flush against something or at the top.
+      const fitAt = (block, i, span) => {
+        const prof = block.profile;
+        const tries = [0];
+        for (let c = 0; c < span; c += 1) {
+          if (prof.top[c] === Infinity) continue;
+          (occupancy[i + c] || []).forEach((e) => tries.push(e.bottom + compGap - prof.top[c]));
+        }
+        tries.sort((p, q) => p - q);
+        for (let t = 0; t < tries.length; t += 1) {
+          const y = Math.max(0, tries[t]);
+          let ok = true;
+          for (let c = 0; c < span && ok; c += 1) {
+            if (prof.top[c] === Infinity) continue;
+            const top = y + prof.top[c] - compGap, bottom = y + prof.bottom[c] + compGap;
+            const here = occupancy[i + c] || [];
+            for (let k = 0; k < here.length; k += 1) {
+              if (here[k].top < bottom && top < here[k].bottom) { ok = false; break; }
+            }
+          }
+          if (ok) return y;
+        }
+        return Infinity;
+      };
+      const widest = Math.max(...onlineBoxes.map((b) => b.width), ...loneOnline.map((id) => widthOf[id]));
+      const totalW = onlineBoxes.reduce((t, b) => t + b.width + compGap, 0) +
+        loneOnline.reduce((t, id) => t + widthOf[id] + colGap, 0);
+      let best = null;
+      for (let f = 1; f <= 8; f += 1) {
+        const w = Math.min(targetWidth, Math.max(widest, (totalW * f) / 8));
+        const block = buildOnlineBlock(w);
+        if (!block) break;
+        const span = Math.min(cells, Math.max(1, block.profile.top.length));
+        for (let i = 0; i + span <= cells; i += 1) {
+          const y = fitAt(block, i, span);
+          if (!isFinite(y)) continue;
+          const bottom = y + block.height;
+          // Lowest bottom edge wins -- a hole high up beats the floor --
+          // and among equals the flattest shape, which disturbs the
+          // skyline least.
+          if (!best || bottom < best.bottom - 1 || (Math.abs(bottom - best.bottom) <= 1 && w > best.w)) {
+            best = { w: w, x: i, y: y, bottom: bottom };
+          }
+        }
+      }
+      if (best) {
+        const block = buildOnlineBlock(best.w);
+        const left = (best.x + block.profile.pad) * PACK_CELL;
+        block.comp.forEach((id) => {
+          pos[id].left += left + margin;
+          pos[id].top += best.y + margin;
+        });
+        usedWidth = Math.max(usedWidth, left + block.width);
+        usedHeight = Math.max(usedHeight, best.y + block.height);
+      }
+    }
+
     let shelfY = usedHeight, shelfX = 0, shelfH = 0;
 
-    if (lone.length) {
+    if (lone.some((id) => !isOnline(id))) {
       // The problems with no arrows at all: one group per complexity,
-      // hardest first, online problems in a group of their own at the end.
+      // hardest first, so the shelf reads as a continuation of the map's
+      // own colour order rather than as a jumble.
       // Each group starts on its own line, with a gutter every few problems
       // and a gap between groups, so these do not read as one endless band
       // of boxes.
       const GUTTER_EVERY = 6;
       const groupsOfLone = [];
-      const keyOf = (id) => (isOnline(id) ? "online" : (szEffective[id] || byId[id].classicalClass || "unclaimed"));
-      const order = CLASS_TOP_DOWN.concat(["online"]);
-      order.forEach((key) => {
-        const members = lone.filter((id) => keyOf(id) === key)
+      const keyOf = (id) => szEffective[id] || byId[id].classicalClass || "unclaimed";
+      CLASS_TOP_DOWN.forEach((key) => {
+        const members = lone.filter((id) => !isOnline(id) && keyOf(id) === key)
           .sort((a, b) => widthOf[a] - widthOf[b] || a.localeCompare(b));
         if (members.length) groupsOfLone.push(members);
       });
@@ -3768,6 +3964,7 @@
       shelfY -= rowH + compGap;
       shelfH = nodeH;
     }
+
     const canvasWidth = usedWidth + margin * 2;
     const canvasHeight = shelfY + shelfH + margin * 2;
 
@@ -3970,6 +4167,10 @@
       "arrow points to is also an instance of the one it starts from. Click one to see which field differs.</p>" +
       '<p><b class="sz-def">Colors</b> show classical complexity. Hardness travels against the arrows, so a problem ' +
       "with no classical result of its own takes the hardness of any special case of it that is proven hard.</p>" +
+      '<p>The <b class="sz-def">teal</b> problems are online: their jobs arrive over time, so they are measured by ' +
+      "competitive ratio rather than by a complexity class, and they share no arrow with the rest of the map " +
+      '(which is why they turn up wherever there was room for them). ' +
+      '<a href="#/docs/docs-online-problems-are-measured-on-a-different-axis">Why</a>.</p>' +
       '<p><b class="sz-def">Drag</b> a node off the diagram ' +
       'to hide it from this view -- the data is unchanged. <b class="sz-def">Shift-click</b> several nodes, or ' +
       '<b class="sz-def">drag a box</b> across empty space, to pick out a group: they then move together, and go ' +
@@ -4866,7 +5067,10 @@
   function showClassifyDialog(nodeId, label, notation) {
     const isClassical = label === null || label === undefined;
     const classes = isClassical
-      ? DATA.classicalClasses.filter((c) => c.id !== "unclaimed")
+      // "online" is not a claim anyone can make about a problem: it follows
+      // from the problem's own notation (online-rj in the release-time
+      // field), so it is not offered as something to classify it as.
+      ? DATA.classicalClasses.filter((c) => c.id !== "unclaimed" && c.id !== "online")
       : DATA.complexityClasses;
     const existing = userClassification(nodeId, label) || {};
     const backdrop = document.createElement("div");
@@ -5063,6 +5267,7 @@
   function openSchedulingZooPanel(nodeId) {
     const n = DATA_SZ.nodes.find((x) => x.id === nodeId) || designerDraftNodes[nodeId];
     if (!n) return;
+    const isOnline = !!(n.vector && n.vector["release time"] === "online-r_j");
     const resultLi = szResultLi;
     const lower = n.classical.filter((r) => r.kind === "lower");
     const upper = n.classical.filter((r) => r.kind === "upper");
@@ -5099,6 +5304,16 @@
     const szClassId = SZ_EFFECTIVE_CORPUS[n.id];
     const szOwnClass = classicalClassById(szClassId);
     const szOwnLabel = !szClassId || szClassId === "unclaimed" ? "open" : (szOwnClass ? szOwnClass.label : szClassId);
+    // A problem with no classical result of its own is shown as open -- but
+    // "open" understates it when a W-hardness result exists, because a
+    // polynomial-time algorithm would BE an FPT algorithm (f(k)=1), so a
+    // problem that is W[1]-hard in any parameter cannot be in P unless
+    // FPT = W[1]. That is not NP-hardness -- W-hardness is proved by
+    // fpt-reductions, and "not in P" is weaker than "NP-hard" -- so the
+    // class is left alone and the consequence is stated instead.
+    const wHardParams = (!szClassId || szClassId === "unclaimed" || szClassId === "open")
+      ? szAllParams(n).filter((r) => /W\[\d/.test(r.bound || "")).map((r) => r.param)
+      : [];
     const classRow = (label, pill, trailing) =>
       '<div class="detail-class-row"><span class="detail-class-label">' + label + "</span>" + pill +
       (trailing ? ' <span class="detail-class-aside">' + trailing + "</span>" : "") + "</div>";
@@ -5126,9 +5341,13 @@
         : classRow("Scheduling Zoo classification",
             '<button type="button" class="class-pill classify-btn" title="Classify this problem yourself" style="' +
             classPillStyle(szOwnClass) + '">' + escapeHtml(szOwnLabel) + "</button>",
-            !isDirect && szClassId && szClassId !== "unclaimed"
-              ? "inherited: generalizes at least one problem classified " + escapeHtml(szOwnClass ? szOwnClass.label : szClassId)
-              : ""));
+            szClassId === "online"
+              ? "measured by competitive ratio, not by a complexity class"
+              : wHardParams.length
+                ? "but not in P unless FPT = W[1] &mdash; see below"
+                : !isDirect && szClassId && szClassId !== "unclaimed"
+                  ? "inherited: generalizes at least one problem classified " + escapeHtml(szOwnClass ? szOwnClass.label : szClassId)
+                  : ""));
 
     // The machine environment used to be explained in a paragraph of its
     // own here. Every part of the name is explained on hover now (see
@@ -5148,11 +5367,44 @@
         ? '<p class="notation-hint">Point at any part of the name above — the machine environment, each setting, ' +
           "the objective — for what it means, in The Scheduling Zoo's own wording.</p>"
         : "") +
+      // Open, but not for want of knowing anything: spell out what the
+      // W-hardness does and does not settle classically.
+      (wHardParams.length
+        ? '<div class="detail-field detail-whard"><h4>Open, but not in P unless FPT = W[1]</h4><p style="margin:0">' +
+          "No result here classifies this problem's classical complexity, so its class is open. It is " +
+          "<b>W-hard</b> though, for " + escapeHtml(wHardParams.slice(0, 3).join(", ")) +
+          (wHardParams.length > 3 ? " and others" : "") + " (below), and a polynomial-time algorithm would be an " +
+          "FPT algorithm for every parameter at once &mdash; take f(k) = 1. So a W[1]-hard problem cannot be in P " +
+          "unless FPT = W[1].</p>" +
+          '<p style="margin:0.5rem 0 0">That is <b>not</b> NP-hardness, which is why the class above does not say ' +
+          "so: W-hardness is proved by fpt-reductions rather than polynomial ones, and \u201Cnot in P\u201D is " +
+          "weaker than \u201CNP-hard\u201D &mdash; a problem can be neither. Where a parameterized result does " +
+          "settle the classical question it is <b>para-NP-hardness</b>: NP-hard already at a constant value of " +
+          "the parameter, so the general problem contains an NP-hard special case.</p></div>"
+        : "") +
+      // An online problem's results are the point of it, and they are not
+      // complexity classes -- say so once, above them.
+      (isOnline
+        ? '<div class="detail-field detail-online"><h4>An online problem</h4><p style="margin:0">Jobs are revealed at ' +
+          "their release times, so what limits an algorithm here is what it does not yet know, not how long it may " +
+          "compute. The results below are <b>competitive ratios</b> — how far from the best offline schedule an " +
+          "algorithm must be — and they hold <b>unconditionally</b>: they come from adversary arguments, not from " +
+          "P ≠ NP. So neither “in P” nor “NP-hard” is the question being asked. No arrow joins this " +
+          "problem to an offline one either: the same instances with less information is not a special case of " +
+          "anything.</p></div>"
+        : "") +
       // A draft's whole evidence, so it comes before the (empty) citation
       // sections rather than after them.
       (draftReason ? draftReasonHtml(draftReason) : "") +
-      (lower.length ? '<div class="detail-field"><h4>Classical hardness results</h4><ul class="result-list">' + lower.map(resultLi).join("") + "</ul></div>" : "") +
-      (upper.length ? '<div class="detail-field"><h4>Classical positive / algorithmic results</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
+      // An online problem's "upper"/"lower" results are not positive and
+      // negative CLASSICAL results -- they are the two directions of a
+      // competitive ratio -- so they are not headed as if they were.
+      (lower.length ? '<div class="detail-field"><h4>' +
+        (isOnline ? "What no algorithm can beat" : "Classical hardness results") +
+        '</h4><ul class="result-list">' + lower.map(resultLi).join("") + "</ul></div>" : "") +
+      (upper.length ? '<div class="detail-field"><h4>' +
+        (isOnline ? "What an algorithm achieves" : "Classical positive / algorithmic results") +
+        '</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
       (paramTreeHtml ? '<div class="detail-field"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
         "Nested by combined-parameter containment: a child bounds every measure its parent bounds, plus more" +
         (paramDiagram ? " (drag the boxes below, same as any other map on this site)" : "") + ".</p>" +

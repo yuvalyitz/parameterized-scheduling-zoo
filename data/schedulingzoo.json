@@ -440,7 +440,7 @@
     "release time": "online-r_j",
     "Objective function": "F_{\\max}"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -478,7 +478,7 @@
     "release time": "online-r_j",
     "Objective function": "F_{\\max}"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -516,7 +516,7 @@
     "release time": "online-r_j",
     "Objective function": "\\max w_jF_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -678,7 +678,7 @@
     "processing times": "p_j=1",
     "Objective function": "\\sum w_j(1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -710,7 +710,7 @@
     "processing times": "p_j=1",
     "Objective function": "\\sum w_j(1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -762,7 +762,7 @@
     "processing times": "p_j=1",
     "Objective function": "\\sum w_j(1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -823,7 +823,7 @@
     "processing times": "p_j=1",
     "Objective function": "\\sum w_j(1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -1108,7 +1108,7 @@
     "processing times": "p_j\\in\\{1,2\\}",
     "Objective function": "C_{\\max}"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "strongly-NP-hard",
    "classical": [
     {
      "kind": "lower",
@@ -1117,6 +1117,15 @@
      "author": "van Bevern, Ren{\\'e} and Bredereck, Robert and Bulteau, Laurent and Komusiewicz, Christian and Talmon, Nimrod and Woeginger, Gerhard J",
      "title": "Precedence-constrained scheduling problems parameterized by partial order width",
      "year": "2016",
+     "url": null
+    },
+    {
+     "kind": "lower",
+     "bound": "is strongly NP-hard",
+     "bibkey": "Ullman:75:NP-complete-scheduling",
+     "author": "Ullman, J.D.",
+     "title": "NP-complete scheduling problems",
+     "year": "1975",
      "url": null
     }
    ],
@@ -2881,6 +2890,28 @@
    "classicalClass": "unclaimed",
    "classical": [],
    "params": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HeegerMolter:24:Minimizing-Number-of-Tardy-Jobs-with-Uniform-Processing-Times-on-Parallel-Machines",
+     "author": "Heeger,Klaus and Molter,Hendrik",
+     "title": "Minimizing the Number of Tardy Jobs with Uniform Processing Times on Parallel Machines",
+     "year": "2024",
+     "url": "https://arxiv.org/abs/2404.14208",
+     "param": "pmax",
+     "complexityClass": "XP"
+    },
+    {
+     "kind": "upper",
+     "bound": "is fixed parameter tractable",
+     "bibkey": "HeegerMolter:24:Minimizing-Number-of-Tardy-Jobs-with-Uniform-Processing-Times-on-Parallel-Machines",
+     "author": "Heeger,Klaus and Molter,Hendrik",
+     "title": "Minimizing the Number of Tardy Jobs with Uniform Processing Times on Parallel Machines",
+     "year": "2024",
+     "url": "https://arxiv.org/abs/2404.14208",
+     "param": "m+pmax",
+     "complexityClass": "FPT"
+    },
     {
      "kind": "upper",
      "bound": "is fixed parameter tractable",
@@ -8618,6 +8649,312 @@
    "inheritedParams": []
   },
   {
+   "id": "F3;S1|s_{ij}=1|C_{\\max}",
+   "notation": "F3;S1|sij=1|Cmax",
+   "objective": "Cmax",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "setup times": "s_{ij}=1"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "3",
+    "server": "S1",
+    "setup times": "s_{ij}=1",
+    "Objective function": "C_{\\max}"
+   },
+   "classicalClass": "strongly-NP-hard",
+   "classical": [
+    {
+     "kind": "lower",
+     "bound": "is strongly NP-hard",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|s_{ij}=1|\\sum C_j",
+   "notation": "F2;S1|sij=1|ΣCj",
+   "objective": "ΣCj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "setup times": "s_{ij}=1"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "setup times": "s_{ij}=1",
+    "Objective function": "\\sum C_j"
+   },
+   "classicalClass": "strongly-NP-hard",
+   "classical": [
+    {
+     "kind": "lower",
+     "bound": "is strongly NP-hard",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|p_{ij}=p;s_{ij}=s|\\sum w_j(1-U_j)",
+   "notation": "F2;S1|pij=p;sij=s|ΣwjUj",
+   "objective": "ΣwjUj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=s"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=s",
+    "Objective function": "\\sum w_j(1-U_j)"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F;S1|p_{ij}=1;s_{ij}=s|\\sum w_j(1-U_j)",
+   "notation": "F;S1|pij=1;sij=s|ΣwjUj",
+   "objective": "ΣwjUj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "processing times": "p_{ij}=1",
+    "setup times": "s_{ij}=s"
+   },
+   "vector": {
+    "type": "F",
+    "server": "S1",
+    "processing times": "p_{ij}=1",
+    "setup times": "s_{ij}=s",
+    "Objective function": "\\sum w_j(1-U_j)"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|p_{ij}=p;s_{ij}=s|\\sum w_jT_j",
+   "notation": "F2;S1|pij=p;sij=s|ΣwjTj",
+   "objective": "ΣwjTj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=s"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=s",
+    "Objective function": "\\sum w_jT_j"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F;S1|p_{ij}=1;s_{ij}=s|\\sum w_jT_j",
+   "notation": "F;S1|pij=1;sij=s|ΣwjTj",
+   "objective": "ΣwjTj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "processing times": "p_{ij}=1",
+    "setup times": "s_{ij}=s"
+   },
+   "vector": {
+    "type": "F",
+    "server": "S1",
+    "processing times": "p_{ij}=1",
+    "setup times": "s_{ij}=s",
+    "Objective function": "\\sum w_jT_j"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum w_jC_j",
+   "notation": "F2;S1|pij=p;sij=1;rj|ΣwjCj",
+   "objective": "ΣwjCj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1",
+    "Objective function": "\\sum w_jC_j"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum w_j(1-U_j)",
+   "notation": "F2;S1|pij=p;sij=1;rj|ΣwjUj",
+   "objective": "ΣwjUj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1",
+    "Objective function": "\\sum w_j(1-U_j)"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
+   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum T_j",
+   "notation": "F2;S1|pij=p;sij=1;rj|ΣTj",
+   "objective": "ΣTj",
+   "preemption": "",
+   "machineEnv": "F",
+   "settings": {
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1"
+   },
+   "vector": {
+    "type": "F",
+    "number of machines": "2",
+    "server": "S1",
+    "release time": "r_j",
+    "processing times": "p_{ij}=p",
+    "setup times": "s_{ij}=1",
+    "Objective function": "\\sum T_j"
+   },
+   "classicalClass": "P",
+   "classical": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "BruckerKnust:05:Complexity-results",
+     "author": "Brucker, P. and Knust, S. and Wang, G.",
+     "title": "Complexity results for flow-shop problems with a single server",
+     "year": "2005",
+     "url": null
+    }
+   ],
+   "params": [],
+   "inheritedParams": []
+  },
+  {
    "id": "O|p_{ij}=1;tree|C_{\\max}",
    "notation": "O|pij=1;tree|Cmax",
    "objective": "Cmax",
@@ -12021,6 +12358,50 @@
      "url": "https://link.springer.com/article/10.1007/s10479-018-2852-9",
      "param": "#d+#p",
      "complexityClass": "FPT"
+    },
+    {
+     "kind": "upper",
+     "bound": "is fixed parameter tractable",
+     "bibkey": "HermelinKarhiPinedoShabtay:21:New-algorithms-for-minimizing-the-weighted-number-of-tardy-jobs-on-a-single-machine",
+     "author": "Hermelin, Danny and Karhi, Shlomo and Pinedo, Michael and Shabtay, Dvir",
+     "title": "New algorithms for minimizing the weighted number of tardy jobs on a single machine",
+     "year": "2021",
+     "url": "https://link.springer.com/article/10.1007/s10479-018-2852-9",
+     "param": "#d+#w",
+     "complexityClass": "FPT"
+    },
+    {
+     "kind": "upper",
+     "bound": "is fixed parameter tractable",
+     "bibkey": "HermelinKarhiPinedoShabtay:21:New-algorithms-for-minimizing-the-weighted-number-of-tardy-jobs-on-a-single-machine",
+     "author": "Hermelin, Danny and Karhi, Shlomo and Pinedo, Michael and Shabtay, Dvir",
+     "title": "New algorithms for minimizing the weighted number of tardy jobs on a single machine",
+     "year": "2021",
+     "url": "https://link.springer.com/article/10.1007/s10479-018-2852-9",
+     "param": "#p+#w",
+     "complexityClass": "FPT"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinKarhiPinedoShabtay:21:New-algorithms-for-minimizing-the-weighted-number-of-tardy-jobs-on-a-single-machine",
+     "author": "Hermelin, Danny and Karhi, Shlomo and Pinedo, Michael and Shabtay, Dvir",
+     "title": "New algorithms for minimizing the weighted number of tardy jobs on a single machine",
+     "year": "2021",
+     "url": "https://link.springer.com/article/10.1007/s10479-018-2852-9",
+     "param": "#p",
+     "complexityClass": "XP"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinKarhiPinedoShabtay:21:New-algorithms-for-minimizing-the-weighted-number-of-tardy-jobs-on-a-single-machine",
+     "author": "Hermelin, Danny and Karhi, Shlomo and Pinedo, Michael and Shabtay, Dvir",
+     "title": "New algorithms for minimizing the weighted number of tardy jobs on a single machine",
+     "year": "2021",
+     "url": "https://link.springer.com/article/10.1007/s10479-018-2852-9",
+     "param": "#w",
+     "complexityClass": "XP"
     },
     {
      "kind": "lower",
@@ -20970,140 +21351,6 @@
    "inheritedParams": []
   },
   {
-   "id": "F2;S1|p_{ij}=p;s_{ij}=s|\\sum w_j(1-U_j)",
-   "notation": "F2;S1|pij=p;sij=s|ΣwjUj",
-   "objective": "ΣwjUj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=s"
-   },
-   "vector": {
-    "type": "F",
-    "number of machines": "2",
-    "server": "S1",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=s",
-    "Objective function": "\\sum w_j(1-U_j)"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Assignment",
-     "author": "unknown author",
-     "title": "see: Assignment Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
-   "id": "F;S1|p_{ij}=1;s_{ij}=s|\\sum w_j(1-U_j)",
-   "notation": "F;S1|pij=1;sij=s|ΣwjUj",
-   "objective": "ΣwjUj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "processing times": "p_{ij}=1",
-    "setup times": "s_{ij}=s"
-   },
-   "vector": {
-    "type": "F",
-    "server": "S1",
-    "processing times": "p_{ij}=1",
-    "setup times": "s_{ij}=s",
-    "Objective function": "\\sum w_j(1-U_j)"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Assignment",
-     "author": "unknown author",
-     "title": "see: Assignment Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
-   "id": "F2;S1|p_{ij}=p;s_{ij}=s|\\sum w_jT_j",
-   "notation": "F2;S1|pij=p;sij=s|ΣwjTj",
-   "objective": "ΣwjTj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=s"
-   },
-   "vector": {
-    "type": "F",
-    "number of machines": "2",
-    "server": "S1",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=s",
-    "Objective function": "\\sum w_jT_j"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Assignment",
-     "author": "unknown author",
-     "title": "see: Assignment Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
-   "id": "F;S1|p_{ij}=1;s_{ij}=s|\\sum w_jT_j",
-   "notation": "F;S1|pij=1;sij=s|ΣwjTj",
-   "objective": "ΣwjTj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "processing times": "p_{ij}=1",
-    "setup times": "s_{ij}=s"
-   },
-   "vector": {
-    "type": "F",
-    "server": "S1",
-    "processing times": "p_{ij}=1",
-    "setup times": "s_{ij}=s",
-    "Objective function": "\\sum w_jT_j"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Assignment",
-     "author": "unknown author",
-     "title": "see: Assignment Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
    "id": "1|prec;p_j=p;p-batch(\\infty)|\\sum w_j(1-U_j)",
    "notation": "1|prec;pj=p;p-batch(∞)|ΣwjUj",
    "objective": "ΣwjUj",
@@ -22374,114 +22621,6 @@
    "inheritedParams": []
   },
   {
-   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum w_jC_j",
-   "notation": "F2;S1|pij=p;sij=1;rj|ΣwjCj",
-   "objective": "ΣwjCj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1"
-   },
-   "vector": {
-    "type": "F",
-    "number of machines": "2",
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1",
-    "Objective function": "\\sum w_jC_j"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Single",
-     "author": "unknown author",
-     "title": "see: Single Machine Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
-   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum w_j(1-U_j)",
-   "notation": "F2;S1|pij=p;sij=1;rj|ΣwjUj",
-   "objective": "ΣwjUj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1"
-   },
-   "vector": {
-    "type": "F",
-    "number of machines": "2",
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1",
-    "Objective function": "\\sum w_j(1-U_j)"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Single",
-     "author": "unknown author",
-     "title": "see: Single Machine Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
-   "id": "F2;S1|p_{ij}=p;s_{ij}=1;r_j|\\sum T_j",
-   "notation": "F2;S1|pij=p;sij=1;rj|ΣTj",
-   "objective": "ΣTj",
-   "preemption": "",
-   "machineEnv": "F",
-   "settings": {
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1"
-   },
-   "vector": {
-    "type": "F",
-    "number of machines": "2",
-    "server": "S1",
-    "release time": "r_j",
-    "processing times": "p_{ij}=p",
-    "setup times": "s_{ij}=1",
-    "Objective function": "\\sum T_j"
-   },
-   "classicalClass": "P",
-   "classical": [
-    {
-     "kind": "upper",
-     "bound": "is in P",
-     "bibkey": "::see:-Single",
-     "author": "unknown author",
-     "title": "see: Single Machine Problem",
-     "year": "unknown year",
-     "url": null
-    }
-   ],
-   "params": [],
-   "inheritedParams": []
-  },
-  {
    "id": "1|online-r_j;restarts|\\sum C_j",
    "notation": "1|online-rj;restarts|ΣCj",
    "objective": "ΣCj",
@@ -22497,7 +22636,7 @@
     "preemption": "restarts",
     "Objective function": "\\sum C_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -22546,7 +22685,7 @@
     "preemption": "restarts",
     "Objective function": "\\sum w_jC_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -22586,7 +22725,7 @@
     "preemption": "restarts",
     "Objective function": "\\sum F_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -22626,7 +22765,7 @@
     "preemption": "restarts",
     "Objective function": "\\sum w_jF_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -22666,7 +22805,7 @@
     "preemption": "pmtn",
     "Objective function": "\\sum w_jC_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -22706,7 +22845,7 @@
     "preemption": "pmtn",
     "Objective function": "\\sum w_jF_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -23546,7 +23685,7 @@
     "release time": "online-r_j",
     "Objective function": "\\sum w_jC_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -24115,24 +24254,41 @@
    ]
   },
   {
-   "id": "1|\\bar d_j;\\sum_{j \\in reject} e_j \\leq B|\\sum C_j",
-   "notation": "1|d̄j;Σ_j∈reject ej≤B|ΣCj",
+   "id": "1|\\sum_{j \\in reject} e_j \\leq B|\\sum C_j",
+   "notation": "1|Σ_j∈reject ej≤B|ΣCj",
    "objective": "ΣCj",
    "preemption": "",
    "machineEnv": "1",
    "settings": {
-    "deadline": "\\bar d_j",
     "rejection cost": "\\sum_{j \\in reject} e_j \\leq B"
    },
    "vector": {
     "type": "P",
     "number of machines": "1",
-    "deadline": "\\bar d_j",
     "rejection cost": "\\sum_{j \\in reject} e_j \\leq B",
     "Objective function": "\\sum C_j"
    },
-   "classicalClass": "unclaimed",
-   "classical": [],
+   "classicalClass": "weakly-NP-hard",
+   "classical": [
+    {
+     "kind": "lower",
+     "bound": "is NP-hard",
+     "bibkey": "HermelinPinedo:19:On-the-parameterized-tractability-of-single-machine-scheduling-with-rejection",
+     "author": "Danny Hermelin and Michael Pinedo and Dvir Shabtay and Nimrod Talmon",
+     "title": "On the parameterized tractability of single machine scheduling with rejection",
+     "year": "2019",
+     "url": "https://doi.org/10.1016/j.ejor.2018.07.038"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in Ppseudo",
+     "bibkey": "HermelinPinedo:19:On-the-parameterized-tractability-of-single-machine-scheduling-with-rejection",
+     "author": "Danny Hermelin and Michael Pinedo and Dvir Shabtay and Nimrod Talmon",
+     "title": "On the parameterized tractability of single machine scheduling with rejection",
+     "year": "2019",
+     "url": "https://doi.org/10.1016/j.ejor.2018.07.038"
+    }
+   ],
    "params": [
     {
      "kind": "lower",
@@ -24334,8 +24490,18 @@
     "processing times": "p_j=p",
     "Objective function": "\\sum (1-U_j)"
    },
-   "classicalClass": "unclaimed",
-   "classical": [],
+   "classicalClass": "NP-hard-unresolved",
+   "classical": [
+    {
+     "kind": "lower",
+     "bound": "is NP-hard",
+     "bibkey": "HeegerMolter:24:Minimizing-Number-of-Tardy-Jobs-with-Uniform-Processing-Times-on-Parallel-Machines",
+     "author": "Heeger,Klaus and Molter,Hendrik",
+     "title": "Minimizing the Number of Tardy Jobs with Uniform Processing Times on Parallel Machines",
+     "year": "2024",
+     "url": "https://arxiv.org/abs/2404.14208"
+    }
+   ],
    "params": [
     {
      "kind": "lower",
@@ -24368,8 +24534,18 @@
     "batching": "s-batch(\\infty)",
     "Objective function": "\\sum w_j(1-U_j)"
    },
-   "classicalClass": "unclaimed",
-   "classical": [],
+   "classicalClass": "NP-hard-unresolved",
+   "classical": [
+    {
+     "kind": "lower",
+     "bound": "is NP-hard",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9"
+    }
+   ],
    "params": [
     {
      "kind": "lower",
@@ -24392,6 +24568,93 @@
      "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
      "param": "#p+#r",
      "complexityClass": "W1"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#d+#p+#w",
+     "complexityClass": "XP"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#p+#r+#w",
+     "complexityClass": "XP"
+    }
+   ],
+   "inheritedParams": []
+  },
+  {
+   "id": "1|s-batch(\\infty)|\\sum w_j(1-U_j)",
+   "notation": "1|s-batch(∞)|ΣwjUj",
+   "objective": "ΣwjUj",
+   "preemption": "",
+   "machineEnv": "1",
+   "settings": {
+    "batching": "s-batch(\\infty)"
+   },
+   "vector": {
+    "type": "P",
+    "number of machines": "1",
+    "batching": "s-batch(\\infty)",
+    "Objective function": "\\sum w_j(1-U_j)"
+   },
+   "classicalClass": "unclaimed",
+   "classical": [],
+   "params": [
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#p",
+     "complexityClass": "XP"
+    },
+    {
+     "kind": "upper",
+     "bound": "is in P",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#w",
+     "complexityClass": "XP"
+    },
+    {
+     "kind": "upper",
+     "bound": "is fixed parameter tractable",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#d+#p",
+     "complexityClass": "FPT"
+    },
+    {
+     "kind": "upper",
+     "bound": "is fixed parameter tractable",
+     "bibkey": "HermelinMnichOmlor:24:Serial-batching-to-minimize-the-weighted-number-of-tardy-jobs",
+     "author": "Hermelin, Danny and Mnich, Matthias and Omlor, Simon",
+     "title": "Serial batching to minimize the weighted number of tardy jobs",
+     "year": "2024",
+     "url": "https://link.springer.com/article/10.1007/s10951-024-00818-9",
+     "param": "#d+#w",
+     "complexityClass": "FPT"
     }
    ],
    "inheritedParams": []
@@ -24842,7 +25105,7 @@
     "preemption": "pmtn",
     "Objective function": "\\sum w_jF_j"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -24883,7 +25146,7 @@
     "processing times": "p_j=p",
     "Objective function": "\\sum (1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -25082,7 +25345,7 @@
     "preemption": "pmtn",
     "Objective function": "\\sum (1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -25121,7 +25384,7 @@
     "preemption": "pmtn",
     "Objective function": "\\sum (1-U_j)"
    },
-   "classicalClass": "unclaimed",
+   "classicalClass": "online",
    "classical": [
     {
      "kind": "upper",
@@ -36988,6 +37251,51 @@
    "addedBy": null
   },
   {
+   "from": "1|s-batch|\\sum w_j(1-U_j)",
+   "to": "1|s-batch(\\infty)|\\sum w_j(1-U_j)",
+   "diffs": [
+    {
+     "field": "batching",
+     "generalValue": "s-batch",
+     "generalExplanation": "Serial batching. The jobs have to be processed in batches. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs.",
+     "specificValue": "s-batch(∞)",
+     "specificExplanation": "Serial batching. The jobs have to be processed in batches. There is no limit on the number of jobs in a batch. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs."
+    }
+   ],
+   "addedByUs": false,
+   "addedBy": null
+  },
+  {
+   "from": "1|s-batch(\\infty);r_j|\\sum w_j(1-U_j)",
+   "to": "1|s-batch(\\infty)|\\sum w_j(1-U_j)",
+   "diffs": [
+    {
+     "field": "release time",
+     "generalValue": "rj",
+     "generalExplanation": "Job j cannot be scheduled before given release time rj.",
+     "specificValue": "",
+     "specificExplanation": "no release dates"
+    }
+   ],
+   "addedByUs": false,
+   "addedBy": null
+  },
+  {
+   "from": "1|s-batch(b)|\\sum w_j(1-U_j)",
+   "to": "1|s-batch(\\infty)|\\sum w_j(1-U_j)",
+   "diffs": [
+    {
+     "field": "batching",
+     "generalValue": "s-batch(b)",
+     "generalExplanation": "Serial batching. The jobs have to be processed in batches.A batch consists of maximal b jobs. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs.",
+     "specificValue": "s-batch(∞)",
+     "specificExplanation": "Serial batching. The jobs have to be processed in batches. There is no limit on the number of jobs in a batch. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs."
+    }
+   ],
+   "addedByUs": false,
+   "addedBy": null
+  },
+  {
    "from": "1|s-batch(b);r_j|\\sum w_j(1-U_j)",
    "to": "1|s-batch(b)|\\sum w_j(1-U_j)",
    "diffs": [
@@ -37259,12 +37567,12 @@
   },
   {
    "field": "server",
-   "count": 47,
+   "count": 49,
    "values": [
     {
      "value": "S1",
      "label": "S1",
-     "count": 47,
+     "count": 49,
      "explanation": "Single server."
     }
    ]
@@ -37547,19 +37855,13 @@
   },
   {
    "field": "deadline",
-   "count": 2,
+   "count": 1,
    "values": [
     {
      "value": "\\bar d_j=\\bar d",
      "label": "d̄j=d̄",
      "count": 1,
      "explanation": "Common deadline to every job. Sometimes is equivalent by inverting the time to having distinct deadlines and same release times 0."
-    },
-    {
-     "value": "\\bar d_j",
-     "label": "d̄j",
-     "count": 1,
-     "explanation": "Arbitrary deadline."
     }
    ]
   },
@@ -37637,7 +37939,7 @@
   },
   {
    "field": "batching",
-   "count": 57,
+   "count": 58,
    "values": [
     {
      "value": "p-batch",
@@ -37658,16 +37960,16 @@
      "explanation": "Parallel batching. The jobs have to be processed in batches. There is no limit on the number of jobs in a batch. The processing time of a batch is the maximal processing time over all jobs in the batch.  If a new batch is started, a constant setup time s occurs."
     },
     {
+     "value": "s-batch(\\infty)",
+     "label": "s-batch(∞)",
+     "count": 2,
+     "explanation": "Serial batching. The jobs have to be processed in batches. There is no limit on the number of jobs in a batch. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs."
+    },
+    {
      "value": "s-batch(b)",
      "label": "s-batch(b)",
      "count": 2,
      "explanation": "Serial batching. The jobs have to be processed in batches.A batch consists of maximal b jobs. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs."
-    },
-    {
-     "value": "s-batch(\\infty)",
-     "label": "s-batch(∞)",
-     "count": 1,
-     "explanation": "Serial batching. The jobs have to be processed in batches. There is no limit on the number of jobs in a batch. The processing time of a batch is the total processing time over all jobs in the batch. If a new batch is started, a constant setup time s occurs."
     }
    ]
   },
@@ -37709,7 +38011,7 @@
   },
   {
    "field": "setup times",
-   "count": 27,
+   "count": 29,
    "values": [
     {
      "value": "s_{ij}=s",
@@ -37732,7 +38034,7 @@
     {
      "value": "s_{ij}=1",
      "label": "sij=1",
-     "count": 3,
+     "count": 5,
      "explanation": "unit setup times.A single server is loading the job Jj or operation Oij on the machine which requires a setup time. These setup periods cannot overlap."
     }
    ]

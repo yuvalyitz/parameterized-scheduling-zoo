@@ -9,13 +9,17 @@
   --chip-fg-active: #ffffff;
   --accent: #1971c2;
   --shadow: 0 8px 24px rgba(0,0,0,0.12);
-  /* The documentation's highlight. Two values, because one yellow cannot do
-     both jobs: --hl is the graphic one (rules, bars, the marker behind a
+  /* This site's highlight. Several values, because one yellow cannot do
+     every job: --hl is the graphic one (rules, bars, the marker behind a
      phrase), --hl-fg the text one, darkened to stay readable as type on a
-     white page -- #fcc419 as a word on white is about 1.7:1. */
+     white page (#fcc419 as a word on white is about 1.7:1), and --hl-grad
+     the display gradient for the alpha|beta|gamma line, which on this
+     theme has to run through the darker end of the family to read at all. */
   --hl: #fcc419;
   --hl-fg: #8a5a00;
   --hl-wash: rgba(252, 196, 25, 0.22);
+  --hl-grad: linear-gradient(135deg, #b35c00 0%, #e8a600 55%, #f08c00 100%);
+  --hl-glow: rgba(252, 196, 25, 0.28);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,10 +34,13 @@
     --chip-fg-active: #0b0c0e;
     --accent: #4dabf7;
     --shadow: 0 8px 24px rgba(0,0,0,0.5);
-    /* On the dark page the bright yellow IS the readable one. */
+    /* On the dark page the bright yellow IS the readable one, so the
+       gradient can run the full amber-to-gold range. */
     --hl: #fcc419;
     --hl-fg: #ffd43b;
     --hl-wash: rgba(252, 196, 25, 0.16);
+    --hl-grad: linear-gradient(135deg, #f59f00 0%, #fcc419 55%, #ffe066 100%);
+    --hl-glow: rgba(252, 196, 25, 0.4);
   }
 }
 
@@ -713,13 +720,15 @@ td.result-cell { text-align: center; vertical-align: middle; padding: 0; }
   font-style: italic;
   font-weight: 700;
   line-height: 1.15;
-  background: linear-gradient(135deg, #4dabf7 0%, #9775fa 50%, #f783ac 100%);
+  background: var(--hl-grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 18px rgba(151, 117, 250, 0.35);
+  text-shadow: 0 0 18px var(--hl-glow);
 }
-.sz-graham-bar { font-size: 2.2rem; line-height: 1.15; color: var(--muted); }
+/* The separators take the TEXT yellow, not the graphic one: at this weight
+   #fcc419 on a white page is barely there. */
+.sz-graham-bar { font-size: 2.2rem; line-height: 1.15; color: var(--hl-fg); opacity: 0.55; }
 .sz-graham-name {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -1340,6 +1349,26 @@ g.sz-pt-classify:hover rect { filter: brightness(1.15); }
   flex-wrap: wrap;
   gap: 0.45rem;
   margin: 0.3rem 0;
+}
+/* "Open, but not in P unless FPT = W[1]" -- the same shape as the online
+   note, in the open class's own grey so it does not read as a warning. */
+.detail-whard {
+  border-left: 3px solid var(--border);
+  padding-left: 0.7rem;
+}
+.detail-whard h4 { color: var(--muted); }
+
+/* The "this is an online problem" note in a problem's panel, in that
+   class's own teal so it reads as the same thing as the node's colour.
+   The heading is a step darker than the node fill: the fill as small type
+   on the light theme's white is too pale to read. */
+.detail-online {
+  border-left: 3px solid #6fa1ab;
+  padding-left: 0.7rem;
+}
+.detail-online h4 { color: #4a7680; }
+@media (prefers-color-scheme: dark) {
+  .detail-online h4 { color: #9dc2ca; }
 }
 .detail-class-label { color: var(--muted); font-size: 0.85rem; }
 .detail-class-aside { color: var(--muted); font-size: 0.78rem; }

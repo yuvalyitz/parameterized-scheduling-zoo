@@ -496,6 +496,19 @@ for name in names:
     entry = bases[name]
     cv = entry["core_vec"]
     cc = classify_classical(entry["classical"])
+    # An ONLINE problem is not measured on the P/NP-hard scale at all: its
+    # jobs are revealed at their release times, so what limits an algorithm
+    # is what it does not yet know, not how long it may compute. Its results
+    # are competitive ratios, and those hold unconditionally -- an adversary
+    # argument beats an algorithm with an NP oracle just as well, so none of
+    # it turns on P != NP. Every one of these problems came out "unclaimed"
+    # before, which the site renders as "open": a plain misstatement, since
+    # several have a TIGHT competitive ratio (1|online-rj;pj=1;dj<=rj+2|SwjUj
+    # is exactly the golden ratio). Only applied when the wording classifier
+    # found nothing, so a genuine NP-hardness citation on an online problem
+    # would still win.
+    if cc == "unclaimed" and cv.get("release time") == "online-r_j":
+        cc = "online"
     class_counts[cc] = class_counts.get(cc, 0) + 1
     nodes.append({
         "id": name,
