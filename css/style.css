@@ -1340,6 +1340,97 @@ g.sz-pt-classify:hover rect { filter: brightness(1.15); }
 /* Claimed AND affected can't both apply to one node -- a direct claim is
    never overridden -- so there is no combined case to resolve. */
 
+/* The lens (Scheduling Zoo overview): two switches on the right edge of
+   the box, vertically centred so they sit clear of the top-row button
+   clusters at any label width. Written vertically, like tabs on the side
+   of a binder, so they are a ~2rem strip -- and the box reserves that
+   strip (padding-right below), the same way it reserves 4.5rem on top for
+   the button rows, so no node is ever underneath them. */
+.sz-lens {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+#view-schedulingzoo .map-canvas-wrap { padding-right: 3.4rem; }
+.sz-lens-btn {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 0.7rem 0.35rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+.sz-lens-btn:hover { border-color: var(--accent); color: var(--accent); }
+.sz-lens-btn[aria-pressed="true"] {
+  border-color: var(--hl);
+  background: var(--hl-wash);
+  color: var(--hl-fg);
+}
+.sz-lens-count { margin-left: 0.4rem; opacity: 0.6; font-variant-numeric: tabular-nums; }
+/* With a lens on, the nodes that have that kind of result glow white and
+   everything else dims. The glow is white in both themes -- on the light
+   theme it barely reads against the panel on its own, which is exactly why
+   the rest dims: the contrast is the dimming, the glow is the mark. The
+   !important matches the user-classified / user-affected rings above, and
+   a node that is both lit and claimed keeps its ring outside the glow. */
+.map-diagram[data-lens] .sz-node { opacity: 0.45; }
+.map-diagram[data-lens="params"] .sz-node.has-params,
+.map-diagram[data-lens="approx"] .sz-node.has-approx {
+  opacity: 1;
+  z-index: 2;
+  box-shadow: 0 0 0 2px #fff, 0 0 14px 6px rgba(255, 255, 255, 0.95), 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+.map-diagram[data-lens="params"] .sz-node.has-params.user-classified,
+.map-diagram[data-lens="approx"] .sz-node.has-approx.user-classified {
+  box-shadow: 0 0 0 2px #fff, 0 0 14px 6px rgba(255, 255, 255, 0.95), 0 0 0 4px #2563eb !important;
+}
+/* The softer tier: no result of its own, but one reaches it along the
+   arrows. Same white, half the reach, so the two read as one family with
+   an obvious stronger and weaker member. */
+.map-diagram[data-lens="params"] .sz-node.has-params-implied,
+.map-diagram[data-lens="approx"] .sz-node.has-approx-implied {
+  opacity: 1;
+  z-index: 2;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 8px 3px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+.sz-lens-implied { opacity: 0.75; }
+/* The same lens inside the problem panel: with it on, the results of that
+   kind glow and the rest of the results dim, exactly as the nodes do. The
+   glow sits on the <li> itself, so it wraps whatever a result renders as
+   (a plain citation or a param-tree row). */
+.sz-panel[data-lens] .result-list li { opacity: 0.5; transition: opacity 0.15s; }
+/* A lit line is a lifted card, not a ring drawn round the text: room
+   inside it, a faint fill, and a wide soft halo. On the light theme a
+   white halo is invisible, so there it lifts with a drop shadow instead. */
+.sz-panel[data-lens="params"] .detail-params .result-list li,
+.sz-panel[data-lens="approx"] .result-list li.result-approx {
+  opacity: 1;
+  padding: 0.6rem 0.8rem;
+  margin: 0.2rem -0.2rem;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 3px 16px rgba(0, 0, 0, 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  .sz-panel[data-lens="params"] .detail-params .result-list li,
+  .sz-panel[data-lens="approx"] .result-list li.result-approx {
+    background: rgba(255, 255, 255, 0.055);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28), 0 0 22px 4px rgba(255, 255, 255, 0.22), inset 0 0 18px rgba(255, 255, 255, 0.04);
+  }
+}
+/* The parameterized section's own heading is the mark that it is the lit
+   section; its list needs no dimming of its own. */
+.sz-panel[data-lens="params"] .detail-params h4 { text-shadow: 0 0 12px rgba(255, 255, 255, 0.7); }
+
 /* Panel: the reader's classification and the corpus one, one labelled line
    each. Deliberately not upper-cased -- these are two competing claims to
    compare, not section headings. */

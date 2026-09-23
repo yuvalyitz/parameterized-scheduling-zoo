@@ -48,6 +48,7 @@ def latex_to_plain(s):
         (r"\\max", "max"), (r"\\min", "min"), (r"\\infty", "∞"),
         (r"\\geq", "≥"), (r"\\leq", "≤"), (r"\\in", "∈"), (r"\\neq", "≠"),
         (r"\\ldots", "…"), (r"\\subseteq", "⊆"), (r"\\cdot", "·"), (r"\\sum", "Σ"), (r"\\#", "#"),
+        (r"\\chi", "χ"),
         (r"\\bar\s*d_j", "d̄j"), (r"\\bar\s*d", "d̄"),
         (r"\\textrm\{([^}]*)\}", r"\1"),
         # Only ever reached from prose explanations, never from a notation
@@ -334,6 +335,44 @@ extract.transitive_closure(simple_reductions["number of machines"])
 
 augmented_edges = all_pairwise_edges()
 
+# ---- OUR OWN third added rule: eligibility sets into unrelated machines.
+# schedzoo has the rule "M_j;R -> ;R" (an unrelated-machines problem WITH
+# eligibility sets is a special case of one without: p_ij = infinity encodes
+# M_j) and it has P in Q in R -- but the two are never composed, because a
+# complex rule only fires when the fields it does not mention are equal, and
+# P|M_j| differs from R|| in the type as well. So R||X does not generalize
+# P|M_j|X for ANY objective X here (R||Cmax, R||sum w_jC_j and R||sum w_jZ_j
+# all missed it), although it is the textbook encoding: give job j the
+# processing time p_j on every machine i in M_j and infinity elsewhere; for
+# Q, p_j / s_i. It keeps the number of machines, the due dates, the weights
+# and the release dates untouched, and changes only the processing times,
+# so the measures of those (p_max, #p, ...) are the ones a parameterized
+# result must not cross -- exactly the exclusions the P/Q-inside-R type
+# change already carries (see TYPE_CHANGE_EXCLUDES).
+#
+# Stated as the two composed pairs, not as a new principle, and accepted
+# only where they are the WHOLE difference between two problems (type and
+# machine sets, nothing else): stacked on a further relaxation it would be
+# an unchecked combination, the discipline kept below for the machine-count
+# rule. Longer relations still arrive by transitivity through such pairs.
+OUR_ELIGIBILITY_RULES = [(("M_j", "P"), ("", "R")), (("M_j", "Q"), ("", "R"))]
+complex_reductions[("machine sets", "type")].update(OUR_ELIGIBILITY_RULES)
+_with_eligibility = all_pairwise_edges()
+
+
+def _diff_fields(general_id, specific_id):
+    va, vb = bases[general_id]["core_vec"], bases[specific_id]["core_vec"]
+    return {f for f in core_fields if va[f] != vb[f]}
+
+
+eligibility_edges = {
+    pair for pair in set(_with_eligibility) - set(augmented_edges)
+    if _diff_fields(*pair) == {"type", "machine sets"}
+}
+print(f"# eligibility rule: {len(eligibility_edges)} new arrows "
+      f"({len(set(_with_eligibility) - set(augmented_edges)) - len(eligibility_edges)} "
+      f"stacked candidates left to transitivity)", file=sys.stderr)
+
 # ---- restrict our own rule to SOLE-field cases only: letting it COMBINE
 # with a simultaneous relaxation of some other field produced edges that
 # contradict the endpoints' own direct citations -- 27 of 197 multi-field
@@ -354,10 +393,10 @@ def sole_diff_field(general_id, specific_id):
 
 excluded_multi_field = 0
 full_edges = []
-for pair in augmented_edges:
+for pair in list(augmented_edges) + sorted(eligibility_edges):
     if pair in after_processing_pairs:
         full_edges.append(pair)
-    elif sole_diff_field(*pair) == "number of machines":
+    elif sole_diff_field(*pair) == "number of machines" or pair in eligibility_edges:
         full_edges.append(pair)
     else:
         excluded_multi_field += 1
@@ -568,6 +607,8 @@ for (a, b) in hasse_edges:
     if added:
         if (a, b) in after_processing_pairs:
             added_by = "processing-times"
+        elif (a, b) in eligibility_edges:
+            added_by = "eligibility"
         else:
             added_by = "machine-count"
     edges.append({"from": a, "to": b, "diffs": diffs, "addedByUs": added, "addedBy": added_by})
@@ -579,9 +620,11 @@ for (a, b) in hasse_edges:
 # types). Deliberately conservative: an arrow carries a result only when
 # every field it changes is one of the kinds below, the change is one of
 # The Scheduling Zoo's own one-field rules, and every measure in the
-# parameter is safe for that change. Positive results (FPT, XP) are not
-# carried; neither is anything across machine counts, the online model,
-# preemption or objective changes that only hold at a single threshold.
+# parameter is safe for that change. Positive results (FPT, XP) travel the
+# other way, DOWN the same arrows, in the pass after this one; approximation
+# results follow in the pass after that. Nothing is carried across machine
+# counts, the online model, preemption or objective changes that only hold
+# at a single threshold.
 #
 # How a general instance is built from the special one, per field:
 # - the same instance, read with a wider value (a chain is an order, p_j=1 is
@@ -620,10 +663,23 @@ TYPE_CHANGE_EXCLUDES = {("P", "Q"): set(), ("F", "J"): set(),
 # 0 (completion time inside lateness/tardiness). Threshold-only rules (Cmax
 # inside ΣUj, Lmax inside ΣTj) and flow-time rules (which need r_j = 0) are
 # not carried.
-_WEIGHT_PADDING = {("\\sum (1-U_j)", "\\sum w_j(1-U_j)"), ("\\sum C_j", "\\sum w_jC_j"),
+_WEIGHT_PADDING = {("\\sum (1-U_j)", "\\sum w_j(1-U_j)"), ("\\sum Z_j", "\\sum w_jZ_j"), ("\\sum C_j", "\\sum w_jC_j"),
                    ("\\sum T_j", "\\sum w_jT_j"), ("\\sum F_j", "\\sum w_jF_j"), ("F_{\\max}", "\\max w_jF_j")}
 _DUE_DATE_PADDING = {("C_{\\max}", "L_{\\max}"), ("\\sum C_j", "\\sum T_j"), ("\\sum w_jC_j", "\\sum w_jT_j")}
 DUE_DATE_PADDING_EXCLUDES = {"pw(I)", "slackmax"}
+# Machine counts in the shops (O/F/J, where the count is the number of
+# operations per job): the instance with fewer machines is the instance with
+# more machines whose extra operations have length zero, so due dates, weights
+# and every count measure keep their value (#p gains the value 0, still
+# bounded) and completion times do not change. That is exact only while
+# nothing constrains what a zero-length operation may be or what surrounds
+# it, so the arrow is carried only when none of these settings is in use:
+# they fix the processing times (a zero would break p_ij=1 or p_ij=p), or
+# add a delay, a resource or a wait around every operation.
+SHOP_TYPES = {"O", "F", "J"}
+ZERO_OPERATION_BLOCKERS = ("processing times", "setup times", "transportation delays", "robot", "server",
+                           "batching", "time lags", "communication delay", "job size", "recirculation",
+                           "no-wait", "no-idle")
 
 
 def param_safe_tokens(general_id, specific_id):
@@ -643,6 +699,14 @@ def param_safe_tokens(general_id, specific_id):
             continue
         if f == "type" and (s, g) in TYPE_CHANGE_EXCLUDES:
             excluded |= TYPE_CHANGE_EXCLUDES[(s, g)]
+            continue
+        if f == "machine sets" and (s, g) == ("M_j", "") and vg["type"] == "R" and vs["type"] in ("P", "Q"):
+            # OUR eligibility rule: p_ij = infinity encodes M_j, so the
+            # instance keeps its machines, due dates and weights; the type
+            # change to R contributes the processing-time exclusions itself.
+            continue
+        if (f == "number of machines" and vg["type"] == vs["type"] and vg["type"] in SHOP_TYPES
+                and (s, g) in simple_reductions[f] and not any(vg[x] for x in ZERO_OPERATION_BLOCKERS)):
             continue
         if f == "Objective function" and (s, g) in _WEIGHT_PADDING:
             continue
@@ -687,14 +751,107 @@ for source in nodes:
                                if "+".join(sorted(x["param"].split("+"))) == canon
                                and PARAM_HARDNESS_RANK[x["complexityClass"]] >= PARAM_HARDNESS_RANK[cls]]
                     if not own and not already:
-                        target["inheritedParams"].append(dict(r, inheritedFrom=source["id"], via=list(reversed(chain))))
+                        target["inheritedParams"].append(dict(r, inheritedFrom=source["id"], via=list(reversed(chain)), direction="up"))
                         inherited_count += 1
+                    next_frontier.append(chain)
+            frontier = next_frontier
+
+# ---- the same inference the other way for POSITIVE parameterized results
+# (FPT, XP): an algorithm for a problem is an algorithm for every special
+# case of it, so these travel DOWN the arrows -- along exactly the same
+# parameter-safe arrows as above, since the special case has to keep the
+# measure the result is stated for. FPT outranks XP, so an XP result never
+# shadows an FPT one already there, and vice versa.
+PARAM_POSITIVE_RANK = {"XP": 1, "FPT": 2}
+children_of = {}
+for (a, b) in hasse_edges:
+    children_of.setdefault(a, []).append(b)
+
+
+def canon_param(x):
+    return "+".join(sorted(x["param"].split("+")))
+
+
+inherited_positive = 0
+for source in nodes:
+    for r in source["params"]:
+        cls = r.get("complexityClass")
+        if cls not in PARAM_POSITIVE_RANK:
+            continue
+        tokens = set(r["param"].split("+"))
+        canon = canon_param(r)
+        seen, frontier = {source["id"]}, [[source["id"]]]
+        while frontier:
+            next_frontier = []
+            for path in frontier:
+                for child in children_of.get(path[-1], []):
+                    if child in seen:
+                        continue
+                    safe = param_safe_tokens(path[-1], child)
+                    if safe is False or (safe is not ALL_PARAMS and tokens & safe):
+                        continue
+                    seen.add(child)
+                    target = node_by_id[child]
+                    chain = path + [child]  # general -> ... -> specific already
+                    own = [x for x in target["params"] if canon_param(x) == canon
+                           and PARAM_POSITIVE_RANK.get(x.get("complexityClass"), 0) >= PARAM_POSITIVE_RANK[cls]]
+                    already = [x for x in target.setdefault("inheritedParams", []) if canon_param(x) == canon
+                               and PARAM_POSITIVE_RANK.get(x.get("complexityClass"), 0) >= PARAM_POSITIVE_RANK[cls]]
+                    if not own and not already:
+                        target["inheritedParams"].append(dict(r, inheritedFrom=source["id"], via=chain, direction="down"))
+                        inherited_positive += 1
                     next_frontier.append(chain)
             frontier = next_frontier
 for n in nodes:
     n.setdefault("inheritedParams", [])
 print(f"# inherited parameterized hardness results: {inherited_count} "
-      f"(on {sum(1 for n in nodes if n['inheritedParams'])} problems)", file=sys.stderr)
+      f"(on {sum(1 for n in nodes if any(x['direction'] == 'up' for x in n['inheritedParams']))} problems)", file=sys.stderr)
+print(f"# inherited parameterized positive results: {inherited_positive} "
+      f"(on {sum(1 for n in nodes if any(x['direction'] == 'down' for x in n['inheritedParams']))} problems)", file=sys.stderr)
+
+# ---- approximation results travel the same arrows: what an algorithm
+# achieves (an upper result: a scheme, a ratio) holds for every special
+# case, what cannot be achieved (a lower one: APX-hard, inapproximable)
+# holds for every generalization. Only arrows on which the objective value
+# is identical on every schedule qualify, since a ratio means nothing
+# across an objective shift -- and those are exactly the arrows
+# param_safe_tokens does not refuse (its exclusion sets are about
+# parameters, so they do not matter here). Kept on the node as
+# inheritedApprox, with the chain, so the panel can show where it came from.
+APPROX_LINE = re.compile(r"PTAS|approximat|APX-hard|inapprox", re.I)
+inherited_approx = 0
+for source in nodes:
+    for r in source["classical"]:
+        if not APPROX_LINE.search(r.get("bound", "")):
+            continue
+        down = r.get("kind") == "upper"
+        step = children_of if down else parents_of
+        seen, frontier = {source["id"]}, [[source["id"]]]
+        while frontier:
+            next_frontier = []
+            for path in frontier:
+                for nxt in step.get(path[-1], []):
+                    if nxt in seen:
+                        continue
+                    general, specific = (path[-1], nxt) if down else (nxt, path[-1])
+                    if param_safe_tokens(general, specific) is False:
+                        continue
+                    seen.add(nxt)
+                    target = node_by_id[nxt]
+                    chain = path + [nxt]
+                    next_frontier.append(chain)
+                    if any(x["bound"] == r["bound"] for x in target["classical"]) or \
+                       any(x["bound"] == r["bound"] for x in target.setdefault("inheritedApprox", [])):
+                        continue
+                    target["inheritedApprox"].append(dict(r, inheritedFrom=source["id"],
+                                                          via=chain if down else list(reversed(chain)),
+                                                          direction="down" if down else "up"))
+                    inherited_approx += 1
+            frontier = next_frontier
+for n in nodes:
+    n.setdefault("inheritedApprox", [])
+print(f"# inherited approximation results: {inherited_approx} "
+      f"(on {sum(1 for n in nodes if n['inheritedApprox'])} problems)", file=sys.stderr)
 
 # ---- the settings filter's own menu data: for every exported beta field,
 # the values that actually occur in this corpus (with schedzoo's own
@@ -777,9 +934,18 @@ assert {f["slot"] for f in notation_form} == {"alpha", "beta", "gamma"}, "notati
 # condition in notation.xml today is already spaced, so this is a no-op on
 # the current file and simply keeps a future unspaced one from being read as
 # one unknown atom.
+#
+# It pads a parenthesis only where it stands ALONE at the edge of a
+# token -- "(P or Q)" -- and leaves one inside an atom untouched: the
+# two-stage flexible flow shop is literally called FF(1,m), and padding
+# its parentheses split that atom into "FF", "(", "1,m" and ")", which no
+# choice of machine environment then satisfies.
+_PAREN_OPEN = re.compile(r"(^|\s)\(")
+_PAREN_CLOSE = re.compile(r"\)(?=\s|$)")
 for f in notation_form:
     for c in [f] + f["choices"]:
-        c["requires"] = re.sub(r"\s+", " ", c["requires"].replace("(", " ( ").replace(")", " ) ")).strip()
+        req = _PAREN_CLOSE.sub(" ) ", _PAREN_OPEN.sub(r"\1 ( ", c["requires"]))
+        c["requires"] = re.sub(r"\s+", " ", req).strip()
 
 out = {
     "nodes": nodes,

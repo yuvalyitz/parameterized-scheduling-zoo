@@ -50,6 +50,13 @@
   // themselves, but downstream (or upstream) of one that was.
   let SZ_USER_AFFECTED = new Set();
   let SZ_FOCUS_IDS = null; // Set of ids to restrict the overview to (declutter), or null for the full graph
+  // The overview's "lens": null, "params" or "approx". A lens does not
+  // filter -- every node stays where it is -- it lights up the nodes that
+  // carry that kind of result and dims the rest, so a reader can see at a
+  // glance where their speciality has and has not been applied. Kept
+  // across re-renders like the filters, and applied without one (see
+  // szApplyLens), since it only toggles classes.
+  let SZ_LENS = null;
   let SZ_LAST_FILTERS = null; // filter input values to restore across a declutter/reset re-render
   // The live settings dropdown for the CURRENT render, so filter-change
   // callbacks can refresh its counts without closing over a const that may
@@ -312,7 +319,7 @@
   // re-runs its whole layout. Built once per page load, so the filters
   // survive switching tabs.
   let SEARCH_BUILT = false;
-  const SZ_MACHINE_ENV_ORDER = ["1", "P", "Q", "R", "O", "F", "J"];
+  const SZ_MACHINE_ENV_ORDER = ["1", "P", "Q", "R", "O", "F", "FF(1,m)", "J"];
 
   // Machine-environment and objective options for a filter bar, counted
   // over the full corpus and ordered most common first. Shared by Search
@@ -354,17 +361,89 @@
   function szAllParams(n) {
     return n.params.concat(n.inheritedParams || []);
   }
+
+  // What the two lenses look for, in two tiers. "own": the problem has a
+  // result of that kind cited on it. "implied": none of its own, but one
+  // reaches it along the arrows -- hardness and inapproximability up from a
+  // special case, algorithms down from a generalization (inheritedParams /
+  // inheritedApprox, computed in convert_for_pzoo.py along the
+  // parameter-safe arrows only). "Parameterized" is any bracketed result;
+  // "Approximation" is any classical line the Approximation category's own
+  // patterns recognise (see SZ_RESULT_CATEGORIES) -- the same reading the
+  // documentation's result table is built from, so the two can never
+  // disagree about what counts.
+  function szNodeParamsTier(n) {
+    if ((n.params || []).length) return "own";
+    if ((n.inheritedParams || []).length) return "implied";
+    return null;
+  }
+  // Approximable means an algorithm exists: a POSITIVE approximation result
+  // (a scheme, a ratio achieved). An inapproximability bound alone -- F||Cmax
+  // with its "ratio ≥ 5/4" and nothing else -- does not make a problem
+  // approximable, so it does not light; the bound still shows in the panel
+  // and still travels up the arrows.
+  function szNodeApproxTier(n) {
+    // An online problem's ratio is a competitive ratio -- the same instances
+    // with less information, measured against the offline optimum -- not an
+    // approximation ratio under P != NP, whatever a citation happens to
+    // call it. Different axis, so never lit here.
+    if (n.classicalClass === "online") return null;
+    const cat = SZ_RESULT_CATEGORIES.find((c) => c.name === "Approximation");
+    const isApprox = (r) => r.kind === "upper" && cat.values.some((v) => v.re.test(r.bound || ""));
+    if ((n.classical || []).some(isApprox)) return "own";
+    if ((n.inheritedApprox || []).some((r) => r.kind === "upper")) return "implied";
+    return null;
+  }
+  function szNodeHasParams(n) { return szNodeParamsTier(n) !== null; }
+  function szNodeHasApprox(n) { return szNodeApproxTier(n) !== null; }
+  // "104 +37": cited, then reached along the arrows.
+  function szLensCountHtml(nodes, tierOf) {
+    const own = nodes.filter((n) => tierOf(n) === "own").length;
+    const implied = nodes.filter((n) => tierOf(n) === "implied").length;
+    return '<span class="sz-lens-count">' + own + (implied ? ' <span class="sz-lens-implied">+' + implied + "</span>" : "") + "</span>";
+  }
+  // Applies SZ_LENS to the rendered overview in place: a data attribute on
+  // the diagram does the lighting and dimming through CSS, and the two
+  // buttons show which lens is on. No re-render, so nothing the reader has
+  // dragged or hidden moves.
+  function szApplyLens() {
+    const diagram = els.viewSchedulingZoo.querySelector(".map-diagram");
+    if (!diagram) return;
+    // The diagram, and the problem panel if one is open (it may be: the
+    // lens buttons stay reachable behind it).
+    [diagram, els.detailContent.querySelector(".sz-panel")].forEach((el) => {
+      if (!el) return;
+      if (SZ_LENS) el.setAttribute("data-lens", SZ_LENS);
+      else el.removeAttribute("data-lens");
+    });
+    diagram.querySelectorAll(".sz-lens-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.lens === SZ_LENS ? "true" : "false");
+    });
+  }
   function szNotationOf(id) {
     const n = DATA_SZ.nodes.find((x) => x.id === id);
     return n ? n.notation : id;
   }
 
   function szCitationHtml(r) {
+    // Two directions: hardness (and inapproximability) comes UP from a
+    // special case, algorithms (FPT, XP, approximation) come DOWN from a
+    // more general problem -- see the inheritance passes in
+    // convert_for_pzoo.py. A parameterized result names its parameter; an
+    // approximation one has none, and its arrows are the ones that keep the
+    // objective value identical.
     if (r.inheritedFrom) {
-      return "<p style='margin:0 0 0.2rem'><b>Inherited</b> from its special case " + escapeHtml(szNotationOf(r.inheritedFrom)) +
-        ", which " + escapeHtml(r.bound) + " for " + escapeHtml(r.param) + ".</p>" +
+      const down = r.direction === "down";
+      // "X, which is FPT for m" -- but a bound that opens with a condition
+      // ("under ETH there is no PTAS ...") needs "for which".
+      const which = /^(is|has|can|admits|cannot|does)\b/i.test(r.bound || "") ? ", which " : ", for which ";
+      return "<p style='margin:0 0 0.2rem'><b>Inherited</b> from " + (down ? "the more general " : "its special case ") +
+        escapeHtml(szNotationOf(r.inheritedFrom)) + which + escapeHtml(r.bound) +
+        (r.param ? " for " + escapeHtml(r.param) : "") + ".</p>" +
         "<p style='margin:0 0 0.2rem;color:var(--muted);font-size:0.85rem'>Along " +
-        escapeHtml(r.via.map(szNotationOf).join(" → ")) + ": every arrow keeps " + escapeHtml(r.param) + " bounded.</p>" +
+        escapeHtml(r.via.map(szNotationOf).join(" → ")) + ": " +
+        (r.param ? "every arrow keeps " + escapeHtml(r.param) + " bounded" : "every arrow keeps the objective value as it is") +
+        ".</p>" +
         szCitationHtml(Object.assign({}, r, { inheritedFrom: null }));
     }
     const cite = escapeHtml(r.author || "") + (r.year ? " (" + escapeHtml(r.year) + ")" : "");
@@ -552,11 +631,11 @@
                 const inheritedOnly = !!best && bestParamComplexityClass(rs.filter((r) => !r.inheritedFrom)) !== best;
                 return '<td class="result-cell"><button type="button" class="badge" data-sz-id="' + escapeHtml(n.id) +
                   '" data-param="' + escapeHtml(l) + '" style="' +
-                  (pc ? classPillStyle(pc) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
+                  (pc ? classPillStyle(pc, szParamAlsoXp(rs) ? { xpBound: true } : null) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
                   '" title="' + escapeHtml(rs.length + " cited result" + (rs.length === 1 ? "" : "s") + " -- click for details") +
                   // The title alone would become the accessible name, which
                   // never says the class the cell is showing.
-                  '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + " for " + l + ", " +
+                  '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + (szParamAlsoXp(rs) ? " and in XP" : "") + " for " + l + ", " +
                     rs.length + " cited result" + (rs.length === 1 ? "" : "s")) +
                   '">' + escapeHtml(pc ? pc.label : "other") +
                   (rs.length > 1 ? '<span class="conf-flag">×' + rs.length + "</span>" : "") +
@@ -1097,10 +1176,12 @@
       "<h4>What this site actually does today</h4>" +
       "<ul class=\"docs-list\">" +
       "<li><b>Scheduling Zoo map and Search:</b> classical hardness is inherited along every arrow. " +
-      "Parameterized hardness (W[1], W[2], para-NP) is inherited only along arrows whose kind is known to keep " +
-      "the parameter bounded -- a value restriction, or padding with constant data that doesn't feed the " +
-      "parameter -- and this <b>is</b> checked, arrow by arrow, when the data is built (see Inherited hardness " +
-      "below). FPT, XP and P never transfer.</li>" +
+      "Parameterized results are inherited only along arrows whose kind is known to keep the parameter " +
+      "bounded -- a value restriction, or padding with constant data that doesn't feed the parameter -- and " +
+      "this <b>is</b> checked, arrow by arrow, when the data is built (see Inherited results below): hardness " +
+      "(W[1], W[2], para-NP) up from a special case, algorithms (FPT, XP) down from a generalization. " +
+      "Approximation results travel the same arrows the same two ways. Classical P never transfers along a " +
+      "parameterized arrow.</li>" +
       "<li><b>Hand-curated maps:</b> parameterized hardness (W[1], W[2], para-NP) <i>is</i> inherited upward " +
       "along arrows, for the same parameter. FPT, XP and P correctly never transfer. Every inheritance that " +
       "fires in the current data crosses a type-1 or type-2 arrow, so all of them are sound -- but that is a " +
@@ -1228,15 +1309,28 @@
       "it with constant data (weights 1, due dates or release dates 0, speeds 1, every machine eligible). Paddings " +
       "exclude the measures built from the padded data: release and due dates set to 0 change the windows behind " +
       "pw(I) and slack<sub>max</sub>, and unrelated machines rescale the processing times behind p<sub>max</sub> " +
-      "and #p. Nothing is carried across machine counts, preemption, the online model, or objective changes that " +
+      "and #p. Machine counts are carried in the shops (open, flow and job shops) only: a problem with fewer " +
+      "machines is the one with more machines whose extra operations take no time, so due dates, weights and " +
+      "every count keep their value, provided nothing fixes or surrounds those operations (equal or unit " +
+      "processing times, setups, transport delays, a robot or server, batching, time lags). Nothing is carried " +
+      "across machine counts of parallel machines, preemption, the online model, or objective changes that " +
       "only hold at one threshold. For example, P|r<sub>j</sub>;p<sub>j</sub>=p|ΣU<sub>j</sub> is W[2]-hard in " +
       "m, and weighting its jobs changes nothing about m, so P|r<sub>j</sub>;p<sub>j</sub>=p|Σw<sub>j</sub>U<sub>j</sub> " +
       "is W[2]-hard in m too. Inherited results are marked in the Search matrix and explained, with the chain of " +
-      "arrows, in each problem's panel. Positive results (FPT, XP) are not carried yet.</p>" +
+      "arrows, in each problem's panel.</p>" +
+      "<p>Positive results go the other way along the very same arrows: an FPT or XP algorithm for a problem is " +
+      "one for every special case of it, so 1|r<sub>j</sub>|Σw<sub>j</sub>U<sub>j</sub> being FPT in #p+#d+#r " +
+      "makes 1|p<sub>j</sub>=p;r<sub>j</sub>|Σw<sub>j</sub>U<sub>j</sub> FPT in it too. Approximation results " +
+      "follow the same two directions -- a scheme or a ratio down to the special cases, APX-hardness or an " +
+      "inapproximability bound up to the generalizations -- and only along arrows on which the objective value " +
+      "is identical on every schedule, since a ratio means nothing across an objective shift. The lens on the " +
+      "Scheduling Zoo map shows both tiers: a full glow for a result cited on the problem, a softer one for a " +
+      "result that reaches it this way.</p>" +
 
       "<h4>Where this site reads the data differently</h4>" +
-      "<p>Two reduction rules are <i>added</i> where The Scheduling Zoo's data has none or gates it too " +
-      "tightly -- machine counts, and equal or unit processing times -- and nothing of theirs is overridden; " +
+      "<p>Three reduction rules are <i>added</i> where The Scheduling Zoo's data has none or gates it too " +
+      "tightly -- machine counts, equal or unit processing times, and eligibility sets inside unrelated " +
+      "machines -- and nothing of theirs is overridden; " +
       "a doi.org prefix is stripped off seven DOIs so their links resolve. Their reduction rules themselves are " +
       "taken exactly as shipped. Each difference is explained, with its evidence, under " +
       '<a href="#/docs/docs-anomalies">Known data anomalies</a> below. The Scheduling Zoo\'s own files are ' +
@@ -1851,12 +1945,30 @@
     "connected, and none of the new arrows puts a problem cited P above one cited NP-hard, or a " +
     "pseudo-polynomial one above a strongly NP-hard one -- the check that caught the S1 rule below.";
 
-  // Which of our notes explains a green (added-by-this-site) edge. Only two
-  // rules of ours add edges: the two that used to correct The Scheduling
-  // Zoo's own rules are upstream now (schedulingzoo PR #14), so no edge is
-  // attributed to them any more.
+  // Shared between the data note below and the panel of any edge that exists
+  // only because of the rule (OUR_ELIGIBILITY_RULES in convert_for_pzoo.py).
+  const SZ_ELIGIBILITY_RULE_NOTE =
+    "The Scheduling Zoo has the rule \"M_j;R -> ;R\" -- an unrelated-machines problem with eligibility sets is a " +
+    "special case of one without, since pij = ∞ encodes Mj -- and it has P in Q in R. But a rule of that kind " +
+    "only fires when every field it does not mention is equal, and P|Mj| differs from R|| in the machine " +
+    "environment as well, so the two are never composed: R||Cmax did not generalize P|Mj|Cmax, nor did " +
+    "R||ΣwjCj generalize P|Mj|ΣwjCj, nor R||ΣwjZj generalize P|Mj|ΣwjZj. We compose them in our converter only: " +
+    "P|Mj| and Q|Mj| each reduce to R||, by giving job j its processing time on every machine in Mj and ∞ " +
+    "elsewhere (pj/si for Q). That changes only the processing times, so a parameterized result crosses it " +
+    "for every measure except those of the processing times -- the exclusions any move into R already carries. " +
+    "Accepted only where machine environment and eligibility sets are the whole difference between two " +
+    "problems, never stacked on another relaxation; longer relations follow by transitivity. Result: 4 arrows " +
+    "(R||Cmax, R||ΣCj, R||ΣwjCj and R||ΣwjZj onto their eligibility versions), 14 relations by any path, and " +
+    "none of them puts a problem cited P above one cited NP-hard, or a pseudo-polynomial one above a strongly " +
+    "NP-hard one -- the check that caught the S1 rule.";
+
+  // Which of our notes explains a green (added-by-this-site) edge. Three rules
+  // of ours add edges: the two that used to correct The Scheduling Zoo's own
+  // rules are upstream now (schedulingzoo PR #14), so no edge is attributed
+  // to them any more.
   function szAddedEdgeNote(edge) {
     if (edge.addedBy === "processing-times") return SZ_PROCESSING_TIME_RULE_NOTE;
+    if (edge.addedBy === "eligibility") return SZ_ELIGIBILITY_RULE_NOTE;
     return SZ_MACHINE_COUNT_RULE_NOTE;
   }
 
@@ -1902,6 +2014,11 @@
         "2024, Chen-Marx-Zhang 2017, Knop-Koutecký 2017 and Goldman et al. 2000. Our converter now strips a " +
         "doi.org prefix before building the link, so every citation here resolves. Suggested upstream fix: " +
         "store the bare identifier in those seven entries (a URL belongs in the url field).",
+    },
+    {
+      title: "Unrelated machines do not generalize eligible machines",
+      body: SZ_ELIGIBILITY_RULE_NOTE +
+        " Suggested upstream fix: derive the composed pairs, or state the rule for every environment it applies to.",
     },
     {
       title: "Three papers are entered twice, under two bibtex keys",
@@ -1968,6 +2085,7 @@
   // string it wasn't checked against.
   const SZ_OBJECTIVE_CANON = {
     "ΣUj": "ΣwjUj", "ΣCj": "ΣwjCj", "ΣTj": "ΣwjTj", "ΣFj": "ΣwjFj", "Fmax": "max wjFj",
+    "ΣZj": "ΣwjZj",
   };
   function canonicalSzObjective(o) {
     return SZ_OBJECTIVE_CANON[o] || o;
@@ -2082,6 +2200,7 @@
   const SZ_MACHINE_ENV_LABELS = {
     1: "1 — single machine", P: "P — parallel identical machines", Q: "Q — uniform/related machines",
     R: "R — unrelated machines", O: "O — open shop", F: "F — flow shop", J: "J — job shop",
+    "FF(1,m)": "FF(1,m) — two-stage flexible flow shop (1 machine, then m parallel machines)",
   };
   const SZ_OBJECTIVE_WORDS = {
     Cmax: "makespan maximum completion time",
@@ -2097,6 +2216,11 @@
     "ΣwjFj": "total sum weighted flow time",
     Fmax: "maximum flow time",
     "max wjFj": "maximum weighted flow time",
+    // Just-in-time: a job counts only if it completes exactly at its due
+    // date. "jit" is how the papers say it; "on time" is deliberately not
+    // here, that already means the throughput objectives above.
+    "ΣZj": "just-in-time jit number of just-in-time jobs exactly at due date",
+    "ΣwjZj": "just-in-time jit weighted number of just-in-time jobs exactly at due date",
   };
   const SZ_PREEMPTION_WORDS = {
     pmtn: "preemption preemptive",
@@ -4040,6 +4164,8 @@
         const p = pos[n.id];
         return '<a class="map-node sz-node' + (userClassification(n.id, null) ? " user-classified" : "") +
           (SZ_USER_AFFECTED.has(n.id) ? " user-affected" : "") +
+          ({ own: " has-params", implied: " has-params-implied" }[szNodeParamsTier(n)] || "") +
+          ({ own: " has-approx", implied: " has-approx-implied" }[szNodeApproxTier(n)] || "") +
           '" data-sz-id="' + escapeHtml(n.id) + '" data-sz-notation="' +
           escapeHtml(n.notation.toLowerCase()) + '" data-sz-objective="' +
           escapeHtml(canonicalSzObjective(n.objective)) + '" data-sz-preemption="' + escapeHtml(n.preemption || "__none__") +
@@ -4110,7 +4236,7 @@
       '<button type="button" id="sz-reset-filters-btn" class="map-history-btn sz-reset-filters-btn"' +
       ' title="Clear the text box and every switch, and show the full graph again">↺ Reset filters</button>' +
       "</div>" +
-      '<div class="map-diagram">' +
+      '<div class="map-diagram"' + (SZ_LENS ? ' data-lens="' + SZ_LENS + '"' : "") + ">" +
       // Always start disabled: a full render (this one included) always
       // clears SZ_HIDDEN_STACK/SZ_HIDDEN_REDO_STACK above, since neither
       // stack means anything against a layout that's just been discarded
@@ -4127,6 +4253,23 @@
       '<button type="button" class="tikz-export-btn" title="Copy this diagram as TikZ code">⧉ TikZ</button>' +
       '<button type="button" class="auto-arrange-btn" title="Recompute node positions from scratch">⇄ Auto-arrange</button>' +
       '<button type="button" class="sz-save-map-btn" title="Save the problems shown here as a new problem map">⊕ Save as a New Problem Map</button>' +
+      // The lens: two switches on the right edge of the box. Pressing one
+      // lights every node that has that kind of result -- a full glow for
+      // a result cited on it, a softer one for a result that reaches it
+      // along the arrows -- and dims the rest; pressing it again turns it
+      // off, pressing the other swaps. Counts are over the nodes actually
+      // drawn, so they follow the filter.
+      '<div class="sz-lens" role="group" aria-label="Highlight problems by kind of result">' +
+      '<button type="button" class="sz-lens-btn" data-lens="params" aria-pressed="' + (SZ_LENS === "params" ? "true" : "false") +
+      '" title="Light up every problem with a parameterized result and dim the rest. Full glow: a result cited on it. ' +
+      'Softer glow: a result that reaches it along the arrows -- hardness up from a special case, an algorithm down from a generalization.">' +
+      "✦ Parameterized " + szLensCountHtml(nodes, szNodeParamsTier) + "</button>" +
+      '<button type="button" class="sz-lens-btn" data-lens="approx" aria-pressed="' + (SZ_LENS === "approx" ? "true" : "false") +
+      '" title="Light up every approximable problem -- one with an approximation scheme or a ratio achieved -- and dim the rest. ' +
+      'Full glow: the algorithm is cited on it. Softer glow: it comes down the arrows from a more general problem. ' +
+      'An inapproximability bound on its own does not light a problem; it shows in the panel.">' +
+      "✦ Approximable " + szLensCountHtml(nodes, szNodeApproxTier) + "</button>" +
+      "</div>" +
       // Always in the DOM, shown by szUpdateClaimsBar once the reader has
       // actually made something of their own -- a classification, or an
       // arrow drawn by hand. Rendering it conditionally meant the buttons
@@ -4186,6 +4329,12 @@
     fitMapCanvasSoon(els.viewSchedulingZoo);
 
     enableSzNodeDragging(els.viewSchedulingZoo.querySelector(".map-canvas"));
+    els.viewSchedulingZoo.querySelectorAll(".sz-lens-btn").forEach((b) => {
+      b.addEventListener("click", () => {
+        SZ_LENS = SZ_LENS === b.dataset.lens ? null : b.dataset.lens;
+        szApplyLens();
+      });
+    });
 
     // Click on an edge (either its thin visible line or its wide invisible
     // hit-area, both tagged the same way) opens the full "why does this
@@ -5268,9 +5417,17 @@
     const n = DATA_SZ.nodes.find((x) => x.id === nodeId) || designerDraftNodes[nodeId];
     if (!n) return;
     const isOnline = !!(n.vector && n.vector["release time"] === "online-r_j");
-    const resultLi = szResultLi;
-    const lower = n.classical.filter((r) => r.kind === "lower");
-    const upper = n.classical.filter((r) => r.kind === "upper");
+    // A positive approximation line is tagged so the Approximable lens can
+    // light it here as it does on the map -- same test as szNodeApproxTier.
+    const approxCat = SZ_RESULT_CATEGORIES.find((c) => c.name === "Approximation");
+    const resultLi = (r) =>
+      "<li" + (r.kind === "upper" && approxCat.values.some((v) => v.re.test(r.bound || "")) ? ' class="result-approx"' : "") +
+      ">" + szCitationHtml(r) + "</li>";
+    // Own results first, then the approximation results this site carried
+    // here along the arrows (inheritedApprox) -- each says where it came
+    // from, see szCitationHtml.
+    const lower = n.classical.filter((r) => r.kind === "lower").concat((n.inheritedApprox || []).filter((r) => r.kind === "lower"));
+    const upper = n.classical.filter((r) => r.kind === "upper").concat((n.inheritedApprox || []).filter((r) => r.kind === "upper"));
     const forest = buildParamForest(szAllParams(n));
     const paramTreeHtml = buildParamTreeHtml(forest, resultLi, n.id);
     const paramDiagram = buildParamDiagramHtml(forest, n.id);
@@ -5287,7 +5444,12 @@
           '<span style="margin-right:0.8rem"><span class="legend-swatch" style="width:0.7em;height:0.7em;display:inline-block;border-radius:2px;vertical-align:middle;margin-right:0.3em;' +
           "background:" + (c.opacity ? mixWithPanelBg(c.color, c.opacity) : c.fill ? c.color : "var(--panel-bg)") +
           ";border:1.5px " + (c.border || "solid") + " " + c.color + '"></span>' + escapeHtml(c.label) + "</span>"
-        ).join("") + "</p>"
+        ).join("") +
+        // The filled W-hard box: outline = hard, fill = also in XP.
+        (forest.labels.some((l) => szParamAlsoXp(forest.byLabel[l]))
+          ? '<span style="margin-right:0.8rem"><span class="legend-swatch" style="width:0.7em;height:0.7em;display:inline-block;border-radius:2px;vertical-align:middle;margin-right:0.3em;background:' +
+            classById("W1").color + ";border:1.5px solid " + classById("W1").color + '"></span>W-hard and in XP</span>'
+          : "") + "</p>"
       : "";
     szEffectiveClasses();
     const isDirect = n.classicalClass && n.classicalClass !== "unclaimed";
@@ -5353,7 +5515,12 @@
     // own here. Every part of the name is explained on hover now (see
     // szNotationHeadingHtml), the machine environment included, so what is
     // left to say is where to look.
+    // .sz-panel carries the overview's lens (see szApplyLens) so the panel
+    // lights the same kind of result the map is lighting. It is inside the
+    // content, so any other renderer's innerHTML replaces it -- a Problem
+    // Map's panel never inherits the attribute.
     els.detailContent.innerHTML =
+      '<div class="sz-panel"' + (SZ_LENS ? ' data-lens="' + SZ_LENS + '"' : "") + ">" +
       szNotationHeadingHtml(szNotationPartsHtml(n)) + ccPillHtml +
       (n.draft
         ? '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">a problem <b>you drafted</b> — it is not in ' +
@@ -5405,10 +5572,11 @@
       (upper.length ? '<div class="detail-field"><h4>' +
         (isOnline ? "What an algorithm achieves" : "Classical positive / algorithmic results") +
         '</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
-      (paramTreeHtml ? '<div class="detail-field"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
+      (paramTreeHtml ? '<div class="detail-field detail-params"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
         "Nested by combined-parameter containment: a child bounds every measure its parent bounds, plus more" +
         (paramDiagram ? " (drag the boxes below, same as any other map on this site)" : "") + ".</p>" +
-        (paramDiagram ? paramDiagram.html : "") + paramLegendHtml + paramTreeHtml + "</div>" : "");
+        (paramDiagram ? paramDiagram.html : "") + paramLegendHtml + paramTreeHtml + "</div>" : "") +
+      "</div>";
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
     setPanelMinWidth(paramDiagram ? paramDiagram.width : 0);
@@ -5456,18 +5624,22 @@
       for (const t of tokensOf[a]) if (!tokensOf[b].has(t)) return false;
       return true;
     }
-    const parentOf = {};
+    // parentOf picks ONE parent so the nested text list shows each label
+    // once; parentsOf keeps every immediate one, and the diagram draws all
+    // of them (m+pmax hangs under both m and pmax, not just m).
+    const parentOf = {}, parentsOf = {};
     labels.forEach((b) => {
       const candidates = labels.filter((a) => a !== b && isProperSubset(a, b));
       const immediate = candidates.filter((a) => !candidates.some((c) => c !== a && isProperSubset(a, c)));
       immediate.sort();
+      parentsOf[b] = immediate;
       parentOf[b] = immediate.length ? immediate[0] : null;
     });
     const childrenOf = {};
     labels.forEach((l) => (childrenOf[l] = []));
     labels.forEach((l) => { if (parentOf[l]) childrenOf[parentOf[l]].push(l); });
     const roots = labels.filter((l) => !parentOf[l]).sort();
-    return { byLabel, labels, parentOf, childrenOf, roots };
+    return { byLabel, labels, parentOf, parentsOf, childrenOf, roots };
   }
 
   function buildParamTreeHtml(forest, resultLi, nodeId) {
@@ -5540,10 +5712,23 @@
     return best;
   }
 
+  // W[1]- or W[2]-hard AND in XP for the same parameter. Both are true at
+  // once -- no FPT algorithm unless FPT = W[1], yet nothing worse than
+  // n^f(k) -- and together they say more than either does, so the box keeps
+  // the hardness outline and takes the XP fill (see classPillStyle's
+  // xpBound) instead of being drawn as plain hardness by the hardness-wins
+  // rule above (P|Mj|ΣwjZj is strongly W[1]-hard in m AND in XP in m).
+  // No other pair can coexist: para-NP-hard excludes XP unless P = NP, and
+  // FPT excludes W-hardness unless FPT = W[1].
+  function szParamAlsoXp(rs) {
+    const best = bestParamComplexityClass(rs);
+    return (best === "W1" || best === "W2") && rs.some((r) => r.complexityClass === "XP");
+  }
+
   function buildParamDiagramHtml(forest, nodeId) {
     const ids = forest.labels;
     if (!ids.length) return null;
-    const edgeList = ids.filter((id) => forest.parentOf[id]).map((id) => ({ from: forest.parentOf[id], to: id }));
+    const edgeList = ids.flatMap((id) => forest.parentsOf[id].map((p) => ({ from: p, to: id })));
     const { row, col } = layoutDag(ids, edgeList);
     const widthOf = {};
     ids.forEach((id) => {
@@ -5591,13 +5776,19 @@
       const ownClaim = nodeId ? userParamClass(nodeId, id) : null;
       const classId = ownClaim ? ownClaim.classId : bestParamComplexityClass(rs);
       const cls = classId ? classById(classId) : null;
-      const filled = cls && cls.fill;
+      // W[1]/W[2]-hard with a cited XP result fills solid: the outline says
+      // hard, the fill says also in XP -- the same encoding Problem Maps
+      // uses for a result with an xpBound. Plain outline would read as
+      // "hard, no known n^f(k) algorithm", which is not what is known here.
+      const alsoXp = !ownClaim && szParamAlsoXp(rs);
+      const filled = cls && (cls.fill || alsoXp);
       const bg = cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
       const border = cls ? cls.color : "#868e96";
       const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
       const textColor = filled && !cls.opacity ? fillTextColor(cls) : cls && (filled || cls.opacity) ? "#111" : "var(--fg)";
       const p = pos[id];
       const title = id + (cls ? " — " + cls.label : rs.some((r) => r.kind === "lower") || rs.some((r) => r.kind === "upper") ? " — result recorded, not classified into FPT/XP/W-hierarchy (see list below)" : "") +
+        (alsoXp ? " — and in XP: polynomial for each fixed value" : "") +
         (ownClaim
           ? ownClaim.direct
             ? " (yours, unverified" + (ownClaim.source ? ": " + ownClaim.source : "") + ")"
