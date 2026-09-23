@@ -87,6 +87,9 @@
   // While the reader is drawing an arrow by hand on the overview:
   // { from: id or null }, null when not drawing. Cleared by a re-render.
   let SZ_ARROW_MODE = null;
+  // The same two-click gesture inside a problem panel's parameter diagram:
+  // { nodeId, notation, from: label | null } while an arrow is being drawn.
+  let SZ_PT_ARROW = null;
   let SZ_ARROW_NOTICE = ""; // one line about the arrow last added or edited
   // Same idea for the hand-curated problem maps, keyed per map id (a user
   // can hide different nodes on different maps without them fighting).
@@ -121,7 +124,14 @@
     return !h || h === "/" ? "/schedulingzoo" : h;
   }
 
+  // True only for the first route() of a page load. A reload of an unsaved
+  // #/design/new gets its work back; clicking through to a new map from
+  // inside the running page is a request for a blank one.
+  let ROUTED_ONCE = false;
+
   function route() {
+    const freshLoad = !ROUTED_ONCE;
+    ROUTED_ONCE = true;
     const path = currentPath();
     Object.values(VIEWS).forEach((v) => (v.hidden = true));
     els.viewProblem.hidden = true;
@@ -150,7 +160,7 @@
       els.viewDesign.hidden = false;
       const mapId = decodeURIComponent(designMatch[1]);
       els.viewDesign.innerHTML = '<div class="design-page"><a class="wiki-back" href="#/zoo-maps">&larr; Back to problem maps</a><h2 class="page-title">Problem Map Designer</h2><p class="design-intro">Loading…</p></div>';
-      loadSzData().then(() => { openDesignerMap(mapId); renderDesign(); });
+      loadSzData().then(() => { openDesignerMap(mapId, { resume: freshLoad }); renderDesign(); });
       // The designer is part of the Problem Maps section rather than a
       // section of its own, so that is the nav item that lights up.
       matched = "/zoo-maps";
@@ -426,6 +436,14 @@
   }
 
   function szCitationHtml(r) {
+    // A result the reader's own parameter arrow carried here: say so, then
+    // the line as it is for the parameter it was stated for.
+    if (r.viaParamArrow) {
+      return "<p style='margin:0 0 0.2rem'><b>Along your arrow</b> " + escapeHtml(r.viaParamArrow.from + " → " + r.viaParamArrow.to) +
+        ": " + (PARAM_HARDNESS.includes(r.complexityClass) ? "hardness for " : "an algorithm for ") + escapeHtml(r.arrowSource) +
+        " holds for " + escapeHtml(r.param) + ".</p>" +
+        szCitationHtml(Object.assign({}, r, { viaParamArrow: null, param: r.arrowSource }));
+    }
     // Two directions: hardness (and inapproximability) comes UP from a
     // special case, algorithms (FPT, XP, approximation) come DOWN from a
     // more general problem -- see the inheritance passes in
@@ -1318,6 +1336,9 @@
       "m, and weighting its jobs changes nothing about m, so P|r<sub>j</sub>;p<sub>j</sub>=p|Σw<sub>j</sub>U<sub>j</sub> " +
       "is W[2]-hard in m too. Inherited results are marked in the Search matrix and explained, with the chain of " +
       "arrows, in each problem's panel.</p>" +
+      "<p>An arrow you draw yourself (→+) counts as a claim: a class carries along it -- P down to the special " +
+      "case, hardness up to the general one -- through whatever is cited at the other end, and what that " +
+      "overrides in the literature is reported, per problem, the way a classification's overrides are.</p>" +
       "<p>Positive results go the other way along the very same arrows: an FPT or XP algorithm for a problem is " +
       "one for every special case of it, so 1|r<sub>j</sub>|Σw<sub>j</sub>U<sub>j</sub> being FPT in #p+#d+#r " +
       "makes 1|p<sub>j</sub>=p;r<sub>j</sub>|Σw<sub>j</sub>U<sub>j</sub> FPT in it too. Approximation results " +
@@ -1613,7 +1634,12 @@
   // map from raw corpus classes, so nothing superseded, nothing inherited,
   // and no arrow ever turned red.
   function szEffectiveClasses() {
-    if (!SZ_EFFECTIVE && DATA_SZ) SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges);
+    if (!SZ_EFFECTIVE && DATA_SZ) {
+      const affected = new Set();
+      SZ_EFFECTIVE = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, false,
+        { userEdges: loadSzUserEdges(), affectedOut: affected });
+      SZ_USER_AFFECTED = affected;
+    }
     return SZ_EFFECTIVE || {};
   }
 
@@ -1622,12 +1648,13 @@
   // questionnaire the designer uses (see SZ_REDUCTION_KINDS). Kept in this
   // browser only, like the classifications above.
   //
-  // Deliberately NOT part of the model: unlike a classification, a
-  // hand-drawn arrow never moves anybody's complexity around. It is a
-  // reduction the reader is proposing, not evidence -- so it is drawn,
-  // checked against the corpus, and can be sent to the author, but nothing
-  // inherits along it. That is exactly how the designer treats its own
-  // hand-drawn arrows (see designerEffectiveClasses).
+  // Part of the model, like a classification: the reader's input supersedes
+  // the corpus, so a class carries along a hand-drawn arrow -- P down to the
+  // special case, hardness up to the general one -- through whatever is
+  // cited at the other end (see computeEffectiveClassesForSz). What that
+  // overrides in the literature is reported per problem, the same way a
+  // classification's overrides are (szOverriddenByClaims). The designer's
+  // own arrows work the same way on the map they belong to.
   const SZ_EDGE_KEY = "psz.szEdges.v1";
   let SZ_USER_EDGES = null;
   function loadSzUserEdges() {
@@ -1646,6 +1673,43 @@
     } catch (e) {
       /* private window, or quota: the arrow still shows, it just isn't kept */
     }
+    // An arrow moves classes, so the cached ones are stale -- the same
+    // invalidation a classification does.
+    SZ_EFFECTIVE = null;
+    SZ_PARAM_CLAIMS = null;
+    designerEffectiveCache = { key: null, classes: null };
+  }
+
+  // Arrows the reader draws between PARAMETERS, in a problem panel's
+  // parameter diagram: `from` is bounded by a function of `to` -- bounding
+  // `to` bounds `from` -- the reading parameterHierarchy's edges have. So
+  // an FPT or XP result for `from` holds for `to`, and W-hardness for `to`
+  // holds for `from` (m -> m+pmax is the containment case the diagram
+  // draws on its own). A statement about the two measures, not about a
+  // problem, so it holds on every problem where both appear. Kept in this
+  // browser, like every other claim.
+  const SZ_PARAM_EDGE_KEY = "psz.paramEdges.v1";
+  let SZ_PARAM_EDGES = null;
+  function loadSzParamEdges() {
+    if (SZ_PARAM_EDGES) return SZ_PARAM_EDGES;
+    try {
+      const list = JSON.parse(localStorage.getItem(SZ_PARAM_EDGE_KEY) || "[]");
+      SZ_PARAM_EDGES = Array.isArray(list) ? list.filter((e) => e && e.from && e.to) : [];
+    } catch (e) {
+      SZ_PARAM_EDGES = [];
+    }
+    return SZ_PARAM_EDGES;
+  }
+  function storeSzParamEdges() {
+    try {
+      localStorage.setItem(SZ_PARAM_EDGE_KEY, JSON.stringify(SZ_PARAM_EDGES || []));
+    } catch (e) {
+      /* private window, or quota: the arrow still shows, it just isn't kept */
+    }
+    SZ_PARAM_CLAIMS = null;
+    // The overview's Send / Reset bar counts these arrows, and a panel can
+    // add one while the overview is on screen behind it.
+    if (!els.viewSchedulingZoo.hidden) szUpdateClaimsBar();
   }
 
   const SAVED_MAPS_KEY = "psz.problemMaps.v1";
@@ -3132,7 +3196,18 @@
   // `ignoreUserClaims` gives the corpus's own reading, untouched by anything
   // the reader has classified -- the panel shows the two side by side, so it
   // needs both.
-  function computeEffectiveClassesForSz(nodes, edges, ignoreUserClaims) {
+  // `opts.userEdges` are the arrows the reader drew (see SZ_USER_EDGES): they
+  // are claims, so they carry a class through whatever is cited at the
+  // other end, exactly as a classification does -- P and pseudo-polynomial
+  // down to the special case, hardness up to the general one -- and only a
+  // direct classification of the reader's own is never overwritten by one.
+  // Where an arrow contradicts the literature, the general problem keeps
+  // its class and the special case follows it. `opts.affectedOut`, when
+  // given, receives every problem a claim or an arrow moved.
+  function computeEffectiveClassesForSz(nodes, edges, ignoreUserClaims, opts) {
+    opts = opts || {};
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const userEdges = ignoreUserClaims ? [] : (opts.userEdges || []).filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to));
     const effective = {};
     const visiting = new Set();
     function resolve(id, cls) {
@@ -3199,7 +3274,7 @@
     // which problems moved only because of a claim.
     const claimed = new Set(nodes.filter((x) => own[x.id] && own[x.id].classical).map((x) => x.id));
     const fromClaim = new Set(claimed);
-    if (claimed.size) {
+    if (claimed.size || userEdges.length) {
       const hardness = { "NP-hard-unresolved": 1, "strongly-NP-hard": 2 };
       let moved = true;
       let guard = 0;
@@ -3234,11 +3309,35 @@
             }
           }
         });
+        // The reader's own arrows: the same three rules, but the arrow itself
+        // is the claim, so they fire from a cited class as readily as from a
+        // classified one. An arrow that may blow numbers up does not carry a
+        // pseudo-polynomial algorithm down (see SZ_REDUCTION_NUMBERS).
+        userEdges.forEach((e) => {
+          if (effective[e.from] === "P" && effective[e.to] !== "P" && !claimed.has(e.to)) {
+            effective[e.to] = "P";
+            fromClaim.add(e.to);
+            moved = true;
+          }
+          if (effective[e.from] === "weakly-NP-hard" && e.numbers !== "blowup" &&
+              effective[e.to] !== "weakly-NP-hard" && effective[e.to] !== "P" && !claimed.has(e.to)) {
+            effective[e.to] = "weakly-NP-hard";
+            fromClaim.add(e.to);
+            moved = true;
+          }
+          const up = inheritedContribution(effective[e.to]);
+          if (up && !claimed.has(e.from)) {
+            const current = inheritedContribution(effective[e.from]);
+            if ((hardness[up] || 0) > (hardness[current] || 0)) {
+              effective[e.from] = up;
+              fromClaim.add(e.from);
+              moved = true;
+            }
+          }
+        });
       }
     }
-    if (!ignoreUserClaims) {
-      SZ_USER_AFFECTED = new Set(Array.from(fromClaim).filter((id) => !claimed.has(id)));
-    }
+    if (opts.affectedOut) fromClaim.forEach((id) => { if (!claimed.has(id)) opts.affectedOut.add(id); });
     return effective;
   }
 
@@ -4321,9 +4420,11 @@
       'brings it back. <b class="sz-def">Apply filter</b> redraws the map with only the problems matching the ' +
       'filters; <b class="sz-def">Show all</b> returns to the full map.</p>' +
       '<p><b class="sz-def">→+</b> draws an arrow of your own: click the more general problem, then the special ' +
-      "case it points to, and say what kind of reduction it is. Your arrows are dashed, kept in this browser, and " +
-      "turn red where they contradict the results here -- click one to edit or remove it. They are claims, so " +
-      "nothing inherits along them.</p></div>" +
+      "case it points to, and say what kind of reduction it is. Your arrows are dashed and kept in this browser; " +
+      "click one to edit or remove it. They are claims of yours, so a class carries along them the way it does " +
+      "along the corpus's arrows -- P down to the special case, hardness up to the general one -- superseding what " +
+      "is cited, and the problems that moves glow blue. An arrow turns red only where two claims of yours " +
+      "disagree, or where one you called a restriction widens a field.</p></div>" +
       "</div>";
 
     fitMapCanvasSoon(els.viewSchedulingZoo);
@@ -4651,7 +4752,8 @@
   const SZ_EDGE_HOST = {
     edges: () => loadSzUserEdges(),
     changed: () => storeSzUserEdges(),
-    rerender: () => szRenderUserEdges(),
+    // Not just the arrows: the classes they carry have to be repainted.
+    rerender: () => refreshClassificationViews(),
     notice: (text) => { SZ_ARROW_NOTICE = text; szUpdateArrowUi(); },
   };
 
@@ -4662,7 +4764,7 @@
     const bar = els.viewSchedulingZoo.querySelector(".sz-claims-actions");
     if (!bar) return;
     const claims = Object.keys(loadUserClassifications()).length;
-    const arrows = loadSzUserEdges().length;
+    const arrows = loadSzUserEdges().length + loadSzParamEdges().length;
     bar.hidden = !(claims || arrows || userDraftProblems().length);
     // Reset is about classifications (and, if asked, arrows). Drafted
     // problems belong to the maps they were drawn on, so they alone are
@@ -4868,10 +4970,20 @@
         if (conflict) {
           line.setAttribute("stroke", SZ_EDGE_FLAGGED_COLOR);
           line.setAttribute("stroke-width", "2.6");
+          line.setAttribute("stroke-dasharray", "6,3");
           line.setAttribute("marker-end", "url(#" + szArrowIdFor(SZ_EDGE_FLAGGED_COLOR) + ")");
         } else if (claimTouched) {
           line.setAttribute("stroke", USER_CLASS_RING);
+          line.setAttribute("stroke-width", "2");
+          line.removeAttribute("stroke-dasharray");
           line.setAttribute("marker-end", "url(#" + szArrowIdFor(USER_CLASS_RING) + ")");
+        } else {
+          // Removing a claim or an arrow can leave an arrow with nothing to
+          // say any more.
+          line.setAttribute("stroke", MAP_EDGE_COLOR);
+          line.setAttribute("stroke-width", "2");
+          line.removeAttribute("stroke-dasharray");
+          line.setAttribute("marker-end", "url(#" + szArrowIdFor(MAP_EDGE_COLOR) + ")");
         }
       });
       // A claim can put a hand-drawn arrow in (or out of) conflict, which is
@@ -5064,6 +5176,7 @@
     const drafts = userDraftProblems();
     const out = { classifications: loadUserClassifications() };
     if (arrows.length) out.arrows = arrows;
+    if (loadSzParamEdges().length) out.parameterArrows = loadSzParamEdges();
     // The whole node, not just the name: it carries the field assignment
     // the name was built from, which is what makes it reproducible here.
     if (drafts.length) out.draftProblems = drafts.map((d) => d.node);
@@ -5161,26 +5274,26 @@
   }
 
   // The way out of everything the reader has recorded here. Destructive and
-  // not undoable, so it says exactly what will go and asks first. The
-  // hand-drawn arrows are a separate kind of claim, so they are a separate
-  // (unticked) choice rather than being swept away with the rest.
+  // not undoable, so it says exactly what will go and asks first. Hand-drawn
+  // arrows go with it too: they are recorded in this same browser by this
+  // same reader, so a reset that left them behind would still show claims
+  // the reader asked to delete.
   function showResetClassificationsDialog() {
     const rows = userClassificationList();
-    const arrows = loadSzUserEdges();
+    const arrows = loadSzUserEdges().concat(loadSzParamEdges());
     const backdrop = document.createElement("div");
     backdrop.className = "designer-dialog-backdrop";
+    const parts = [];
+    if (rows.length) parts.push(rows.length + " classification" + (rows.length === 1 ? "" : "s"));
+    if (arrows.length) parts.push(arrows.length + " arrow" + (arrows.length === 1 ? "" : "s"));
     backdrop.innerHTML =
       '<div class="designer-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-claims-title">' +
       '<h3 id="reset-claims-title">Delete your ' +
-      (rows.length ? rows.length + " classification" + (rows.length === 1 ? "" : "s") : "work here") + "?</h3>" +
-      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Everything you have classified in this browser ' +
-      "goes, and every problem it moved falls back to what The Scheduling Zoo's data says. This cannot be undone -- " +
-      "if you want to keep a copy, close this and use <b>Send my classifications</b> &rarr; Copy as JSON first.</p>" +
-      (arrows.length
-        ? '<label class="designer-reduction-option"><input type="checkbox" class="reset-claims-arrows">' +
-          "<span><b>Also delete my " + arrows.length + " hand-drawn arrow" + (arrows.length === 1 ? "" : "s") +
-          "</b><small>Arrows you drew with →+. Left alone unless you tick this.</small></span></label>"
-        : "") +
+      (parts.length ? parts.join(" and ") : "work here") + "?</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Everything you have classified or drawn ' +
+      "(→+) in this browser goes, and every problem it moved falls back to what The Scheduling Zoo's data says. " +
+      "This cannot be undone -- if you want to keep a copy, close this and use <b>Send my classifications</b> " +
+      "&rarr; Copy as JSON first.</p>" +
       '<div class="designer-dialog-actions">' +
       '<button type="button" class="map-history-btn" data-dialog="cancel">Keep them</button>' +
       '<button type="button" class="map-history-btn designer-dialog-report" data-dialog="reset">Delete</button>' +
@@ -5191,14 +5304,16 @@
     backdrop.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
     backdrop.querySelector('[data-dialog="reset"]').addEventListener("click", () => {
-      const alsoArrows = backdrop.querySelector(".reset-claims-arrows");
       storeUserClassifications({});
       // Same invalidation setUserClassification does: the inherited classes
       // are cached and every one of them may now be different.
       SZ_EFFECTIVE = null;
       SZ_PARAM_CLAIMS = null;
       designerEffectiveCache = { key: null, classes: null };
-      if (alsoArrows && alsoArrows.checked) { SZ_USER_EDGES = []; storeSzUserEdges(); }
+      SZ_USER_EDGES = [];
+      storeSzUserEdges();
+      SZ_PARAM_EDGES = [];
+      storeSzParamEdges();
       close();
       els.detailPanel.hidden = true;
       els.detailOverlay.hidden = true;
@@ -5211,6 +5326,123 @@
     });
     document.body.appendChild(backdrop);
     backdrop.querySelector('[data-dialog="cancel"]').focus();
+  }
+
+  // Reflects SZ_PT_ARROW onto the open panel: the button's pressed state,
+  // the crosshair, the glow on the chosen origin, the floating instruction,
+  // and the one-line notice underneath (SZ_PT_ARROW_NOTICE).
+  let SZ_PT_ARROW_NOTICE = "";
+  function szUpdatePtArrowUi() {
+    const root = els.detailContent;
+    const btn = root.querySelector(".sz-pt-add-arrow");
+    const wrap = root.querySelector(".param-tree-wrap");
+    if (els.detailPanel.hidden || !btn) SZ_PT_ARROW = null;
+    const old = document.querySelector(".sz-pt-arrow-toast");
+    if (old) old.remove();
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", SZ_PT_ARROW ? "true" : "false");
+    if (wrap) wrap.classList.toggle("arrow-mode", !!SZ_PT_ARROW);
+    root.querySelectorAll("g.sz-pt-node.arrow-origin").forEach((g) => g.classList.remove("arrow-origin"));
+    if (SZ_PT_ARROW && SZ_PT_ARROW.from) {
+      const g = Array.from(root.querySelectorAll("g.sz-pt-node")).find((x) => x.dataset.szPtId === SZ_PT_ARROW.from);
+      if (g) g.classList.add("arrow-origin");
+    }
+    if (SZ_PT_ARROW) {
+      const toast = document.createElement("div");
+      toast.className = "designer-arrow-toast sz-pt-arrow-toast";
+      toast.setAttribute("role", "status");
+      toast.innerHTML = "<b>" + (SZ_PT_ARROW.from ? "Choose the bounding parameter" : "Choose the parameter to bound") +
+        "</b><span>" + (SZ_PT_ARROW.from
+          ? "the one " + escapeHtml(SZ_PT_ARROW.from) + " is bounded by a function of"
+          : "the more general one, that the arrow starts from") + " &middot; Esc to cancel</span>";
+      document.body.appendChild(toast);
+    }
+    const hint = root.querySelector(".sz-pt-arrow-hint");
+    if (hint) hint.textContent = SZ_PT_ARROW ? "" : SZ_PT_ARROW_NOTICE;
+  }
+  if (!window.szPtArrowEscReady) {
+    window.szPtArrowEscReady = true;
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && SZ_PT_ARROW && !document.querySelector(".designer-dialog-backdrop")) {
+        SZ_PT_ARROW = null;
+        szUpdatePtArrowUi();
+      }
+    });
+  }
+  // The two-click gesture: the parameter to bound, then the one that bounds
+  // it. Clicking the origin again takes it back.
+  function szPtArrowPick(label) {
+    if (!SZ_PT_ARROW.from) {
+      SZ_PT_ARROW.from = label;
+      szUpdatePtArrowUi();
+      return;
+    }
+    const from = SZ_PT_ARROW.from;
+    if (label === from) { SZ_PT_ARROW.from = null; szUpdatePtArrowUi(); return; }
+    const nodeId = SZ_PT_ARROW.nodeId, notation = SZ_PT_ARROW.notation;
+    SZ_PT_ARROW = null;
+    szUpdatePtArrowUi();
+    if (loadSzParamEdges().some((e) => canonicalParamLabel(e.from) === from && canonicalParamLabel(e.to) === label)) {
+      SZ_PT_ARROW_NOTICE = "You already drew " + from + " → " + label + ".";
+      szUpdatePtArrowUi();
+      return;
+    }
+    if (paramSubsetOf(paramParts(from), paramParts(label))) {
+      SZ_PT_ARROW_NOTICE = "The diagram already has " + from + " → " + label + ": " + label + " bounds every measure " + from + " bounds.";
+      szUpdatePtArrowUi();
+      return;
+    }
+    showParamArrowDialog({ from: from, to: label, note: "" }, -1, nodeId, notation);
+  }
+
+  // `index` -1 adds the arrow; otherwise it edits loadSzParamEdges()[index].
+  function showParamArrowDialog(edge, index, nodeId, notation) {
+    const editing = index >= 0;
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<form class="designer-dialog designer-reduction-dialog" role="dialog" aria-modal="true" aria-labelledby="param-arrow-title">' +
+      '<h3 id="param-arrow-title">You claim that <span class="designer-reduction-problem">' + escapeHtml(edge.to) +
+      "</span> bounds <span class=\"designer-reduction-problem\">" + escapeHtml(edge.from) + "</span></h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Whenever ' + escapeHtml(edge.to) + " is bounded, " +
+      escapeHtml(edge.from) + " is bounded by a function of it. So an FPT or XP result for " + escapeHtml(edge.from) +
+      " holds for " + escapeHtml(edge.to) + ", and W-hardness for " + escapeHtml(edge.to) + " holds for " + escapeHtml(edge.from) +
+      " -- for the cited results here and for your own classifications. This is a statement about the two parameters, " +
+      "not about " + escapeHtml(notation) + ", so it applies on every problem where both appear. Kept in this browser.</p>" +
+      '<label class="designer-reduction-note">Source or note <small>(optional)</small>' +
+      '<input type="text" class="sz-filter" name="note" placeholder="e.g. #p ≤ p_max since the distinct values are integers" value="' + escapeHtml(edge.note || "") + '"></label>' +
+      '<div class="designer-dialog-actions">' +
+      (editing ? '<button type="button" class="map-history-btn designer-reduction-remove">Remove arrow</button>' : "") +
+      '<button type="button" class="map-history-btn" data-dialog="cancel">Cancel</button>' +
+      '<button type="submit" class="map-history-btn designer-dialog-report">' + (editing ? "Save" : "Add arrow") + "</button>" +
+      "</div></form>";
+    const form = backdrop.querySelector("form");
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    form.querySelector('[data-dialog="cancel"]').addEventListener("click", close);
+    const redraw = () => { if (!els.detailPanel.hidden) openSchedulingZooPanel(nodeId); szUpdatePtArrowUi(); };
+    const remove = form.querySelector(".designer-reduction-remove");
+    if (remove) remove.addEventListener("click", () => {
+      loadSzParamEdges().splice(index, 1);
+      storeSzParamEdges();
+      SZ_PT_ARROW_NOTICE = "Removed " + edge.from + " → " + edge.to + ".";
+      close();
+      redraw();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const next = { from: edge.from, to: edge.to, note: form.note.value.trim() };
+      const list = loadSzParamEdges();
+      if (editing) list[index] = next;
+      else list.push(next);
+      storeSzParamEdges();
+      SZ_PT_ARROW_NOTICE = (editing ? "Updated " : "Added ") + next.from + " → " + next.to + ".";
+      close();
+      redraw();
+    });
+    document.body.appendChild(backdrop);
+    form.note.focus();
   }
 
   function showClassifyDialog(nodeId, label, notation) {
@@ -5428,7 +5660,7 @@
     // from, see szCitationHtml.
     const lower = n.classical.filter((r) => r.kind === "lower").concat((n.inheritedApprox || []).filter((r) => r.kind === "lower"));
     const upper = n.classical.filter((r) => r.kind === "upper").concat((n.inheritedApprox || []).filter((r) => r.kind === "upper"));
-    const forest = buildParamForest(szAllParams(n));
+    const forest = buildParamForest(szAllParams(n).concat(szParamArrowResults(szAllParams(n))));
     const paramTreeHtml = buildParamTreeHtml(forest, resultLi, n.id);
     const paramDiagram = buildParamDiagramHtml(forest, n.id);
     // Every class the CITATIONS put on this problem, plus any the reader has
@@ -5486,12 +5718,32 @@
     const draftClassId = n.draft ? designerClassOf(n.id) : null;
     const draftClass = n.draft ? classicalClassById(draftClassId) : null;
     const draftReason = n.draft ? designerClassReason(n.id) : null;
+    // A corpus problem the reader did not classify, but whose class a claim
+    // or an arrow of theirs moved all the same (it glows blue on the map):
+    // its own line, above the corpus reading it supersedes. In the designer
+    // that map's arrows count; elsewhere the overview's.
+    const movedClassId = !mine && !n.draft ? activeClassOf(n.id) : null;
+    const moved = movedClassId && movedClassId !== szClassId && !(movedClassId === "unclaimed" && !szClassId);
+    const movedClass = moved ? classicalClassById(movedClassId) : null;
+    const touching = moved
+      ? (els.viewDesign.hidden ? loadSzUserEdges() : designerModelEdges()).filter((e) => e.from === n.id || e.to === n.id)
+      : [];
+    const arrowName = (e) => escapeHtml(((storyNodeById(e.from) || {}).notation || e.from) + " → " + ((storyNodeById(e.to) || {}).notation || e.to));
     const ccPillHtml =
       (mine
         ? classRow("your classification",
             '<button type="button" class="class-pill classify-btn classify-mine" title="Click to change or remove it" style="' +
             classPillStyle(mineClass) + '">' + escapeHtml(mineClass ? mineClass.label : mine.classId) + "</button>",
             "unverified" + (mine.source ? " &middot; " + escapeHtml(mine.source) : ""))
+        : "") +
+      (moved
+        ? classRow("from your claims",
+            '<span class="class-pill" style="' + classPillStyle(movedClass) + '">' +
+            escapeHtml(movedClassId === "unclaimed" ? "open" : (movedClass ? movedClass.label : movedClassId)) + "</span>",
+            (touching.length
+              ? "follows from your arrow " + touching.slice(0, 2).map(arrowName).join(" and ")
+              : "carried along the arrows from a classification or an arrow of yours") +
+            " &mdash; it supersedes the reading below")
         : "") +
       (n.draft
         ? classRow("from this map",
@@ -5575,12 +5827,28 @@
       (paramTreeHtml ? '<div class="detail-field detail-params"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
         "Nested by combined-parameter containment: a child bounds every measure its parent bounds, plus more" +
         (paramDiagram ? " (drag the boxes below, same as any other map on this site)" : "") + ".</p>" +
+        (paramDiagram
+          ? '<div class="sz-pt-arrow-bar"><button type="button" class="map-history-btn sz-pt-add-arrow" aria-pressed="false" ' +
+            'title="Add an arrow between two parameters: click the more general one, then the one that bounds it">→+</button>' +
+            '<span class="sz-arrow-hint sz-pt-arrow-hint"></span></div>'
+          : "") +
         (paramDiagram ? paramDiagram.html : "") + paramLegendHtml + paramTreeHtml + "</div>" : "") +
       "</div>";
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
     setPanelMinWidth(paramDiagram ? paramDiagram.width : 0);
     if (paramDiagram) enableSzParamDiagramDragging(els.detailContent.querySelector(".param-tree-wrap"), n.id, n.notation);
+    const ptArrowBtn = els.detailContent.querySelector(".sz-pt-add-arrow");
+    if (ptArrowBtn) {
+      // Reopening the panel (a redraw after an arrow) keeps a notice, never
+      // a half-drawn arrow.
+      if (SZ_PT_ARROW && SZ_PT_ARROW.nodeId !== n.id) SZ_PT_ARROW = null;
+      ptArrowBtn.addEventListener("click", () => {
+        SZ_PT_ARROW = SZ_PT_ARROW ? null : { nodeId: n.id, notation: n.notation, from: null };
+        szUpdatePtArrowUi();
+      });
+      szUpdatePtArrowUi();
+    }
     els.detailContent.querySelectorAll(".classify-btn").forEach((b) =>
       b.addEventListener("click", () => showClassifyDialog(n.id, null, n.notation)));
     enableNotationTooltips(els.detailContent);
@@ -5752,7 +6020,24 @@
     const claimArrowId = "sz-param-tree-arrow-claim";
     const ptMarker = (id, fill) => '<marker id="' + id + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
       '<path d="' + STEALTH_ARROW_PATH + '" fill="' + fill + '" /></marker>';
-    const defs = "<defs>" + ptMarker(arrowId, MAP_EDGE_COLOR) + ptMarker(claimArrowId, USER_CLASS_RING) + "</defs>";
+    const userArrowId = "sz-param-tree-arrow-user";
+    const defs = "<defs>" + ptMarker(arrowId, MAP_EDGE_COLOR) + ptMarker(claimArrowId, USER_CLASS_RING) +
+      ptMarker(userArrowId, "#fcc419") + "</defs>";
+    // The reader's own arrows between parameters, where both ends are on
+    // this diagram: dashed, so a claim never reads as containment, with a
+    // wide invisible twin to click. Not part of the layout (an arrow may
+    // point against the containment), drawn over it.
+    const userLinesSvg = loadSzParamEdges().map((e, i) => {
+      const a = pos[canonicalParamLabel(e.from)], b = pos[canonicalParamLabel(e.to)];
+      if (!a || !b) return "";
+      const acx = a.left + a.w / 2, acy = a.top + a.h / 2, bcx = b.left + b.w / 2, bcy = b.top + b.h / 2;
+      const tip = pullBackToRect(acx, acy, bcx, bcy, b.w / 2, b.h / 2, 3);
+      const ends = ' data-sz-pt-from="' + escapeHtml(canonicalParamLabel(e.from)) + '" data-sz-pt-to="' + escapeHtml(canonicalParamLabel(e.to)) +
+        '" x1="' + acx + '" y1="' + acy + '" x2="' + tip.x + '" y2="' + tip.y + '"';
+      return '<g class="sz-pt-user-edge" data-sz-pt-user-edge="' + i + '"><title>' +
+        escapeHtml("Your arrow: " + e.from + " is bounded by a function of " + e.to + (e.note ? " (" + e.note + ")" : "") + ". Click to edit or remove.") +
+        '</title><line class="sz-pt-user-edge-hit"' + ends + ' /><line' + ends + ' stroke="#fcc419" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#' + userArrowId + ')" /></g>';
+    }).join("");
 
     const linesSvg = edgeList.map((e) => {
       const a = pos[e.from], b = pos[e.to];
@@ -5810,7 +6095,7 @@
     }).join("");
 
     return {
-      html: '<div class="param-tree-wrap"><svg class="sz-param-tree-svg" width="' + width + '" height="' + height + '">' + defs + linesSvg + nodesSvg + "</svg></div>",
+      html: '<div class="param-tree-wrap"><svg class="sz-param-tree-svg" width="' + width + '" height="' + height + '">' + defs + linesSvg + userLinesSvg + nodesSvg + "</svg></div>",
       width: width,
     };
   }
@@ -5849,12 +6134,18 @@
         e.preventDefault();
         drag = { g, startX: e.clientX, startY: e.clientY, x0: parseFloat(g.dataset.x), y0: parseFloat(g.dataset.y) };
       });
-      // A click that didn't move the box offers to classify that parameter.
+      // A click that didn't move the box offers to classify that parameter
+      // -- or, while an arrow is being drawn, picks one of its ends.
       if (nodeId) g.addEventListener("click", () => {
         if (drag && drag.moved) return;
+        if (SZ_PT_ARROW) { szPtArrowPick(g.dataset.szPtId); return; }
         showClassifyDialog(nodeId, g.dataset.szPtId, notation);
       });
     });
+    if (nodeId) svg.querySelectorAll("g.sz-pt-user-edge").forEach((g) => g.addEventListener("click", () => {
+      const i = +g.dataset.szPtUserEdge;
+      showParamArrowDialog(loadSzParamEdges()[i], i, nodeId, notation);
+    }));
     document.addEventListener("pointermove", (e) => {
       if (!drag) return;
       if (Math.abs(e.clientX - drag.startX) > 4 || Math.abs(e.clientY - drag.startY) > 4) drag.moved = true;
@@ -6622,20 +6913,70 @@
     MAP_HIDDEN_REDO_STACK[DESIGNER_MAP_ID] = [];
   }
 
-  // Loads a saved map (or "new": an empty one) into the designer.
-  function openDesignerMap(mapId) {
+  // The map being built and not yet saved. Nothing else keeps it: a saved
+  // map is stored by "Save problem map", and until then the map lives only in
+  // memory, which a reload empties. So the page writes it here as it leaves
+  // (and after every redraw), and a reload of #/design/new reads it back.
+  const DESIGNER_DRAFT_KEY = "psz.designerDraft.v1";
+  function loadDesignerDraft() {
+    try {
+      const d = JSON.parse(localStorage.getItem(DESIGNER_DRAFT_KEY) || "null");
+      return d && typeof d === "object" && Array.isArray(d.problemIds) ? d : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function clearDesignerDraft() {
+    try { localStorage.removeItem(DESIGNER_DRAFT_KEY); } catch (e) { /* nothing to clear */ }
+  }
+  // Only ever the unsaved map (designerMapId null) while the designer is on
+  // screen; a saved map's own edits still wait for "Save problem map".
+  function persistDesignerDraft() {
+    if (designerMapId !== null || !els.viewDesign || els.viewDesign.hidden) return;
+    const hidden = MAP_HIDDEN_IDS[DESIGNER_MAP_ID] || new Set();
+    const ids = storyProblemIds.filter((id) => !hidden.has(id));
+    if (!ids.length) { clearDesignerDraft(); return; }
+    const draft = {
+      title: designerMapTitle,
+      problemIds: ids,
+      positions: {},
+      userEdges: designerUserEdges.filter((e) => ids.includes(e.from) && ids.includes(e.to)),
+      drafts: {},
+    };
+    ids.forEach((id) => {
+      draft.positions[id] = storyPositions[id];
+      if (designerDraftNodes[id]) draft.drafts[id] = designerDraftNodes[id];
+    });
+    try { localStorage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(draft)); } catch (e) { /* private window or quota: the draft just isn't kept */ }
+  }
+  window.addEventListener("pagehide", persistDesignerDraft);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistDesignerDraft(); });
+
+  // Loads a saved map (or "new": an empty one) into the designer. `resume`
+  // is true when the page has just been loaded, which for "new" means the
+  // reader is coming back to the map they were building; otherwise "new" is a
+  // request for a blank one and the old draft goes.
+  function openDesignerMap(mapId, options) {
     resetDesignerHidden();
     designerSelectedId = null;
     designerArrowMode = null;
     designerArrowNotice = "";
     if (mapId === "new") {
-      storyProblemIds = [];
+      const draft = options && options.resume ? loadDesignerDraft() : null;
+      if (!draft) clearDesignerDraft();
+      Object.assign(designerDraftNodes, (draft && draft.drafts) || {});
+      storyProblemIds = draft ? draft.problemIds.filter((id) => storyNodeById(id)) : [];
       storyPositions = {};
-      designerUserEdges = [];
+      storyProblemIds.forEach((id) => { storyPositions[id] = (draft.positions || {})[id] || { left: 30, top: 30 }; });
+      const onMap = new Set(storyProblemIds);
+      designerUserEdges = draft ? (draft.userEdges || []).filter((e) => onMap.has(e.from) && onMap.has(e.to)) : [];
       designerMapId = null;
-      designerMapTitle = "";
+      designerMapTitle = draft ? draft.title || "" : "";
       return;
     }
+    // Opening a saved map by address leaves any unsaved draft behind, which
+    // is what starting to work on a different map means.
+    clearDesignerDraft();
     const m = loadSavedMaps().find((x) => x.id === mapId);
     if (!m) { designerMapId = null; designerMapTitle = ""; storyProblemIds = []; storyPositions = {}; designerUserEdges = []; return; }
     Object.assign(designerDraftNodes, m.drafts || {});
@@ -6677,6 +7018,7 @@
     if (!storeSavedMaps(next)) return { ok: false, message: "Couldn't save: this browser doesn't allow local storage." };
     designerMapId = map.id;
     designerMapTitle = map.title;
+    clearDesignerDraft();
     // Keep the address pointing at this map without re-running the route
     // (unless the caller is about to navigate there itself).
     if (!keepUrl) history.replaceState(null, "", "#/design/" + encodeURIComponent(map.id));
@@ -6693,11 +7035,21 @@
   // SZ_REDUCTION_KINDS): the pseudo-polynomial check only applies when it
   // keeps numbers polynomial, the field-rule check only when it is (or may
   // be) a restriction.
+  // The classes an arrow is judged by: the designer's when the designer is
+  // showing (its own arrows and drafts count there), the overview's otherwise.
+  function activeClassOf(id) {
+    if (!els.viewDesign.hidden) return designerClassOf(id);
+    return szEffectiveClasses()[id] || (storyNodeById(id) || {}).classicalClass || "unclaimed";
+  }
+  // Since an arrow carries its class through, the two ends of one agree
+  // unless a direct classification of the reader's blocks that, so a class
+  // conflict here means two of their own claims disagree.
   function designerArrowConflict(edge) {
     const fromId = edge.from, toId = edge.to;
     const a = storyNodeById(fromId), b = storyNodeById(toId);
-    if (!a || !b || !SZ_EFFECTIVE) return null;
-    const ca = designerClassOf(fromId), cb = designerClassOf(toId);
+    if (!a || !b) return null;
+    szEffectiveClasses();
+    const ca = activeClassOf(fromId), cb = activeClassOf(toId);
     const hard = ["weakly-NP-hard", "NP-hard-unresolved", "strongly-NP-hard"];
     if (ca === "P" && hard.includes(cb)) {
       return { general: a, specific: b, generalClass: ca, specificClass: cb,
@@ -6708,10 +7060,13 @@
         why: "the pseudo-polynomial algorithm for " + a.notation + " would then solve the strongly NP-hard " + b.notation + " in pseudo-polynomial time" };
     }
     // Otherwise, field by field against the reduction rules: a special case
-    // can narrow a field but never widen it. A field whose rules only say the
-    // two values are unrelated (or say nothing) is not counted -- the rules
-    // are incomplete, so silence is not a contradiction.
-    if (edge.kind && !["restriction", "padding", "unsure"].includes(edge.kind)) return null;
+    // can narrow a field but never widen it. Only for an arrow the reader
+    // said IS a restriction (or a padding, which narrows fields too): a
+    // reduction of another kind, or one they are not sure about, may
+    // widen a field and still be a reduction. A field whose rules only say
+    // the two values are unrelated (or say nothing) is not counted -- the
+    // rules are incomplete, so silence is not a contradiction.
+    if (!["restriction", "padding"].includes(edge.kind)) return null;
     const va = szProblemVector(a), vb = szProblemVector(b);
     if (!va || !vb) return null;
     const fields = Object.keys(DATA_SZ.fieldReductions || {})
@@ -6817,21 +7172,87 @@
   const paramParts = (label) =>
     new Set(String(label).split("+").map((t) => t.trim()).filter(Boolean));
   const paramSubsetOf = (a, b) => a.size < b.size && Array.from(a).every((t) => b.has(t));
+  // Is `a` bounded by a function of `b`? By containment (a's measures are
+  // among b's) or along the reader's parameter arrows, in any combination
+  // -- `labels` are the other labels a chain may pass through.
+  function paramGeneralizes(a, b, labels) {
+    if (a === b) return false;
+    const edges = loadSzParamEdges();
+    const pool = new Set([a, b].concat(labels || []));
+    edges.forEach((e) => { pool.add(e.from); pool.add(e.to); });
+    const seen = new Set([a]);
+    const stack = [a];
+    while (stack.length) {
+      const x = stack.pop();
+      const px = paramParts(x);
+      pool.forEach((y) => {
+        if (seen.has(y)) return;
+        if (paramSubsetOf(px, paramParts(y)) || edges.some((e) => e.from === x && e.to === y)) {
+          seen.add(y);
+          stack.push(y);
+        }
+      });
+    }
+    return seen.has(b);
+  }
   function userParamClass(nodeId, param) {
     const forNode = szParamClaimMap()[nodeId] || {};
     if (forNode[param]) return forNode[param];
-    const mine = paramParts(param);
+    const labels = Object.keys(forNode);
     let implied = null;
-    Object.keys(forNode).forEach((other) => {
+    labels.forEach((other) => {
       if (implied) return;
       const claim = forNode[other];
-      const theirs = paramParts(other);
+      // An upper bound (P, FPT, XP) comes DOWN from a parameter this one
+      // bounds; hardness comes UP from a parameter that bounds this one.
       const carries = PARAM_UPPER_BOUNDS.includes(claim.classId)
-        ? paramSubsetOf(theirs, mine)
-        : paramSubsetOf(mine, theirs);
+        ? paramGeneralizes(other, param, labels)
+        : paramGeneralizes(param, other, labels);
       if (carries) implied = Object.assign({}, claim, { direct: false, viaParam: other });
     });
     return implied;
+  }
+
+  // What the cited results carry along the reader's parameter arrows, and
+  // ONLY along those: the containment the diagram draws asserts nothing
+  // about how cited results relate (see buildParamForest), but an arrow of
+  // the reader's is their claim that they do. Hardness (W[1], W[2],
+  // para-NP) travels from the bounding end to the bounded one; FPT and XP
+  // the other way. Each carried line keeps its citation and says which
+  // arrow brought it.
+  const PARAM_HARDNESS = ["W1", "W2", "paraNP"];
+  function szParamArrowResults(params) {
+    const edges = loadSzParamEdges();
+    if (!edges.length) return [];
+    const have = {};
+    const keyOf = (r, label) => label + "\u0001" + (r.bibkey || r.bound) + "\u0001" + (r.inheritedFrom || "") + "\u0001" + (r.arrowSource || r.param);
+    const out = [];
+    const all = params.slice();
+    params.forEach((r) => { have[keyOf(r, canonicalParamLabel(r.param))] = true; });
+    let added = true;
+    while (added) {
+      added = false;
+      all.slice().forEach((r) => {
+        const label = canonicalParamLabel(r.param);
+        const cls = r.complexityClass;
+        if (!cls) return;
+        edges.forEach((e) => {
+          const target = PARAM_HARDNESS.includes(cls) && canonicalParamLabel(e.to) === label ? canonicalParamLabel(e.from)
+            : PARAM_UPPER_BOUNDS.includes(cls) && cls !== "P" && canonicalParamLabel(e.from) === label ? canonicalParamLabel(e.to)
+            : null;
+          if (!target) return;
+          const copy = Object.assign({}, r, { param: target, viaParamArrow: r.viaParamArrow || { from: e.from, to: e.to },
+            arrowSource: r.arrowSource || r.param });
+          const k = keyOf(copy, target);
+          if (have[k]) return;
+          have[k] = true;
+          out.push(copy);
+          all.push(copy);
+          added = true;
+        });
+      });
+    }
+    return out;
   }
 
   // ---- which measures an arrow keeps bounded -------------------------
@@ -7096,6 +7517,7 @@
     });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
+      const overriddenBefore = new Set(hostOverridden(host).map((o) => o.id));
       const next = {
         from: edge.from, to: edge.to,
         kind: form.kind.value, numbers: form.numbers.value, params: form.params.value,
@@ -7116,6 +7538,12 @@
       host.rerender();
       const conflict = designerArrowConflict(next);
       if (conflict) showDesignerConflictDialog(conflict, at, host);
+      else {
+        // The arrow stands; what it moved against the literature is reported
+        // the way a classification's overrides are.
+        const fresh = hostOverridden(host).filter((o) => !overriddenBefore.has(o.id));
+        if (fresh.length) showArrowOverrideAlert(next, fresh, at, host);
+      }
     });
     document.body.appendChild(backdrop);
     form.querySelector('input[name="kind"]:checked').focus();
@@ -7172,6 +7600,58 @@
       "So either the reduction is wrong, or one of these results is.",
     ].join("\n");
     return SZ_REPORT_ISSUE_URL + "?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body.slice(0, 6000));
+  }
+
+  // The problems on a host's map whose class the reader's claims and arrows
+  // have moved against the literature: the overview's whole list, or, for
+  // the designer, the corpus problems on its map judged by its own classes.
+  function hostOverridden(host) {
+    if (host !== DESIGNER_EDGE_HOST) return szOverriddenByClaims();
+    if (!DATA_SZ) return [];
+    if (!SZ_EFFECTIVE_CORPUS) SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
+    return storyProblemIds
+      .filter((id) => !(storyNodeById(id) || {}).draft && szClassesDisagree(designerClassOf(id), SZ_EFFECTIVE_CORPUS[id]))
+      .map((id) => ({ id: id, notation: storyNodeById(id).notation, now: designerClassOf(id), cited: SZ_EFFECTIVE_CORPUS[id],
+        direct: !!userClassification(id, null) }));
+  }
+
+  // Shown when an arrow the reader just drew moves a problem against its
+  // citations. Never blocked: the arrow is kept, and here is what followed.
+  function showArrowOverrideAlert(edge, conflicts, edgeIndex, host) {
+    const a = storyNodeById(edge.from), b = storyNodeById(edge.to);
+    const backdrop = document.createElement("div");
+    backdrop.className = "designer-dialog-backdrop";
+    backdrop.innerHTML =
+      '<div class="designer-dialog" role="alertdialog" aria-modal="true" aria-labelledby="arrow-override-title">' +
+      '<h3 id="arrow-override-title">That arrow contradicts ' +
+      (conflicts.length === 1 ? "a published result" : conflicts.length + " published results") + "</h3>" +
+      '<p class="designer-relations-empty" style="margin:0 0 0.7rem">Your arrow <b>' + escapeHtml(a.notation) + " → " +
+      escapeHtml(b.notation) + "</b> says every " + escapeHtml(b.notation) + " instance is an instance of " +
+      escapeHtml(a.notation) + ". Either that is wrong, or you have a result worth writing up. The arrow has been " +
+      "kept and its class carries through: the problems it moved are glowing blue.</p>" +
+      '<ul class="result-list">' +
+      conflicts.slice(0, 6).map((c) =>
+        "<li><b>" + escapeHtml(c.notation) + "</b> is cited as <b>" + escapeHtml(szClassLabel(c.cited)) +
+        "</b>, but is now <b>" + escapeHtml(szClassLabel(c.now)) + "</b> because of the arrow.</li>").join("") +
+      (conflicts.length > 6 ? "<li>and " + (conflicts.length - 6) + " more</li>" : "") +
+      "</ul>" +
+      '<div class="designer-dialog-actions">' +
+      '<button type="button" class="map-history-btn" data-dialog="remove">Remove the arrow</button>' +
+      '<button type="button" class="map-history-btn designer-dialog-report" data-dialog="keep">Keep it</button>' +
+      "</div></div>";
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector('[data-dialog="keep"]').addEventListener("click", close);
+    backdrop.querySelector('[data-dialog="remove"]').addEventListener("click", () => {
+      host.edges().splice(edgeIndex, 1);
+      host.changed();
+      host.notice("");
+      close();
+      host.rerender();
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-dialog="keep"]').focus();
   }
 
   function showDesignerConflictDialog(c, edgeIndex, host) {
@@ -7291,52 +7771,33 @@
     return full.filter((edge) => !visible.some((middle) => middle !== edge.from && middle !== edge.to && reachOf(edge.from).has(middle) && reachOf(middle).has(edge.to)));
   }
 
-  // A drafted problem carries no citation of its own, but the map often
-  // settles its complexity anyway, in either direction along the arrows:
-  // P travels DOWN (an instance of a problem solvable in polynomial time is
-  // still solvable in polynomial time once restricted), hardness travels UP
-  // (SZ_EFFECTIVE already does that among corpus problems -- see
-  // inheritedContribution). Corpus problems keep the class they already
-  // have; only drafts are filled in here, from the rule-derived relations
-  // (designerRelationPairs), never from hand-drawn arrows, which are claims
-  // the reader is still making rather than data.
+  // The classes the designer paints with: the same computation as the
+  // overview's (computeEffectiveClassesForSz), over the corpus plus the
+  // drafts on this map, related to it by the rules (designerRelationPairs),
+  // with the reader's arrows -- the overview's, and this map's own -- as the
+  // claims they are. A draft with no citation is settled by the arrows
+  // around it in either direction: P down (an instance of a problem
+  // solvable in polynomial time is still solvable once restricted),
+  // hardness up (inheritedContribution); a draft the reader classified
+  // keeps that class.
   let designerEffectiveCache = { key: null, classes: null };
+  let DESIGNER_USER_AFFECTED = new Set();
+  // The arrows that count on this map: every one drawn on the overview
+  // (those are global claims) and the ones drawn here.
+  function designerModelEdges() {
+    return loadSzUserEdges().concat(designerUserEdges);
+  }
   function designerEffectiveClasses() {
     const pairs = designerRelationPairs();
-    const cacheKey = storyProblemIds.slice().sort().join(",") + "|" + pairs.length;
+    const arrows = designerModelEdges();
+    const cacheKey = storyProblemIds.slice().sort().join(",") + "|" + pairs.length + "|" +
+      JSON.stringify(arrows.map((e) => [e.from, e.to, e.numbers || ""]));
     if (designerEffectiveCache.key === cacheKey) return designerEffectiveCache.classes;
-    const classes = {};
-    const classOf = (id) => {
-      if (classes[id] !== undefined) return classes[id];
-      const node = storyNodeById(id);
-      return szEffectiveClasses()[id] || (node && node.classicalClass) || "unclaimed";
-    };
-    const drafts = storyProblemIds.filter((id) => (storyNodeById(id) || {}).draft);
-    // A draft the reader has classified themselves keeps that class, and
-    // hands it on to the other drafts like any other settled problem --
-    // same rule as everywhere else on the site: their claim supersedes.
-    drafts.forEach((id) => {
-      const claim = userClassification(id, null);
-      if (claim) classes[id] = claim.classId;
-    });
-    // One draft can settle another, so keep going until nothing changes.
-    for (let pass = 0; pass < drafts.length + 1; pass += 1) {
-      let changed = false;
-      drafts.forEach((id) => {
-        if (classes[id] && classes[id] !== "unclaimed") return;
-        let result = null;
-        pairs.forEach((edge) => {
-          if (edge.to === id && classOf(edge.from) === "P") result = "P";
-        });
-        if (!result) {
-          pairs.forEach((edge) => {
-            if (edge.from === id) result = strongerOf(result, inheritedContribution(classOf(edge.to)));
-          });
-        }
-        if (result && result !== classes[id]) { classes[id] = result; changed = true; }
-      });
-      if (!changed) break;
-    }
+    const drafts = storyProblemIds.filter((id) => (storyNodeById(id) || {}).draft).map((id) => storyNodeById(id));
+    const affected = new Set();
+    const classes = computeEffectiveClassesForSz(DATA_SZ.nodes.concat(drafts), pairs, false,
+      { userEdges: arrows, affectedOut: affected });
+    DESIGNER_USER_AFFECTED = affected;
     designerEffectiveCache = { key: cacheKey, classes: classes };
     return classes;
   }
@@ -7360,7 +7821,7 @@
     const classId = designerEffectiveClasses()[id];
     if (!classId || classId === "unclaimed") return null;
     const label = szClassLabel(classId);
-    const pairs = designerRelationPairs();
+    const pairs = designerRelationPairs().concat(designerModelEdges());
     const named = (x) => (storyNodeById(x) || {}).notation || x;
     if (classId === "P") {
       // P travels DOWN: restricting a problem solvable in polynomial time
@@ -7441,6 +7902,7 @@
   }
 
   function renderDesignerMap() {
+    designerEffectiveClasses(); // fills DESIGNER_USER_AFFECTED before anything below reads it
     const nodeH = MAP_NODE_H_DEFAULT;
     const nodeW = Math.max(150, ...storyProblemIds.map((id) => measureTextWidthPx(storyNodeById(id).notation, MAP_NODE_FONT_SIZE_REM * 16) + 24));
     const positions = designerNodePositions(nodeW, nodeH);
@@ -7468,7 +7930,7 @@
       // of them cannot both hold -- a contradiction outranks the blue.
       const claimTouched = !conflict && (
         userClassification(edge.from, null) || userClassification(edge.to, null) ||
-        SZ_USER_AFFECTED.has(edge.from) || SZ_USER_AFFECTED.has(edge.to));
+        DESIGNER_USER_AFFECTED.has(edge.from) || DESIGNER_USER_AFFECTED.has(edge.to));
       const stroke = conflict ? SZ_EDGE_FLAGGED_COLOR : claimTouched ? USER_CLASS_RING : MAP_EDGE_COLOR;
       const markerId = conflict ? "designer-conflict-arrow" : claimTouched ? "designer-claim-arrow" : "designer-map-arrow";
       return '<line data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
@@ -7497,7 +7959,7 @@
       const pos = positions[id];
       const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
       const text = cc && cc.fill ? fillTextColor(cc) : null;
-      return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (userClassification(id, null) ? " user-classified" : "") + (SZ_USER_AFFECTED.has(id) ? " user-affected" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
+      return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (userClassification(id, null) ? " user-classified" : "") + (DESIGNER_USER_AFFECTED.has(id) ? " user-affected" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
     }).join("");
     const controls = '<div class="map-history-controls">' +
       '<button type="button" class="map-undo-btn map-history-btn" disabled title="Undo the last hidden node">↶ Undo</button>' +
@@ -8160,6 +8622,7 @@
     enableDesignerSearch();
     restoreDropdownUi(els.viewDesign, dropdownUi);
     if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+    persistDesignerDraft();
     return;
 
     if (!sandboxGraph) resetSandboxGraph();

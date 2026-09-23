@@ -1560,3 +1560,13 @@ g.sz-pt-classify:hover rect { filter: brightness(1.15); }
   background: rgba(128, 128, 128, 0.14);
   pointer-events: none;
 }
+
+/* Arrows the reader draws between parameters in a problem panel's diagram
+   (see showParamArrowDialog): the same two-click mode as the map's →+. */
+.sz-pt-arrow-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.4rem; }
+.sz-pt-arrow-bar .sz-arrow-hint { font-size: 0.8rem; color: var(--muted); }
+.param-tree-wrap.arrow-mode g.sz-pt-node { cursor: crosshair; }
+g.sz-pt-node.arrow-origin rect { stroke: #fcc419 !important; stroke-width: 3; filter: drop-shadow(0 0 6px rgba(252, 196, 25, 0.85)); }
+g.sz-pt-user-edge { cursor: pointer; }
+g.sz-pt-user-edge .sz-pt-user-edge-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+g.sz-pt-user-edge:hover line:not(.sz-pt-user-edge-hit) { stroke-width: 3; }
