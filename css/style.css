@@ -1569,4 +1569,7 @@ g.sz-pt-classify:hover rect { filter: brightness(1.15); }
 g.sz-pt-node.arrow-origin rect { stroke: #fcc419 !important; stroke-width: 3; filter: drop-shadow(0 0 6px rgba(252, 196, 25, 0.85)); }
 g.sz-pt-user-edge { cursor: pointer; }
 g.sz-pt-user-edge .sz-pt-user-edge-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; }
-g.sz-pt-user-edge:hover line:not(.sz-pt-user-edge-hit) { stroke-width: 3; }
+g.sz-pt-user-edge:hover path:not(.sz-pt-user-edge-hit) { stroke-width: 3; }
+
+/* Routed arrows are <path>s now (see edgePathD): never filled. */
+svg path[data-from], svg path[data-to], svg path[data-sz-from], svg path[data-sz-pt-from] { fill: none; }

@@ -4218,11 +4218,14 @@
       ).join("") +
       "</defs>";
 
+    const portOf = edgePorts(edgesAll, (id) => pos[id]);
     const linesSvg = edgesAll
       .map((e) => {
         const a = pos[e.from], b = pos[e.to];
         if (!a || !b) return "";
-        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, 3);
+        const port = portOf(e);
+        const d = edgePathD(a, b, 3, port.pa, port.pb);
+        const portAttr = ' data-pa="' + port.pa + '" data-pb="' + port.pb + '"';
         // Red also covers a contradiction the reader has just created by
         // classifying something themselves (item: inconsistent claims stay
         // allowed, but the arrows that disagree say so).
@@ -4250,8 +4253,8 @@
         const fromAttr = 'data-sz-from="' + escapeHtml(e.from) + '" data-sz-to="' + escapeHtml(e.to) + '"';
         return '<g class="sz-edge" ' + fromAttr + '>' +
           "<title>" + escapeHtml(szEdgeSummary(e, flagged)) + "</title>" +
-          '<line class="sz-edge-hit" ' + fromAttr + ' x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y + '" />' +
-          '<line class="sz-edge-visible" ' + fromAttr + ' x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+          '<path class="sz-edge-hit" ' + fromAttr + portAttr + ' fill="none" d="' + d + '" />' +
+          '<path class="sz-edge-visible" ' + fromAttr + portAttr + ' fill="none" d="' + d +
           '" stroke="' + stroke + '" stroke-width="' + (flagged ? "2.6" : "2") + '"' + dash +
           ' marker-end="url(#' + szArrowIdFor(stroke) + ')" />' +
           "</g>";
@@ -4855,7 +4858,7 @@
       if (!a || !b) return;
       const conflict = !!designerArrowConflict(edge);
       const stroke = conflict ? SZ_EDGE_FLAGGED_COLOR : USER_CLASS_RING;
-      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, 3);
+      const d = edgePathD(a, b, 3, 0, 0);
       const g = document.createElementNS(SVG_NS, "g");
       // `sz-edge` too, so hiding a node hides these along with the rest.
       g.setAttribute("class", "sz-edge sz-user-edge");
@@ -4867,14 +4870,12 @@
         (conflict ? " -- conflicts with The Scheduling Zoo's data" : "") + ". Click to edit or remove.";
       g.appendChild(title);
       ["sz-edge-hit", "sz-edge-visible"].forEach((cls) => {
-        const line = document.createElementNS(SVG_NS, "line");
+        const line = document.createElementNS(SVG_NS, "path");
         line.setAttribute("class", cls);
         line.dataset.szFrom = edge.from;
         line.dataset.szTo = edge.to;
-        line.setAttribute("x1", a.cx);
-        line.setAttribute("y1", a.cy);
-        line.setAttribute("x2", tip.x);
-        line.setAttribute("y2", tip.y);
+        line.setAttribute("fill", "none");
+        line.setAttribute("d", d);
         if (cls === "sz-edge-visible") {
           line.setAttribute("stroke", stroke);
           line.setAttribute("stroke-width", "2.4");
@@ -6027,29 +6028,32 @@
     // this diagram: dashed, so a claim never reads as containment, with a
     // wide invisible twin to click. Not part of the layout (an arrow may
     // point against the containment), drawn over it.
+    const ptBox = (id) => pos[id] && { cx: pos[id].left + pos[id].w / 2, cy: pos[id].top + pos[id].h / 2, halfW: pos[id].w / 2, halfH: pos[id].h / 2 };
+    const ptUserEdges = loadSzParamEdges().map((e) => ({ from: canonicalParamLabel(e.from), to: canonicalParamLabel(e.to) }));
+    const ptPortOf = edgePorts(edgeList.concat(ptUserEdges), ptBox);
     const userLinesSvg = loadSzParamEdges().map((e, i) => {
-      const a = pos[canonicalParamLabel(e.from)], b = pos[canonicalParamLabel(e.to)];
+      const fromL = canonicalParamLabel(e.from), toL = canonicalParamLabel(e.to);
+      const a = ptBox(fromL), b = ptBox(toL);
       if (!a || !b) return "";
-      const acx = a.left + a.w / 2, acy = a.top + a.h / 2, bcx = b.left + b.w / 2, bcy = b.top + b.h / 2;
-      const tip = pullBackToRect(acx, acy, bcx, bcy, b.w / 2, b.h / 2, 3);
-      const ends = ' data-sz-pt-from="' + escapeHtml(canonicalParamLabel(e.from)) + '" data-sz-pt-to="' + escapeHtml(canonicalParamLabel(e.to)) +
-        '" x1="' + acx + '" y1="' + acy + '" x2="' + tip.x + '" y2="' + tip.y + '"';
+      const port = ptPortOf({ from: fromL, to: toL });
+      const ends = ' data-sz-pt-from="' + escapeHtml(fromL) + '" data-sz-pt-to="' + escapeHtml(toL) +
+        '" data-pa="' + port.pa + '" data-pb="' + port.pb + '" fill="none" d="' + edgePathD(a, b, 3, port.pa, port.pb) + '"';
       return '<g class="sz-pt-user-edge" data-sz-pt-user-edge="' + i + '"><title>' +
         escapeHtml("Your arrow: " + e.from + " is bounded by a function of " + e.to + (e.note ? " (" + e.note + ")" : "") + ". Click to edit or remove.") +
-        '</title><line class="sz-pt-user-edge-hit"' + ends + ' /><line' + ends + ' stroke="#fcc419" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#' + userArrowId + ')" /></g>';
+        '</title><path class="sz-pt-user-edge-hit"' + ends + ' /><path' + ends + ' stroke="#fcc419" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#' + userArrowId + ')" /></g>';
     }).join("");
 
     const linesSvg = edgeList.map((e) => {
-      const a = pos[e.from], b = pos[e.to];
+      const a = ptBox(e.from), b = ptBox(e.to);
       if (!a || !b) return "";
-      const acx = a.left + a.w / 2, acy = a.top + a.h / 2, bcx = b.left + b.w / 2, bcy = b.top + b.h / 2;
-      const tip = pullBackToRect(acx, acy, bcx, bcy, b.w / 2, b.h / 2, 3);
+      const port = ptPortOf(e);
+      const d = edgePathD(a, b, 3, port.pa, port.pb);
       // Blue when either end carries one of the reader's classifications --
       // the same blue that rings the boxes, so an arrow reading "this is
       // yours" matches the boxes it joins.
       const claimed = nodeId && (userParamClass(nodeId, e.from) || userParamClass(nodeId, e.to));
-      return '<line data-sz-pt-from="' + escapeHtml(e.from) + '" data-sz-pt-to="' + escapeHtml(e.to) +
-        '" x1="' + acx + '" y1="' + acy + '" x2="' + tip.x + '" y2="' + tip.y +
+      return '<path data-sz-pt-from="' + escapeHtml(e.from) + '" data-sz-pt-to="' + escapeHtml(e.to) +
+        '" data-pa="' + port.pa + '" data-pb="' + port.pb + '" fill="none" d="' + d +
         '" stroke="' + (claimed ? USER_CLASS_RING : MAP_EDGE_COLOR) + '" stroke-width="' + (claimed ? "2" : "1.5") +
         '" marker-end="url(#' + (claimed ? claimArrowId : arrowId) + ')" />';
     }).join("");
@@ -6106,7 +6110,7 @@
       g.dataset.x = m[1];
       g.dataset.y = m[2];
     });
-    svg.querySelectorAll("line[data-sz-pt-from]").forEach((line) => {
+    svg.querySelectorAll("path[data-sz-pt-from]").forEach((line) => {
       const a = svg.querySelector('g.sz-pt-node[data-sz-pt-id="' + cssEscape(line.dataset.szPtFrom) + '"]');
       const b = svg.querySelector('g.sz-pt-node[data-sz-pt-id="' + cssEscape(line.dataset.szPtTo) + '"]');
       if (!a || !b) return;
@@ -6114,11 +6118,8 @@
       const bw = b.querySelector("rect").getAttribute("width"), bh = b.querySelector("rect").getAttribute("height");
       const ax = parseFloat(a.dataset.x) + aw / 2, ay = parseFloat(a.dataset.y) + ah / 2;
       const bx = parseFloat(b.dataset.x) + bw / 2, by = parseFloat(b.dataset.y) + bh / 2;
-      const tip = pullBackToRect(ax, ay, bx, by, bw / 2, bh / 2, 3);
-      line.setAttribute("x1", ax);
-      line.setAttribute("y1", ay);
-      line.setAttribute("x2", tip.x);
-      line.setAttribute("y2", tip.y);
+      line.setAttribute("d", edgePathD({ cx: ax, cy: ay, halfW: aw / 2, halfH: ah / 2 }, { cx: bx, cy: by, halfW: bw / 2, halfH: bh / 2 }, 3,
+        +line.dataset.pa || 0, +line.dataset.pb || 0));
     });
   }
 
@@ -7914,10 +7915,13 @@
     const arrowDef = "<defs>" + marker("designer-map-arrow", "fill:" + MAP_EDGE_COLOR) + marker("designer-user-arrow", "fill:var(--accent)") +
       marker("designer-conflict-arrow", "fill:" + SZ_EDGE_FLAGGED_COLOR) +
       marker("designer-claim-arrow", "fill:" + USER_CLASS_RING) + "</defs>";
+    const dBox = (p) => p && { cx: p.cx, cy: p.cy, halfW: nodeW / 2, halfH: nodeH / 2 };
+    const dPortOf = edgePorts(designerMapEdges().concat(designerUserEdges), (id) => dBox(positions[id]));
     const lines = designerMapEdges().map((edge) => {
       const a = positions[edge.from], b = positions[edge.to];
       if (!a || !b) return "";
-      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
+      const port = dPortOf(edge);
+      const d = edgePathD(dBox(a), dBox(b), 5, port.pa, port.pb);
       // An arrow derived from the reduction rules still turns red when the
       // classifications at its two ends contradict each other -- the same
       // rule the hand-drawn arrows below are judged by, and the same one the
@@ -7933,24 +7937,25 @@
         DESIGNER_USER_AFFECTED.has(edge.from) || DESIGNER_USER_AFFECTED.has(edge.to));
       const stroke = conflict ? SZ_EDGE_FLAGGED_COLOR : claimTouched ? USER_CLASS_RING : MAP_EDGE_COLOR;
       const markerId = conflict ? "designer-conflict-arrow" : claimTouched ? "designer-claim-arrow" : "designer-map-arrow";
-      return '<line data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+      return '<path data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" data-pa="' + port.pa + '" data-pb="' + port.pb + '" fill="none" d="' + d +
         '" stroke="' + stroke + '" stroke-width="' + (conflict || claimTouched ? "2.6" : "2") + '"' +
         (conflict ? ' stroke-dasharray="6,3"' : "") +
         ' marker-end="url(#' + markerId + ')">' +
         (conflict ? "<title>" + escapeHtml("Contradiction: " + conflict) + "</title>" : "") +
-        "</line>";
+        "</path>";
     }).join("") +
     // Arrows added by hand: dashed, in the accent color, or red when they
     // conflict with The Scheduling Zoo's results. Click one to remove it.
     designerUserEdges.map((edge, i) => {
       const a = positions[edge.from], b = positions[edge.to];
       if (!a || !b || hidden.has(edge.from) || hidden.has(edge.to)) return "";
-      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
+      const port = dPortOf(edge);
       const conflict = !!designerArrowConflict(edge);
-      const ends = 'data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y + '"';
+      const ends = 'data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" data-pa="' + port.pa + '" data-pb="' + port.pb +
+        '" fill="none" d="' + edgePathD(dBox(a), dBox(b), 5, port.pa, port.pb) + '"';
       return '<g class="designer-user-edge" data-user-edge="' + i + '"><title>' + escapeHtml("Added by you: " + szReductionSummary(edge) + (conflict ? " -- conflicts with The Scheduling Zoo's data" : "") + ". Click to edit or remove.") + '</title>' +
-        '<line class="designer-user-edge-hit" ' + ends + ' />' +
-        '<line ' + ends + ' style="stroke:' + (conflict ? SZ_EDGE_FLAGGED_COLOR : "var(--accent)") + '" stroke-width="2.4" stroke-dasharray="7,4" marker-end="url(#' +
+        '<path class="designer-user-edge-hit" ' + ends + ' />' +
+        '<path ' + ends + ' style="stroke:' + (conflict ? SZ_EDGE_FLAGGED_COLOR : "var(--accent)") + '" stroke-width="2.4" stroke-dasharray="7,4" marker-end="url(#' +
         (conflict ? "designer-conflict-arrow" : "designer-user-arrow") + ')" /></g>';
     }).join("");
     const nodes = visibleIds.map((id) => {
@@ -8933,8 +8938,8 @@
     const linesSvg = edges
       .map((e) => {
         if (!pos[e.from] || !pos[e.to]) return "";
-        return '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
-          '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.75" marker-end="url(#' + arrowId + ')" />';
+        return '<path data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
+          '" fill="none" stroke="' + MAP_EDGE_COLOR + '" stroke-width="1.75" marker-end="url(#' + arrowId + ')" />';
       })
       .join("");
 
@@ -8992,17 +8997,13 @@
       g.dataset.x = m[1];
       g.dataset.y = m[2];
     });
-    svg.querySelectorAll("line[data-from]").forEach((line) => {
+    svg.querySelectorAll("path[data-from]").forEach((line) => {
       const a = svg.querySelector('g.param-node[data-param="' + cssEscape(line.dataset.from) + '"]');
       const b = svg.querySelector('g.param-node[data-param="' + cssEscape(line.dataset.to) + '"]');
       if (!a || !b) return;
-      const ax = parseFloat(a.dataset.x) + PARAM_TREE_NODE_W / 2, ay = parseFloat(a.dataset.y) + PARAM_TREE_NODE_H / 2;
-      const bx = parseFloat(b.dataset.x) + PARAM_TREE_NODE_W / 2, by = parseFloat(b.dataset.y) + PARAM_TREE_NODE_H / 2;
-      const tip = pullBackToRect(ax, ay, bx, by, PARAM_TREE_NODE_W / 2, PARAM_TREE_NODE_H / 2, 4);
-      line.setAttribute("x1", ax);
-      line.setAttribute("y1", ay);
-      line.setAttribute("x2", tip.x);
-      line.setAttribute("y2", tip.y);
+      const box = (g) => ({ cx: parseFloat(g.dataset.x) + PARAM_TREE_NODE_W / 2, cy: parseFloat(g.dataset.y) + PARAM_TREE_NODE_H / 2,
+        halfW: PARAM_TREE_NODE_W / 2, halfH: PARAM_TREE_NODE_H / 2 });
+      line.setAttribute("d", edgePathD(box(a), box(b), 4, 0, 0));
     });
   }
 
@@ -9445,19 +9446,21 @@
       '<defs><marker id="map-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">' +
       '<path d="' + STEALTH_ARROW_PATH + '" fill="' + MAP_EDGE_COLOR + '" /></marker></defs>';
 
+    const mBox = (p) => p && { cx: p.cx, cy: p.cy, halfW: nodeW / 2, halfH: nodeH / 2 };
+    const mPortOf = edgePorts(mapEdges(map).filter((e) => !(hiddenIds && (hiddenIds.has(e.from) || hiddenIds.has(e.to)))), (id) => mBox(positions[id]));
     const linesSvg = mapEdges(map)
       .map((e) => {
         if (hiddenIds && (hiddenIds.has(e.from) || hiddenIds.has(e.to))) return "";
         const a = positions[e.from], b = positions[e.to];
         if (!a || !b) return "";
         const axis = axisById(e.axis) || (e.axis ? { label: e.axis } : null);
-        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, nodeW / 2, nodeH / 2, 5);
+        const port = mPortOf(e);
         return (
-          '<line data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
-          '" x1="' + a.cx + '" y1="' + a.cy + '" x2="' + tip.x + '" y2="' + tip.y +
+          '<path data-from="' + escapeHtml(e.from) + '" data-to="' + escapeHtml(e.to) +
+          '" data-pa="' + port.pa + '" data-pb="' + port.pb + '" fill="none" d="' + edgePathD(mBox(a), mBox(b), 5, port.pa, port.pb) +
           '" stroke="' + MAP_EDGE_COLOR + '" stroke-width="2" marker-end="url(#map-arrow)">' +
           (axis ? "<title>" + escapeHtml(axis.label) + "</title>" : "") +
-          "</line>"
+          "</path>"
         );
       })
       .join("");
@@ -9574,7 +9577,7 @@
     const nodeEl = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(id) + '"]');
     if (nodeEl) nodeEl.classList.toggle("node-hidden", hidden);
     canvas
-      .querySelectorAll('line[data-from="' + cssEscape(id) + '"], line[data-to="' + cssEscape(id) + '"]')
+      .querySelectorAll('path[data-from="' + cssEscape(id) + '"], path[data-to="' + cssEscape(id) + '"]')
       .forEach((line) => line.classList.toggle("node-hidden", hidden));
   }
 
@@ -9708,21 +9711,17 @@
     let drag = null; // { el, id, startX, startY, left0, top0, moved }
 
     function updateEdgesFor(id, cx, cy) {
-      svg.querySelectorAll('line[data-from="' + cssEscape(id) + '"]').forEach((line) => {
-        line.setAttribute("x1", cx);
-        line.setAttribute("y1", cy);
-        const targetEl = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(line.dataset.to) + '"]');
-        if (!targetEl) return;
-        const tcx = parseFloat(targetEl.style.left) + halfW, tcy = parseFloat(targetEl.style.top) + halfH;
-        const tip = pullBackToRect(cx, cy, tcx, tcy, halfW, halfH, 5);
-        line.setAttribute("x2", tip.x);
-        line.setAttribute("y2", tip.y);
-      });
-      svg.querySelectorAll('line[data-to="' + cssEscape(id) + '"]').forEach((line) => {
-        const x1 = parseFloat(line.getAttribute("x1")), y1 = parseFloat(line.getAttribute("y1"));
-        const tip = pullBackToRect(x1, y1, cx, cy, halfW, halfH, 5);
-        line.setAttribute("x2", tip.x);
-        line.setAttribute("y2", tip.y);
+      // The dragged box's centre is the one passed in (its style is not
+      // written yet); the other end is read off the page.
+      const boxOf = (pid) => {
+        if (pid === id) return { cx: cx, cy: cy, halfW: halfW, halfH: halfH };
+        const el = canvas.querySelector('.map-node[data-problem-id="' + cssEscape(pid) + '"]');
+        return el ? { cx: parseFloat(el.style.left) + halfW, cy: parseFloat(el.style.top) + halfH, halfW: halfW, halfH: halfH } : null;
+      };
+      svg.querySelectorAll('path[data-from="' + cssEscape(id) + '"], path[data-to="' + cssEscape(id) + '"]').forEach((line) => {
+        const a = boxOf(line.dataset.from), b = boxOf(line.dataset.to);
+        if (!a || !b) return;
+        line.setAttribute("d", edgePathD(a, b, 5, +line.dataset.pa || 0, +line.dataset.pb || 0));
       });
     }
 
@@ -9854,22 +9853,19 @@
     }
 
     function updateEdgesFor(id, cx, cy, halfW, halfH) {
-      svg.querySelectorAll('line[data-sz-from="' + cssEscape(id) + '"]').forEach((line) => {
-        line.setAttribute("x1", cx);
-        line.setAttribute("y1", cy);
-        const targetEl = canvas.querySelector('.sz-node[data-sz-id="' + cssEscape(line.dataset.szTo) + '"]');
-        if (!targetEl) return;
-        const t = halfSizeOf(line.dataset.szTo);
-        const tcx = parseFloat(targetEl.style.left) + t.halfW, tcy = parseFloat(targetEl.style.top) + t.halfH;
-        const tip = pullBackToRect(cx, cy, tcx, tcy, t.halfW, t.halfH, 3);
-        line.setAttribute("x2", tip.x);
-        line.setAttribute("y2", tip.y);
-      });
-      svg.querySelectorAll('line[data-sz-to="' + cssEscape(id) + '"]').forEach((line) => {
-        const x1 = parseFloat(line.getAttribute("x1")), y1 = parseFloat(line.getAttribute("y1"));
-        const tip = pullBackToRect(x1, y1, cx, cy, halfW, halfH, 3);
-        line.setAttribute("x2", tip.x);
-        line.setAttribute("y2", tip.y);
+      // The dragged box's centre is the one passed in (its style is not
+      // written yet); the other end is read off the page.
+      const boxOf = (pid) => {
+        if (pid === id) return { cx: cx, cy: cy, halfW: halfW, halfH: halfH };
+        const el = canvas.querySelector('.sz-node[data-sz-id="' + cssEscape(pid) + '"]');
+        if (!el) return null;
+        const h = halfSizeOf(pid);
+        return { cx: parseFloat(el.style.left) + h.halfW, cy: parseFloat(el.style.top) + h.halfH, halfW: h.halfW, halfH: h.halfH };
+      };
+      svg.querySelectorAll('path[data-sz-from="' + cssEscape(id) + '"], path[data-sz-to="' + cssEscape(id) + '"]').forEach((line) => {
+        const a = boxOf(line.dataset.szFrom), b = boxOf(line.dataset.szTo);
+        if (!a || !b) return;
+        line.setAttribute("d", edgePathD(a, b, 3, +line.dataset.pa || 0, +line.dataset.pb || 0));
       });
     }
 
@@ -10061,6 +10057,72 @@
   // A circle big enough to clear a wide-but-short box's corners overshoots
   // badly on near-vertical approaches, and one sized for the short side
   // undershoots (arrowhead lands under the box) on near-horizontal ones.
+  // ---- routed arrows -------------------------------------------------
+  // Out of the box straight, one diagonal, into the box straight, with
+  // rounded bends, each arrow at a port of its own along the box's edge --
+  // the style of the concept maps on laxarchive.org. Nothing about the
+  // layout changes: a long arrow still passes behind the boxes between its
+  // ends. ROUTED_ARROWS false gives back the centre-to-centre line every
+  // map drew before.
+  const ROUTED_ARROWS = true;
+  const ARROW_STUB = 12, ARROW_BEND = 5, ARROW_PORT_GAP = 14;
+  // a, b: { cx, cy, halfW, halfH }. gap: how far short of b's edge the
+  // head stops (the number the old pullBackToRect call used). pa, pb: port
+  // offsets along the edge the arrow leaves and enters by (edgePorts).
+  function edgePathD(a, b, gap, pa, pb) {
+    const r1 = (v) => Math.round(v * 10) / 10;
+    pa = pa || 0; pb = pb || 0;
+    if (ROUTED_ARROWS && a && b) {
+      const s = b.cy >= a.cy ? 1 : -1;
+      const x0 = a.cx + pa, y0 = a.cy + s * a.halfH;
+      const x3 = b.cx + pb, y3 = b.cy - s * b.halfH - s * gap;
+      // The stubs take what room there is between the two boxes, up to
+      // ARROW_STUB each; with less than a few pixels (the same row, or
+      // overlapping boxes) it is the straight line below.
+      const stub = Math.min(ARROW_STUB, (s * (y3 - y0)) / 2);
+      const y1 = y0 + s * stub, y2 = y3 - s * stub;
+      if (stub >= 3) {
+        const dx = x3 - x0, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
+        if (Math.abs(dx) < 0.5 || len < 1) return "M" + r1(x0) + "," + r1(y0) + " L" + r1(x3) + "," + r1(y3);
+        // The bend is rounded off the stub, and never more than half of it,
+        // so a straight piece of stub always shows.
+        const r = Math.min(ARROW_BEND, len / 2, stub / 2);
+        const ux = dx / len, uy = dy / len;
+        return "M" + r1(x0) + "," + r1(y0) + " L" + r1(x0) + "," + r1(y1 - s * r) +
+          " Q" + r1(x0) + "," + r1(y1) + " " + r1(x0 + ux * r) + "," + r1(y1 + uy * r) +
+          " L" + r1(x3 - ux * r) + "," + r1(y2 - uy * r) +
+          " Q" + r1(x3) + "," + r1(y2) + " " + r1(x3) + "," + r1(y2 + s * r) +
+          " L" + r1(x3) + "," + r1(y3);
+      }
+    }
+    const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, gap);
+    return "M" + r1(a.cx) + "," + r1(a.cy) + " L" + r1(tip.x) + "," + r1(tip.y);
+  }
+  // A port for every arrow: the arrows leaving a box are spread along its
+  // edge in the order of where they go, those entering it in the order of
+  // where they come from, so several arrows into one box arrive side by
+  // side instead of on one point. Returns a lookup edge -> { pa, pb }.
+  function edgePorts(edges, boxOf) {
+    const key = (e) => e.from + "\u0000" + e.to;
+    const outs = {}, ins = {}, ports = {};
+    edges.forEach((e) => {
+      if (!boxOf(e.from) || !boxOf(e.to)) return;
+      (outs[e.from] = outs[e.from] || []).push(e);
+      (ins[e.to] = ins[e.to] || []).push(e);
+    });
+    const spread = (byNode, side) => Object.keys(byNode).forEach((id) => {
+      const box = boxOf(id);
+      const other = (e) => boxOf(side === "pa" ? e.to : e.from);
+      const list = byNode[id].slice().sort((x, y) => other(x).cx - other(y).cx);
+      const k = list.length;
+      const step = Math.min(ARROW_PORT_GAP, Math.max(0, (2 * box.halfW - 10) / k));
+      list.forEach((e, i) => { (ports[key(e)] = ports[key(e)] || { pa: 0, pb: 0 })[side] = Math.round((i - (k - 1) / 2) * step * 10) / 10; });
+    });
+    spread(outs, "pa");
+    spread(ins, "pb");
+    return (e) => ports[key(e)] || { pa: 0, pb: 0 };
+  }
+
   function pullBackToRect(ax, ay, bx, by, halfW, halfH, gap) {
     const dx = bx - ax, dy = by - ay;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
