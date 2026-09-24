@@ -8,6 +8,10 @@
     detailContent: document.getElementById("detail-content"),
     detailClose: document.getElementById("detail-close"),
     detailOverlay: document.getElementById("detail-overlay"),
+    detailMinimize: document.getElementById("detail-minimize"),
+    detailDock: document.getElementById("detail-dock"),
+    detailDockRestore: document.getElementById("detail-dock-restore"),
+    detailDockClose: document.getElementById("detail-dock-close"),
     viewSearch: document.getElementById("view-search"),
     viewProblem: document.getElementById("view-problem"),
     viewMaps: document.getElementById("view-maps"),
@@ -234,6 +238,20 @@
   function fillTextColor(cls) {
     return "#111";
   }
+  // The background a class paints with. An "inset" fill (the upper-bound-
+  // only classes: at most pseudo-polynomial, at most XP) is the colour in
+  // the middle inside a band of the surrounding background, `ring` px wide
+  // -- an algorithm in the middle, the open question around it. Two
+  // background layers, no gradient: the colour as a rectangle shrunk by the
+  // band on every side, over the background.
+  function classBg(cls, fallback, ring) {
+    if (!cls || !cls.fill) return fallback;
+    if (cls.fill === "inset") {
+      const t = 2 * (ring || 3) + "px";
+      return "linear-gradient(" + cls.color + ", " + cls.color + ") center / calc(100% - " + t + ") calc(100% - " + t + ") no-repeat, " + fallback;
+    }
+    return cls.color;
+  }
   // `result` is optional: when a W1/W2 result also carries a cited XP
   // upper bound (xpBound), it's filled solid instead of outline-only --
   // otherwise it looks identical to a plain W-hardness claim with no
@@ -248,7 +266,7 @@
     if (cls.opacity) return "background:" + mixWithPanelBg(cls.color, cls.opacity) + ";color:#111;border:" + border;
     const filled = cls.fill || (result && result.xpBound);
     return filled
-      ? "background:" + cls.color + ";color:" + fillTextColor(cls) + ";border:" + border
+      ? "background:" + (cls.fill ? classBg(cls, "transparent", 3) : cls.color) + ";color:" + fillTextColor(cls) + ";border:" + border
       : "background:transparent;color:" + cls.color + ";border:" + border;
   }
   function problemById(id) {
@@ -436,13 +454,21 @@
   }
 
   function szCitationHtml(r) {
-    // A result the reader's own parameter arrow carried here: say so, then
-    // the line as it is for the parameter it was stated for.
-    if (r.viaParamArrow) {
-      return "<p style='margin:0 0 0.2rem'><b>Along your arrow</b> " + escapeHtml(r.viaParamArrow.from + " → " + r.viaParamArrow.to) +
-        ": " + (PARAM_HARDNESS.includes(r.complexityClass) ? "hardness for " : "an algorithm for ") + escapeHtml(r.arrowSource) +
-        " holds for " + escapeHtml(r.param) + ".</p>" +
-        szCitationHtml(Object.assign({}, r, { viaParamArrow: null, param: r.arrowSource }));
+    // A result carried here from another parameter of the same problem
+    // (szParamDerivedResults): say what brought it, then the line as it is
+    // for the parameter it was stated for.
+    if (r.carriedBy) {
+      const hard = PARAM_HARDNESS.includes(r.complexityClass);
+      const lead = r.carriedBy.kind === "arrow"
+        ? "<b>Along your arrow</b> " + escapeHtml(r.carriedBy.from + " → " + r.carriedBy.to) + ": "
+        : "<b>By containment</b>: ";
+      const why = hard
+        ? "hardness for " + escapeHtml(r.derivedFrom) + " holds for " + escapeHtml(r.param) +
+          (r.carriedBy.kind === "arrow" ? "" : ", which bounds less")
+        : "an algorithm for " + escapeHtml(r.derivedFrom) + " holds for " + escapeHtml(r.param) +
+          (r.carriedBy.kind === "arrow" ? "" : ", which bounds more");
+      return "<p style='margin:0 0 0.2rem'>" + lead + why + ".</p>" +
+        szCitationHtml(Object.assign({}, r, { carriedBy: null, param: r.derivedFrom }));
     }
     // Two directions: hardness (and inapproximability) comes UP from a
     // special case, algorithms (FPT, XP, approximation) come DOWN from a
@@ -505,7 +531,7 @@
     const paramCounts = {};
     nodes.forEach((n) => {
       const byLabel = {};
-      szAllParams(n).forEach((r) => {
+      szAllParams(n).concat(szParamDerivedResults(szAllParams(n))).forEach((r) => {
         const l = canonicalParamLabel(r.param);
         (byLabel[l] = byLabel[l] || []).push(r);
       });
@@ -517,7 +543,7 @@
 
     const swatch = (c) =>
       '<span class="legend-swatch" style="background:' +
-      (c.opacity ? mixWithPanelBg(c.color, c.opacity) : c.fill ? c.color : "transparent") +
+      (c.opacity ? mixWithPanelBg(c.color, c.opacity) : classBg(c, "transparent", 2)) +
       ";border:2px " + (c.border || "solid") + " " + c.color + '"></span>';
     const legendItem = (c, label, title) =>
       '<div class="legend-item"' + (title ? ' title="' + escapeHtml(title) + '"' : "") + ">" +
@@ -643,17 +669,18 @@
               .map((l) => {
                 const rs = byLabel[l];
                 if (!rs) return '<td class="result-cell"><div class="badge na">—</div></td>';
-                const best = bestParamComplexityClass(rs);
+                const inP = szEffectiveClasses()[n.id] === "P";
+                const best = inP ? "FPT" : bestParamComplexityClass(rs);
                 const pc = best ? classById(best) : null;
                 // • when the class shown comes only from an inherited result
                 const inheritedOnly = !!best && bestParamComplexityClass(rs.filter((r) => !r.inheritedFrom)) !== best;
                 return '<td class="result-cell"><button type="button" class="badge" data-sz-id="' + escapeHtml(n.id) +
                   '" data-param="' + escapeHtml(l) + '" style="' +
-                  (pc ? classPillStyle(pc, szParamAlsoXp(rs) ? { xpBound: true } : null) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
+                  (pc ? classPillStyle(pc, !inP && szParamAlsoXp(rs) ? { xpBound: true } : null) : "background:transparent;color:var(--muted);border:2px dashed #868e96") +
                   '" title="' + escapeHtml(rs.length + " cited result" + (rs.length === 1 ? "" : "s") + " -- click for details") +
                   // The title alone would become the accessible name, which
                   // never says the class the cell is showing.
-                  '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + (szParamAlsoXp(rs) ? " and in XP" : "") + " for " + l + ", " +
+                  '" aria-label="' + escapeHtml((pc ? pc.label : "Unclassified result") + (!inP && szParamAlsoXp(rs) ? " and in XP" : "") + " for " + l + ", " +
                     rs.length + " cited result" + (rs.length === 1 ? "" : "s")) +
                   '">' + escapeHtml(pc ? pc.label : "other") +
                   (rs.length > 1 ? '<span class="conf-flag">×' + rs.length + "</span>" : "") +
@@ -697,8 +724,8 @@
   function openSzParamResultsPanel(nodeId, label) {
     const n = DATA_SZ.nodes.find((x) => x.id === nodeId);
     if (!n) return;
-    const rs = szAllParams(n).filter((r) => canonicalParamLabel(r.param) === label);
-    const best = bestParamComplexityClass(rs);
+    const rs = szAllParams(n).concat(szParamDerivedResults(szAllParams(n))).filter((r) => canonicalParamLabel(r.param) === label);
+    const best = szEffectiveClasses()[n.id] === "P" ? "FPT" : bestParamComplexityClass(rs);
     const pc = best ? classById(best) : null;
     const pill = (c) => '<span class="class-pill" style="' + classPillStyle(c) + '">' + escapeHtml(c.label) + "</span>";
     els.detailContent.innerHTML =
@@ -770,7 +797,7 @@
     if (!cc) return "";
     return (
       '<span class="class-pill" style="background:' +
-      (cc.fill ? cc.color : "var(--panel-bg)") +
+      classBg(cc, "var(--panel-bg)") +
       ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? "#111" : "var(--fg)") +
       '">' + cc.label + "</span> "
     );
@@ -804,10 +831,10 @@
   // 420px-ish width for panels with no such content (e.g. the Search
   // matrix's single-parameter view).
   function setPanelMinWidth(contentWidth) {
-    // .detail-panel padding (1.5rem*2=48px) + .param-tree-wrap's own padding
-    // (0.5rem*2=16px) + its 1px border on each side, so the SVG never
-    // needs its own horizontal scrollbar inside the widened panel.
-    const PANEL_PADDING = 48 + 16 + 4;
+    // .detail-panel side padding (1.1rem*2=35px) + .param-tree-wrap's own
+    // padding (0.5rem*2=16px) + its 1px border on each side, so the SVG
+    // never needs its own horizontal scrollbar inside the widened panel.
+    const PANEL_PADDING = 36 + 16 + 4;
     els.detailPanel.style.setProperty("--content-min-width", contentWidth ? contentWidth + PANEL_PADDING + "px" : "0px");
   }
 
@@ -820,11 +847,35 @@
   function closeDetail() {
     els.detailPanel.hidden = true;
     els.detailOverlay.hidden = true;
+    els.detailDock.hidden = true;
   }
+  // Minimize: the panel folds into a small tab at the bottom right that
+  // names the problem, so the map is usable again and the problem is one
+  // click away. The panel's content is kept as it is (scroll position,
+  // open cards). Opening any panel -- this one again, or another problem
+  // -- takes the tab away; that is watched on the panel's hidden attribute
+  // so no opener needs to know about the tab.
+  function minimizeDetail() {
+    const heading = els.detailContent.querySelector("h1, h2, h3");
+    els.detailDockRestore.textContent = heading ? heading.textContent.trim() : "Problem";
+    els.detailPanel.hidden = true;
+    els.detailOverlay.hidden = true;
+    els.detailDock.hidden = false;
+  }
+  function restoreDetail() {
+    els.detailDock.hidden = true;
+    els.detailPanel.hidden = false;
+    els.detailOverlay.hidden = false;
+  }
+  new MutationObserver(() => { if (!els.detailPanel.hidden) els.detailDock.hidden = true; })
+    .observe(els.detailPanel, { attributes: true, attributeFilter: ["hidden"] });
   els.detailClose.addEventListener("click", closeDetail);
-  els.detailOverlay.addEventListener("click", closeDetail);
+  els.detailMinimize.addEventListener("click", minimizeDetail);
+  els.detailDockRestore.addEventListener("click", restoreDetail);
+  els.detailDockClose.addEventListener("click", closeDetail);
+  els.detailOverlay.addEventListener("click", minimizeDetail);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeDetail();
+    if (e.key === "Escape" && !els.detailPanel.hidden) minimizeDetail();
   });
 
   // ---------- problem wiki page ----------
@@ -904,7 +955,7 @@
         { label: "is solvable in <running time>", re: /\b(is |can be )?(solved|solvable) (in|by)\b[^.]*(O\(|polynomial time\b)/i,
           means: "P — an exact algorithm with a stated polynomial running time is the same claim, phrased differently" },
         { label: "is in Ppseudo", re: /^is (in )?Ppseudo\b/, means: "pseudo-polynomial; with an NP-hardness result, weakly NP-hard" },
-        { label: "is NP-hard / is NP-complete", re: /\bis\s+NP-(hard|complete)\b/i, means: "at least weakly NP-hard, unless a Ppseudo result makes it weakly NP-hard" },
+        { label: "is NP-hard / is NP-complete", re: /\bis\s+NP-(hard|complete)\b/i, means: "NP-hard, pseudo-poly open, unless a Ppseudo result makes it weakly NP-hard" },
         { label: "is strongly NP-hard", re: /strongly NP-(hard|complete)/i, means: "strongly NP-hard — the strongest, and it wins over everything else cited" },
       ],
     },
@@ -940,6 +991,7 @@
         { label: "approximation ratio ≤ r / ≥ r, deterministic or randomized", re: /approximation ratio/i, means: "a bound on the best ratio, stated either way" },
         { label: "is APX-hard", re: /APX-hard/i, means: "no PTAS unless P = NP" },
         { label: "cannot be approximated below ratio r unless P=NP", re: /cannot be approximated|inapprox/i, means: "an explicit inapproximability threshold" },
+        { label: "there is no r-approximation in time … under ETH", re: /\bno\b[^.]*\bapproximation\b/i, means: "a lower bound on the running time of any approximation, conditional on ETH" },
       ],
     },
     {
@@ -1261,7 +1313,7 @@
       '<ul class="docs-list">' +
       "<li><b>Classical</b> (no bracket): <code>is strongly NP-hard</code> → strongly NP-hard; " +
       "<code>is NP-hard</code> together with <code>is in Ppseudo</code> → pseudo-polynomial time solvable; " +
-      "<code>is NP-hard</code> alone → at least weakly NP-hard; <code>is in P</code> or a stated polynomial " +
+      "<code>is NP-hard</code> alone → NP-hard, pseudo-poly open; <code>is in P</code> or a stated polynomial " +
       "running time → P. NP-complete counts as NP-hard, hardness wins when both kinds are cited, and a problem " +
       "with none of these phrases is open.</li>" +
       "<li><b>Online</b> (<code>online-rj</code> in the release-time field): its own class, whatever the rest says. " +
@@ -1305,7 +1357,7 @@
       "<li><b>para-NP-hardness settles it.</b> para-NP-hard means NP-hard already at a <i>constant</i> value of the " +
       "parameter, so the general problem contains an NP-hard special case and is itself NP-hard. Whether it is " +
       "strongly or weakly so does not follow &mdash; the hardness proof at that constant may or may not need large " +
-      "numbers &mdash; so it lands as <mark>at least weakly NP-hard</mark>, which is exactly what that class is for.</li>" +
+      "numbers &mdash; so it lands as <mark>NP-hard, pseudo-poly open</mark>, which is exactly what that class is for.</li>" +
       "<li><b>W-hardness does not.</b> <mark>W[1]-hard does not imply NP-hard</mark>: W-hardness is proved by " +
       "fpt-reductions, not polynomial ones. What it does imply is that the problem is <b>not in P</b> unless " +
       "FPT = W[1], because a polynomial-time algorithm would already be an FPT algorithm for every parameter at " +
@@ -1318,7 +1370,7 @@
       "<h4>Inherited hardness</h4>" +
       "<p><mark>A problem with no classical result of its own takes the hardness of any special case of it</mark> -- any " +
       "problem its arrows reach -- that is proven hard. Strongly NP-hard carries over as it is; " +
-      "pseudo-polynomial carries over only as at least weakly NP-hard, since its algorithm need not extend to the " +
+      "pseudo-polynomial carries over only as NP-hard, pseudo-poly open, since its algorithm need not extend to the " +
       "more general problem; P never carries over. A problem's panel says when its class is inherited. " +
       "</p>" +
       "<p>Parameterized <b>hardness</b> (W[1], W[2], para-NP) is carried too, but only along arrows known to keep " +
@@ -3085,7 +3137,7 @@
     if (generalClass === "P" && SZ_HARD_CLASSES.includes(specificClass)) {
       return "an algorithm for " + generalName + " would also solve the NP-hard " + specificName + " in polynomial time";
     }
-    if (generalClass === "weakly-NP-hard" && specificClass === "strongly-NP-hard") {
+    if ((generalClass === "weakly-NP-hard" || generalClass === "pseudo-open") && specificClass === "strongly-NP-hard") {
       return "the pseudo-polynomial algorithm for " + generalName + " would also solve the strongly NP-hard " +
         specificName + " in pseudo-polynomial time";
     }
@@ -3144,7 +3196,7 @@
   // re-render (which would throw away any dragging the reader has done).
   function applySzNodeStyle(el, classId) {
     const cc = classicalClassById(classId);
-    el.style.background = cc && cc.fill ? cc.color : "var(--panel-bg)";
+    el.style.background = classBg(cc, "var(--panel-bg)", SZ_NODE_RING);
     el.style.borderColor = cc ? cc.color : "#868e96";
     el.style.borderStyle = cc ? cc.border || "solid" : "solid";
     el.style.color = cc && cc.fill ? fillTextColor(cc) : "var(--fg)";
@@ -3171,9 +3223,13 @@
     if (panel.scrollHeight > room) panel.style.maxHeight = Math.floor(room) + "px";
   }
 
+  // The band inside an "inset" box is as wide as the box's padding lets it
+  // be without touching the text: 4px on the overview's boxes (their
+  // horizontal padding), 9px on the designer's and Problem Maps' wider ones.
+  const SZ_NODE_RING = 4, MAP_NODE_RING = 9;
   function szNodeStyle(classId) {
     const cc = classicalClassById(classId);
-    const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+    const bg = classBg(cc, "var(--panel-bg)", SZ_NODE_RING);
     const border = cc ? cc.color : "#868e96";
     const borderStyle = cc ? cc.border || "solid" : "solid";
     const textColor = cc && cc.fill ? fillTextColor(cc) : "var(--fg)";
@@ -3213,7 +3269,10 @@
     function resolve(id, cls) {
       if (effective[id] !== undefined) return effective[id];
       let result = cls[id];
-      if ((!result || result === "unclaimed") && !visiting.has(id)) {
+      // A problem with only a pseudo-polynomial algorithm of its own still
+      // takes hardness from its special cases: with NP-hardness below it,
+      // that is exactly weakly NP-hard.
+      if ((!result || result === "unclaimed" || result === "pseudo-open") && !visiting.has(id)) {
         visiting.add(id);
         let best = null;
         edges.forEach((e) => {
@@ -3222,7 +3281,7 @@
           }
         });
         visiting.delete(id);
-        if (best) result = best;
+        if (best) result = result === "pseudo-open" && best === "NP-hard-unresolved" ? "weakly-NP-hard" : best;
       }
       effective[id] = result;
       return result;
@@ -3256,8 +3315,9 @@
         if (effective[e.from] === "P") {
           effective[e.to] = "P";
           filled = true;
-        } else if (effective[e.from] === "weakly-NP-hard") {
-          effective[e.to] = "weakly-NP-hard";
+        } else if (effective[e.from] === "weakly-NP-hard" || effective[e.from] === "pseudo-open") {
+          // Only the algorithm comes down, not the hardness.
+          effective[e.to] = "pseudo-open";
           filled = true;
         }
       });
@@ -3291,9 +3351,9 @@
           }
           // So does a pseudo-polynomial algorithm -- except onto a special
           // case already in P, which is the better answer of the two.
-          if (effective[e.from] === "weakly-NP-hard" && fromClaim.has(e.from) &&
-              effective[e.to] !== "weakly-NP-hard" && effective[e.to] !== "P" && !claimed.has(e.to)) {
-            effective[e.to] = "weakly-NP-hard";
+          if ((effective[e.from] === "weakly-NP-hard" || effective[e.from] === "pseudo-open") && fromClaim.has(e.from) &&
+              !["weakly-NP-hard", "pseudo-open", "P"].includes(effective[e.to]) && !claimed.has(e.to)) {
+            effective[e.to] = "pseudo-open";
             fromClaim.add(e.to);
             moved = true;
           }
@@ -3319,9 +3379,9 @@
             fromClaim.add(e.to);
             moved = true;
           }
-          if (effective[e.from] === "weakly-NP-hard" && e.numbers !== "blowup" &&
-              effective[e.to] !== "weakly-NP-hard" && effective[e.to] !== "P" && !claimed.has(e.to)) {
-            effective[e.to] = "weakly-NP-hard";
+          if ((effective[e.from] === "weakly-NP-hard" || effective[e.from] === "pseudo-open") && e.numbers !== "blowup" &&
+              !["weakly-NP-hard", "pseudo-open", "P"].includes(effective[e.to]) && !claimed.has(e.to)) {
+            effective[e.to] = "pseudo-open";
             fromClaim.add(e.to);
             moved = true;
           }
@@ -4300,7 +4360,7 @@
       .map(
         (c) =>
           '<div class="legend-item"><span class="legend-swatch" style="background:' +
-          (c.fill ? c.color : "transparent") + ";border:2px " + (c.border || "solid") + " " + c.color +
+          (classBg(c, "transparent", 2)) + ";border:2px " + (c.border || "solid") + " " + c.color +
           '"></span><span>' + escapeHtml(c.id === "unclaimed" ? "open" : c.label) + "</span></div>"
       )
       .join("");
@@ -5316,7 +5376,7 @@
       SZ_PARAM_EDGES = [];
       storeSzParamEdges();
       close();
-      els.detailPanel.hidden = true;
+      closeDetail();
       els.detailOverlay.hidden = true;
       // A full redraw, unlike the in-place refresh a single claim gets: the
       // two buttons at the bottom of the diagram are gone now, and so is
@@ -5642,6 +5702,39 @@
     });
   }
 
+  // Where a corpus problem's inherited class comes from: the nearest special
+  // cases whose cited class gives it (hardness travels up), or the nearest
+  // generalizations whose cited algorithm does (P and pseudo-polynomial
+  // travel down). Nearest first, stopping at each witness; up to three are
+  // named, the rest counted.
+  function szClassWitnesses(id) {
+    if (!SZ_EFFECTIVE_CORPUS) SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
+    const eff = SZ_EFFECTIVE_CORPUS[id];
+    const byId = szNodeIndex();
+    const own = (x) => (byId[x] || {}).classicalClass || "unclaimed";
+    if (!eff || eff === "unclaimed" || (own(id) === eff)) return { direction: null, items: [], more: 0 };
+    const up = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard"].includes(eff);
+    const qualifies = up
+      ? (x) => eff === "strongly-NP-hard" ? own(x) === "strongly-NP-hard" : ["NP-hard-unresolved", "weakly-NP-hard", "strongly-NP-hard"].includes(own(x))
+      : (x) => eff === "P" ? own(x) === "P" : ["weakly-NP-hard", "pseudo-open", "P"].includes(own(x));
+    const next = up ? (x) => DATA_SZ.edges.filter((e) => e.from === x).map((e) => e.to)
+                    : (x) => DATA_SZ.edges.filter((e) => e.to === x).map((e) => e.from);
+    const seen = new Set([id]);
+    let frontier = [id];
+    const found = [];
+    while (frontier.length && found.length < 12) {
+      const layer = [];
+      frontier.forEach((x) => next(x).forEach((y) => {
+        if (seen.has(y)) return;
+        seen.add(y);
+        if (qualifies(y)) found.push({ id: y, notation: (byId[y] || {}).notation || y, classId: own(y) });
+        else layer.push(y);
+      }));
+      frontier = layer;
+    }
+    return { direction: up ? "up" : "down", items: found.slice(0, 3), more: Math.max(0, found.length - 3) };
+  }
+
   // Opens for a problem the reader DRAFTED as readily as for a corpus one
   // -- same panel, minus the citations it cannot have. Without this, the
   // one kind of problem whose classification needs explaining (it is
@@ -5653,76 +5746,104 @@
     // A positive approximation line is tagged so the Approximable lens can
     // light it here as it does on the map -- same test as szNodeApproxTier.
     const approxCat = SZ_RESULT_CATEGORIES.find((c) => c.name === "Approximation");
-    const resultLi = (r) =>
-      "<li" + (r.kind === "upper" && approxCat.values.some((v) => v.re.test(r.bound || "")) ? ' class="result-approx"' : "") +
-      ">" + szCitationHtml(r) + "</li>";
+    // The same folded cards as the parameterized results: one card per
+    // result ("NP-hard", "in P_pseudo", a ratio), its first paper on the
+    // summary line, every paper that states it inside with its title, and
+    // where a line came from if it was carried here (Karp 1972 and Lawler
+    // & Moore 1969 both show 1||ΣwjUj NP-hard: one card, two lines).
+    const resultLi = (rs) => {
+      const r = rs[0];
+      const approxCls = r.kind === "upper" && isApprox(r) ? " result-approx" : "";
+      const line = (x) =>
+        '<li class="result-' + x.kind + approxCls + '">' + szCiteLink(x) +
+        (x.title ? ' <span class="sz-res-title">' + escapeHtml(x.title) + "</span>" : "") +
+        (x.inheritedFrom
+          ? '<div class="sz-res-path">inherited from ' + (x.direction === "down" ? "the more general " : "its special case ") +
+            escapeHtml(szNotationOf(x.inheritedFrom)) +
+            (x.via && x.via.length > 1 ? " along " + escapeHtml(x.via.map(szNotationOf).join(" → ")) : "") +
+            "; every arrow keeps the objective value as it is</div>"
+          : "") + "</li>";
+      return '<details class="sz-param-card sz-res-card result-' + r.kind + '"><summary class="sz-param-head">' +
+        '<span class="sz-param-name">' + szClassicalTerm(r.bound) + "</span>" +
+        '<span class="sz-param-why">' + escapeHtml(szShortCite(r)) + (rs.length > 1 ? " +" + (rs.length - 1) : "") +
+        (r.inheritedFrom ? ", inherited" : "") + "</span>" +
+        '<span class="sz-param-count">' + rs.length + "</span></summary>" +
+        '<div class="sz-param-body"><ul class="result-list">' + rs.map(line).join("") + "</ul></div></details>";
+    };
+    // Group the lines that say the same thing about the same problem.
+    const groupResults = (list) => {
+      const out = [], byKey = {};
+      list.forEach((r) => {
+        const key = szClassicalTerm(r.bound) + "\u0001" + (r.inheritedFrom || "");
+        if (!byKey[key]) { byKey[key] = []; out.push(byKey[key]); }
+        if (!byKey[key].some((x) => x.bibkey === r.bibkey)) byKey[key].push(r);
+      });
+      return out;
+    };
     // Own results first, then the approximation results this site carried
     // here along the arrows (inheritedApprox) -- each says where it came
     // from, see szCitationHtml.
-    const lower = n.classical.filter((r) => r.kind === "lower").concat((n.inheritedApprox || []).filter((r) => r.kind === "lower"));
-    const upper = n.classical.filter((r) => r.kind === "upper").concat((n.inheritedApprox || []).filter((r) => r.kind === "upper"));
-    const forest = buildParamForest(szAllParams(n).concat(szParamArrowResults(szAllParams(n))));
-    const paramTreeHtml = buildParamTreeHtml(forest, resultLi, n.id);
-    const paramDiagram = buildParamDiagramHtml(forest, n.id);
-    // Every class the CITATIONS put on this problem, plus any the reader has
-    // claimed. A union, never a replacement: a claim colours the reader's own
-    // box, but it must not drop a class the sources still assert from the
-    // legend -- that would read as the cited result having changed.
+    // Approximation lines (a ratio, a scheme, an inapproximability
+    // threshold) are their own section: a real result, but not a claim
+    // about the problem's class.
+    const isApprox = (r) => approxCat.values.some((v) => v.re.test(r.bound || ""));
+    const allLower = n.classical.filter((r) => r.kind === "lower").concat((n.inheritedApprox || []).filter((r) => r.kind === "lower"));
+    const allUpper = n.classical.filter((r) => r.kind === "upper").concat((n.inheritedApprox || []).filter((r) => r.kind === "upper"));
+    const lower = allLower.filter((r) => !isApprox(r)), upper = allUpper.filter((r) => !isApprox(r));
+    const approxLower = allLower.filter(isApprox), approxUpper = allUpper.filter(isApprox);
+    // A problem in P is FPT for every parameter: the boxes say so and the
+    // results are shown for the record.
+    const inP = szEffectiveClasses()[n.id] === "P";
+    const baseParams = szAllParams(n);
+    const forest = buildParamForest(baseParams.concat(szParamDerivedResults(baseParams)));
+    const paramTreeHtml = buildParamTreeHtml(forest, n.id, inP);
+    const paramDiagram = buildParamDiagramHtml(forest, n.id, inP);
+    // Every class the citations put on this problem, plus any the reader has
+    // claimed: a union, so a claim never drops a class the sources still
+    // assert from the legend.
     const paramUsedClasses = new Set(forest.labels
-      .flatMap((l) => [bestParamComplexityClass(forest.byLabel[l]), (userParamClass(n.id, l) || {}).classId])
+      .flatMap((l) => [inP ? "FPT" : bestParamComplexityClass(forest.byLabel[l]), (userParamClass(n.id, l) || {}).classId])
       .filter(Boolean));
+    const swatch = (bg, color) =>
+      '<span class="legend-swatch" style="width:0.7em;height:0.7em;display:inline-block;border-radius:2px;vertical-align:middle;margin-right:0.3em;background:' +
+      bg + ";border:1.5px solid " + color + '"></span>';
     const paramLegendHtml = paramUsedClasses.size
-      ? '<p style="margin:0.4rem 0 0;font-size:0.8rem">' +
+      ? '<p class="sz-legend-line">' +
         DATA.complexityClasses.filter((c) => paramUsedClasses.has(c.id)).map((c) =>
-          '<span style="margin-right:0.8rem"><span class="legend-swatch" style="width:0.7em;height:0.7em;display:inline-block;border-radius:2px;vertical-align:middle;margin-right:0.3em;' +
-          "background:" + (c.opacity ? mixWithPanelBg(c.color, c.opacity) : c.fill ? c.color : "var(--panel-bg)") +
-          ";border:1.5px " + (c.border || "solid") + " " + c.color + '"></span>' + escapeHtml(c.label) + "</span>"
+          "<span>" + swatch(c.opacity ? mixWithPanelBg(c.color, c.opacity) : classBg(c, "var(--panel-bg)", 2), c.color) + escapeHtml(c.label) + "</span>"
         ).join("") +
-        // The filled W-hard box: outline = hard, fill = also in XP.
-        (forest.labels.some((l) => szParamAlsoXp(forest.byLabel[l]))
-          ? '<span style="margin-right:0.8rem"><span class="legend-swatch" style="width:0.7em;height:0.7em;display:inline-block;border-radius:2px;vertical-align:middle;margin-right:0.3em;background:' +
-            classById("W1").color + ";border:1.5px solid " + classById("W1").color + '"></span>W-hard and in XP</span>'
+        (!inP && forest.labels.some((l) => szParamAlsoXp(forest.byLabel[l]))
+          ? "<span>" + swatch(classById("W1").color, classById("W1").color) + "W-hard and in XP</span>"
           : "") + "</p>"
       : "";
+
+    // ---- the classical class, three readings of it ----
     szEffectiveClasses();
-    const isDirect = n.classicalClass && n.classicalClass !== "unclaimed";
-    const effClassId = SZ_EFFECTIVE[n.id];
-    const cc = classicalClassById(effClassId);
-    const ccLabel = !effClassId || effClassId === "unclaimed" ? "open" : (cc ? cc.label : effClassId);
     const mine = userClassification(n.id, null);
     const mineClass = mine ? classicalClassById(mine.classId) : null;
-    // The reader's own classification and the corpus one are two different
-    // claims about the same problem, so they get a labelled line each rather
-    // than two pills in a row -- which read as one classification stuttering.
-    // The reader's line only exists once they have actually made a claim.
     if (!SZ_EFFECTIVE_CORPUS) SZ_EFFECTIVE_CORPUS = computeEffectiveClassesForSz(DATA_SZ.nodes, DATA_SZ.edges, true);
     const szClassId = SZ_EFFECTIVE_CORPUS[n.id];
+    // "Cited" only when the class shown IS the cited one: a problem with a
+    // pseudo-polynomial algorithm of its own and NP-hard special cases is
+    // weakly NP-hard by both, and says where the hardness comes from.
+    const isDirect = n.classicalClass && n.classicalClass !== "unclaimed" && n.classicalClass === szClassId;
     const szOwnClass = classicalClassById(szClassId);
     const szOwnLabel = !szClassId || szClassId === "unclaimed" ? "open" : (szOwnClass ? szOwnClass.label : szClassId);
-    // A problem with no classical result of its own is shown as open -- but
-    // "open" understates it when a W-hardness result exists, because a
-    // polynomial-time algorithm would BE an FPT algorithm (f(k)=1), so a
-    // problem that is W[1]-hard in any parameter cannot be in P unless
-    // FPT = W[1]. That is not NP-hardness -- W-hardness is proved by
-    // fpt-reductions, and "not in P" is weaker than "NP-hard" -- so the
-    // class is left alone and the consequence is stated instead.
+    // Open, but W-hard for some parameter: not in P unless FPT = W[1] (a
+    // polynomial algorithm is an FPT one with f(k) = 1), which is not the
+    // same as NP-hard -- said in the notes, not folded into the class.
     const wHardParams = (!szClassId || szClassId === "unclaimed" || szClassId === "open")
       ? szAllParams(n).filter((r) => /W\[\d/.test(r.bound || "")).map((r) => r.param)
       : [];
     const classRow = (label, pill, trailing) =>
       '<div class="detail-class-row"><span class="detail-class-label">' + label + "</span>" + pill +
       (trailing ? ' <span class="detail-class-aside">' + trailing + "</span>" : "") + "</div>";
-    // A drafted problem has no corpus reading to show -- nobody has cited
-    // anything about a problem the reader has just invented. What it has
-    // instead is whatever the map around it settles, so that is the second
-    // row, with the reasoning that produced it (see designerClassReason).
     const draftClassId = n.draft ? designerClassOf(n.id) : null;
     const draftClass = n.draft ? classicalClassById(draftClassId) : null;
     const draftReason = n.draft ? designerClassReason(n.id) : null;
     // A corpus problem the reader did not classify, but whose class a claim
-    // or an arrow of theirs moved all the same (it glows blue on the map):
-    // its own line, above the corpus reading it supersedes. In the designer
-    // that map's arrows count; elsewhere the overview's.
+    // or an arrow of theirs moved (it glows blue on the map): its own line,
+    // above the corpus reading it supersedes.
     const movedClassId = !mine && !n.draft ? activeClassOf(n.id) : null;
     const moved = movedClassId && movedClassId !== szClassId && !(movedClassId === "unclaimed" && !szClassId);
     const movedClass = moved ? classicalClassById(movedClassId) : null;
@@ -5730,6 +5851,15 @@
       ? (els.viewDesign.hidden ? loadSzUserEdges() : designerModelEdges()).filter((e) => e.from === n.id || e.to === n.id)
       : [];
     const arrowName = (e) => escapeHtml(((storyNodeById(e.from) || {}).notation || e.from) + " → " + ((storyNodeById(e.to) || {}).notation || e.to));
+    // An inherited class names the problems it comes from, each a link.
+    const jump = (w) => '<a href="javascript:void(0)" class="sz-jump" data-sz-jump="' + escapeHtml(w.id) + '">' + escapeHtml(w.notation) + "</a>";
+    const witnesses = !n.draft && !isDirect && szClassId && szClassId !== "unclaimed" ? szClassWitnesses(n.id) : { items: [] };
+    const witnessText = witnesses.items.length
+      ? (witnesses.direction === "up" ? "inherited: it generalizes " : "inherited: it is a special case of ") +
+        witnesses.items.map((w) => jump(w) + " (" + escapeHtml(szClassLabel(w.classId)) + ")").join(", ") +
+        (witnesses.more ? " and " + witnesses.more + " more" : "") +
+        (szClassId === "weakly-NP-hard" && n.classicalClass === "pseudo-open" ? "; the pseudo-polynomial algorithm is its own" : "")
+      : "";
     const ccPillHtml =
       (mine
         ? classRow("your classification",
@@ -5743,97 +5873,80 @@
             escapeHtml(movedClassId === "unclaimed" ? "open" : (movedClass ? movedClass.label : movedClassId)) + "</span>",
             (touching.length
               ? "follows from your arrow " + touching.slice(0, 2).map(arrowName).join(" and ")
-              : "carried along the arrows from a classification or an arrow of yours") +
-            " &mdash; it supersedes the reading below")
+              : "carried along the arrows from a classification or an arrow of yours") + " &mdash; supersedes the reading below")
         : "") +
       (n.draft
         ? classRow("from this map",
             '<button type="button" class="class-pill classify-btn" title="Classify this problem yourself" style="' +
             classPillStyle(draftClass) + '">' +
-            escapeHtml(!draftClassId || draftClassId === "unclaimed" ? "open" : (draftClass ? draftClass.label : draftClassId)) +
-            "</button>",
+            escapeHtml(!draftClassId || draftClassId === "unclaimed" ? "open" : (draftClass ? draftClass.label : draftClassId)) + "</button>",
             draftReason ? escapeHtml(draftReason.summary) : "nothing on this map settles it yet")
-        : classRow("Scheduling Zoo classification",
+        : classRow(mine || moved ? "cited" : "classical",
             '<button type="button" class="class-pill classify-btn" title="Classify this problem yourself" style="' +
             classPillStyle(szOwnClass) + '">' + escapeHtml(szOwnLabel) + "</button>",
             szClassId === "online"
               ? "measured by competitive ratio, not by a complexity class"
               : wHardParams.length
-                ? "but not in P unless FPT = W[1] &mdash; see below"
-                : !isDirect && szClassId && szClassId !== "unclaimed"
-                  ? "inherited: generalizes at least one problem classified " + escapeHtml(szOwnClass ? szOwnClass.label : szClassId)
-                  : ""));
+                ? "but not in P unless FPT = W[1] &mdash; see the notes"
+                : isDirect
+                  ? "cited"
+                  : witnessText));
 
-    // The machine environment used to be explained in a paragraph of its
-    // own here. Every part of the name is explained on hover now (see
-    // szNotationHeadingHtml), the machine environment included, so what is
-    // left to say is where to look.
+    // ---- sections, and the table of contents over them ----
+    const sections = [];
+    const sec = (id, title, html, extraClass) => {
+      if (!html) return "";
+      sections.push({ id: id, title: title });
+      return '<section class="sz-sec' + (extraClass ? " " + extraClass : "") + '" id="' + id + '">' +
+        (title ? "<h4>" + title + "</h4>" : "") + html + "</section>";
+    };
+    const classHtml = sec("sz-sec-class", "Classification", ccPillHtml +
+      (n.draft
+        ? '<p class="sz-note">A problem <b>you drafted</b>: not in the corpus, so nothing is cited about it. Its name is ' +
+          "well formed in The Scheduling Zoo's notation, so the reduction rules place it among the corpus problems, " +
+          "and that is where the class above comes from.</p>"
+        : ""));
+    const paramsHtml = sec("sz-sec-params", "Parameters", paramDiagram
+      ? (inP ? '<p class="sz-note">This problem is in P, so it is FPT for every parameter; the results are kept for the record.</p>' : "") +
+        '<div class="sz-pt-arrow-bar"><button type="button" class="map-history-btn sz-pt-add-arrow" aria-pressed="false" ' +
+        'title="Add an arrow between two parameters: click the more general one, then the one that bounds it">→+</button>' +
+        '<span class="sz-arrow-hint sz-pt-arrow-hint"></span></div>' +
+        paramDiagram.html + paramLegendHtml
+      : "");
+    const classicalHtml = sec("sz-sec-classical", isOnline ? "Competitive ratios" : "Classical results",
+      (lower.length ? "<h5>" + (isOnline ? "What no algorithm can beat" : "Hardness") + "</h5>" + groupResults(lower).map(resultLi).join("") : "") +
+      (upper.length ? "<h5>" + (isOnline ? "What an algorithm achieves" : "Algorithms") + "</h5>" + groupResults(upper).map(resultLi).join("") : ""));
+    const approxHtml = sec("sz-sec-approx", "Approximation",
+      (approxLower.length ? "<h5>Inapproximability</h5>" + groupResults(approxLower).map(resultLi).join("") : "") +
+      (approxUpper.length ? "<h5>Algorithms</h5>" + groupResults(approxUpper).map(resultLi).join("") : ""));
+    const paramResultsHtml = sec("sz-sec-param-results", "Parameterized results", paramTreeHtml, "detail-params");
+    const notesHtml = sec("sz-sec-notes", "Notes",
+      (wHardParams.length
+        ? '<p class="sz-note"><b>Open, but not in P unless FPT = W[1].</b> Nothing cited classifies this problem, but it is ' +
+          "W-hard for " + escapeHtml(wHardParams.slice(0, 3).join(", ")) + (wHardParams.length > 3 ? " and others" : "") +
+          ", and a polynomial-time algorithm would be an FPT algorithm with f(k) = 1. That is weaker than NP-hardness " +
+          "(W-hardness comes from fpt-reductions); only para-NP-hardness settles the classical question.</p>"
+        : "") +
+      (isOnline
+        ? '<p class="sz-note"><b>An online problem.</b> Jobs are revealed at their release times, so the results are ' +
+          "<b>competitive ratios</b> against the best offline schedule, and they hold unconditionally: adversary " +
+          "arguments, not P ≠ NP. No arrow joins it to an offline problem, since the same instances with less " +
+          "information are not a special case of anything.</p>"
+        : ""));
+    const draftHtml = draftReason ? sec("sz-sec-draft", "", draftReasonHtml(draftReason)) : "";
+    const sourceHtml = sec("sz-sec-source", "", n.draft ? "" :
+      '<p>Data: <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">The Scheduling Zoo</a> ' +
+      "(Christoph Dürr and contributors). The classes are this site's reading of its bibliography; see the " +
+      '<a href="#/docs">documentation</a>.</p>', "sz-source");
+    const tocHtml = '<nav class="sz-toc" aria-label="Sections">' +
+      sections.filter((x) => x.title).map((x) => '<a href="javascript:void(0)" data-sz-toc="' + x.id + '">' + x.title + "</a>").join("") + "</nav>";
+
     // .sz-panel carries the overview's lens (see szApplyLens) so the panel
-    // lights the same kind of result the map is lighting. It is inside the
-    // content, so any other renderer's innerHTML replaces it -- a Problem
-    // Map's panel never inherits the attribute.
+    // lights the same kind of result the map is lighting.
     els.detailContent.innerHTML =
       '<div class="sz-panel"' + (SZ_LENS ? ' data-lens="' + SZ_LENS + '"' : "") + ">" +
-      szNotationHeadingHtml(szNotationPartsHtml(n)) + ccPillHtml +
-      (n.draft
-        ? '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">a problem <b>you drafted</b> — it is not in ' +
-          "The Scheduling Zoo's corpus, so there is nothing cited about it. It is a well-formed name in their own " +
-          "notation, though, so the reduction rules place it among the corpus problems, and that is where the " +
-          "classification above comes from.</p>"
-        : '<p class="wiki-alphabetagamma" style="margin-top:-0.5rem">from <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">schedulingzoo.lip6.fr</a> -- ' +
-          "not independently verified by this site; classification above is this site's own reading of The Scheduling Zoo's " +
-          "cited text, not a category The Scheduling Zoo assigns itself.</p>") +
-      (szNotationTokens(n)
-        ? '<p class="notation-hint">Point at any part of the name above — the machine environment, each setting, ' +
-          "the objective — for what it means, in The Scheduling Zoo's own wording.</p>"
-        : "") +
-      // Open, but not for want of knowing anything: spell out what the
-      // W-hardness does and does not settle classically.
-      (wHardParams.length
-        ? '<div class="detail-field detail-whard"><h4>Open, but not in P unless FPT = W[1]</h4><p style="margin:0">' +
-          "No result here classifies this problem's classical complexity, so its class is open. It is " +
-          "<b>W-hard</b> though, for " + escapeHtml(wHardParams.slice(0, 3).join(", ")) +
-          (wHardParams.length > 3 ? " and others" : "") + " (below), and a polynomial-time algorithm would be an " +
-          "FPT algorithm for every parameter at once &mdash; take f(k) = 1. So a W[1]-hard problem cannot be in P " +
-          "unless FPT = W[1].</p>" +
-          '<p style="margin:0.5rem 0 0">That is <b>not</b> NP-hardness, which is why the class above does not say ' +
-          "so: W-hardness is proved by fpt-reductions rather than polynomial ones, and \u201Cnot in P\u201D is " +
-          "weaker than \u201CNP-hard\u201D &mdash; a problem can be neither. Where a parameterized result does " +
-          "settle the classical question it is <b>para-NP-hardness</b>: NP-hard already at a constant value of " +
-          "the parameter, so the general problem contains an NP-hard special case.</p></div>"
-        : "") +
-      // An online problem's results are the point of it, and they are not
-      // complexity classes -- say so once, above them.
-      (isOnline
-        ? '<div class="detail-field detail-online"><h4>An online problem</h4><p style="margin:0">Jobs are revealed at ' +
-          "their release times, so what limits an algorithm here is what it does not yet know, not how long it may " +
-          "compute. The results below are <b>competitive ratios</b> — how far from the best offline schedule an " +
-          "algorithm must be — and they hold <b>unconditionally</b>: they come from adversary arguments, not from " +
-          "P ≠ NP. So neither “in P” nor “NP-hard” is the question being asked. No arrow joins this " +
-          "problem to an offline one either: the same instances with less information is not a special case of " +
-          "anything.</p></div>"
-        : "") +
-      // A draft's whole evidence, so it comes before the (empty) citation
-      // sections rather than after them.
-      (draftReason ? draftReasonHtml(draftReason) : "") +
-      // An online problem's "upper"/"lower" results are not positive and
-      // negative CLASSICAL results -- they are the two directions of a
-      // competitive ratio -- so they are not headed as if they were.
-      (lower.length ? '<div class="detail-field"><h4>' +
-        (isOnline ? "What no algorithm can beat" : "Classical hardness results") +
-        '</h4><ul class="result-list">' + lower.map(resultLi).join("") + "</ul></div>" : "") +
-      (upper.length ? '<div class="detail-field"><h4>' +
-        (isOnline ? "What an algorithm achieves" : "Classical positive / algorithmic results") +
-        '</h4><ul class="result-list">' + upper.map(resultLi).join("") + "</ul></div>" : "") +
-      (paramTreeHtml ? '<div class="detail-field detail-params"><h4>Parameterized results</h4><p style="margin:0 0 0.5rem;color:var(--muted);font-size:0.85rem">' +
-        "Nested by combined-parameter containment: a child bounds every measure its parent bounds, plus more" +
-        (paramDiagram ? " (drag the boxes below, same as any other map on this site)" : "") + ".</p>" +
-        (paramDiagram
-          ? '<div class="sz-pt-arrow-bar"><button type="button" class="map-history-btn sz-pt-add-arrow" aria-pressed="false" ' +
-            'title="Add an arrow between two parameters: click the more general one, then the one that bounds it">→+</button>' +
-            '<span class="sz-arrow-hint sz-pt-arrow-hint"></span></div>'
-          : "") +
-        (paramDiagram ? paramDiagram.html : "") + paramLegendHtml + paramTreeHtml + "</div>" : "") +
+      szNotationHeadingHtml(szNotationPartsHtml(n)) + tocHtml +
+      classHtml + paramsHtml + classicalHtml + approxHtml + paramResultsHtml + notesHtml + draftHtml + sourceHtml +
       "</div>";
     els.detailPanel.hidden = false;
     els.detailOverlay.hidden = false;
@@ -5852,6 +5965,21 @@
     }
     els.detailContent.querySelectorAll(".classify-btn").forEach((b) =>
       b.addEventListener("click", () => showClassifyDialog(n.id, null, n.notation)));
+    // Section links scroll the panel (a real #anchor would change the
+    // route); problem links open that problem's panel in place.
+    els.detailContent.querySelectorAll("[data-sz-toc]").forEach((a) => a.addEventListener("click", () => {
+      const target = els.detailContent.querySelector("#" + a.dataset.szToc);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+    els.detailContent.querySelectorAll("[data-sz-jump]").forEach((a) => a.addEventListener("click", () => openSchedulingZooPanel(a.dataset.szJump)));
+    // A lens unfolds the cards it lights.
+    if (SZ_LENS === "params") els.detailContent.querySelectorAll("#sz-sec-param-results .sz-param-card").forEach((d) => { d.open = true; });
+    if (SZ_LENS === "approx") els.detailContent.querySelectorAll("#sz-sec-approx .sz-param-card").forEach((d) => { d.open = true; });
+    // A [n] badge unfolds its line under the card's lines.
+    els.detailContent.querySelectorAll("[data-sz-badge]").forEach((b) => b.addEventListener("click", () => {
+      const d = els.detailContent.querySelector("#" + CSS.escape(b.dataset.szBadge));
+      if (d) { d.hidden = !d.hidden; b.classList.toggle("is-open", !d.hidden); }
+    }));
     enableNotationTooltips(els.detailContent);
   }
 
@@ -5859,7 +5987,7 @@
   // label like "m" or "#p+#d+#r" (several measures bounded together). Build
   // a forest by set-containment of those "+"-joined token sets -- purely
   // structural (just which label's token set is a subset of which other),
-  // no complexity-theoretic claim asserted about how the results relate.
+  // the results themselves are carried along it first (szParamDerivedResults).
   // Smaller token set = fewer things bounded = more general, so it's the
   // parent; a bigger superset is nested underneath as the more specific
   // child, matching this site's general-to-specific convention everywhere
@@ -5911,38 +6039,186 @@
     return { byLabel, labels, parentOf, parentsOf, childrenOf, roots };
   }
 
-  function buildParamTreeHtml(forest, resultLi, nodeId) {
+  function szParamAnchor(label) {
+    return "sz-param-" + String(label).replace(/[^a-zA-Z0-9]+/g, "-");
+  }
+  // "Hermelin, Karhi, Pinedo & Shabtay (2021)"; four or more authors is
+  // "Hermelin et al. (2021)".
+  // BibTeX writes "Lawler, E.L. and Moore, J.M." (surname first) but some
+  // entries are "J. K. Lenstra, D. B. Shmoys and É. Tardos" (a comma-
+  // separated list, surname last): a part before a comma that is several
+  // words, or ends in an initial, is a whole name, not a surname.
+  function szShortCite(r) {
+    const surnameOf = (name) => (name.trim().split(/\s+/).pop() || "").replace(/\.$/, "");
+    // "J. K. Lenstra": an initial before the last word. "Rinnooy Kan" has none.
+    const isWholeName = (head) => head.split(/\s+/).slice(0, -1).some((w) => /\.$/.test(w) || w.length === 1);
+    const names = String(r.author || "").split(/\s+and\s+/).flatMap((a) => {
+      a = a.trim();
+      if (!a.includes(",")) return [surnameOf(a)];
+      const head = a.split(",")[0].trim();
+      return isWholeName(head) ? a.split(",").map(surnameOf) : [head];
+    }).filter(Boolean);
+    const who = !names.length ? "" : names.length > 3 ? names[0] + " et al."
+      : names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " & " + names[names.length - 1];
+    return who + (r.year ? " (" + r.year + ")" : "");
+  }
+  function szCiteLink(r) {
+    const full = escapeHtml([r.author, r.year ? "(" + r.year + ")" : "", r.title].filter(Boolean).join(" "));
+    return r.url
+      ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" title="' + full + '">' + escapeHtml(szShortCite(r)) + "</a>"
+      : '<span title="' + full + '">' + escapeHtml(szShortCite(r)) + "</span>";
+  }
+
+  // A classical result as a term, not a sentence: "is NP-hard" and "is in
+  // P" lose their verb, "is Ppseudo" and "is in Ppseudo" (the corpus
+  // writes both) are one "in P_pseudo" with a real subscript. Returns HTML.
+  function szClassicalTerm(bound) {
+    let b = String(bound || "").trim().replace(/^is (in )?(?=P(pseudo)?$)/i, "in ").replace(/^is /i, "");
+    return escapeHtml(b).replace(/\bPpseudo\b/g, "P<sub>pseudo</sub>");
+  }
+
+  // A parameterized result in the vocabulary of the field, not the
+  // corpus's phrasing of it: "is in P" for a fixed value of the parameter
+  // is XP, "is fixed parameter tractable" is FPT. Qualifiers survive
+  // ("strongly", "even if #w=1"); the phrase as cited stays in the tooltip.
+  function szParamTerm(r) {
+    const b = String(r.bound || "").trim();
+    let m;
+    if (r.complexityClass === "FPT" && /^is fixed[- ]parameter tractable$/i.test(b)) return "FPT";
+    if (r.complexityClass === "XP" && /^is (in )?P$/i.test(b)) return "XP";
+    if (r.complexityClass === "XP" && /^is (in )?Ppseudo$/i.test(b)) return "XP, pseudo-polynomial";
+    if ((m = b.match(/^is (strongly )?(W\[\d\]-hard)(.*)$/i))) return (m[1] || "") + m[2] + m[3];
+    if (r.complexityClass === "paraNP") return /complete/i.test(b) ? "para-NP-complete" : "para-NP-hard";
+    return b.replace(/^is /i, "");
+  }
+
+  // One card per parameter, folded: the name, its class, and where that
+  // class comes from on one line; open it for the results. Inside, one
+  // line per side -- the hardness, the algorithm -- naming the best class
+  // and the paper it is taken from; every other line that supports or
+  // weakens it (the same result reached by containment from #d+#p, an XP
+  // algorithm under an FPT one) is a [n] badge: hover for what it says,
+  // click for the full line. The cards follow the forest's order and
+  // indent with it; the diagram above draws the structure.
+  function buildParamTreeHtml(forest, nodeId, inP) {
     if (!forest.labels.length) return "";
+    const arrowText = (cb) => cb.from + " → " + cb.to;
+    // Where a group's lines come from, in words (plain text): inherited
+    // from ..., cited here, by containment from ..., along your arrow ...
+    function pathParts(label, g) {
+      const cont = [], arrows = [];
+      let own = false;
+      g.paths.forEach((r) => {
+        if (!r.carriedBy) own = true;
+        else if (r.carriedBy.kind === "arrow") { const t = arrowText(r.carriedBy) + " from " + r.derivedFrom; if (!arrows.includes(t)) arrows.push(t); }
+        else if (!cont.includes(r.derivedFrom)) cont.push(r.derivedFrom);
+      });
+      const parts = [];
+      const r0 = g.r;
+      if (r0.inheritedFrom) {
+        parts.push("inherited from " + (r0.direction === "down" ? "the more general " : "its special case ") + szNotationOf(r0.inheritedFrom) +
+          (r0.via && r0.via.length > 1 ? " along " + r0.via.map(szNotationOf).join(" → ") : ""));
+      }
+      if (own && (cont.length || arrows.length)) parts.push("cited for " + label);
+      if (cont.length) parts.push("by containment from " + cont.join(", "));
+      if (arrows.length) parts.push("along your arrow" + (arrows.length > 1 ? "s " : " ") + arrows.join("; "));
+      return parts;
+    }
+    // The line to show for a class: cited on this problem for this very
+    // parameter first, then carried from another parameter of this
+    // problem, then inherited from another problem, then the reader's
+    // arrows.
+    const originRank = (g) => g.paths.some((r) => !r.carriedBy) ? (g.r.inheritedFrom ? 2 : 0) : (g.paths.some((r) => r.carriedBy.kind === "containment") ? 1 : 3);
+    // A one-line answer to "why this class": the sources of the lines that
+    // establish it, two at most.
+    function whyText(groups, best) {
+      const srcs = [];
+      groups.filter((g) => g.r.complexityClass === best).sort((a, b) => originRank(a) - originRank(b)).forEach((g) => {
+        g.paths.forEach((r) => {
+          const t = r.inheritedFrom ? "from " + szNotationOf(r.inheritedFrom)
+            : r.carriedBy ? (r.carriedBy.kind === "arrow" ? "along your arrow" : "from " + r.derivedFrom)
+            : szShortCite(r);
+          if (!srcs.includes(t)) srcs.push(t);
+        });
+      });
+      return srcs.length ? srcs.slice(0, 2).join(", ") + (srcs.length > 2 ? " +" + (srcs.length - 2) : "") : "";
+    }
     function renderLabel(label, depth) {
       const rs = forest.byLabel[label];
-      const pl = rs.filter((r) => r.kind === "lower");
-      const pu = rs.filter((r) => r.kind === "upper");
       const kids = forest.childrenOf[label].slice().sort();
-      // Stated as the reader's own line, above citations that are left
-      // exactly as they are -- a claim never edits what a source says.
       const mine = nodeId ? userParamClass(nodeId, label) : null;
       const mineCls = mine ? classById(mine.classId) : null;
-      return '<div class="sz-param-group" style="margin-left:' + depth * 0.9 + 'rem">' +
-        "<h5>parameter: " + escapeHtml(label) + "</h5>" +
+      const best = bestParamComplexityClass(rs);
+      const shownBest = inP ? "FPT" : best;
+      const bestCls = shownBest ? classById(shownBest) : null;
+      const alsoXp = !inP && szParamAlsoXp(rs);
+      // One group per distinct result: same citation, class and origin
+      // problem, whatever path brought it.
+      const groups = [], byKey = {};
+      rs.forEach((r) => {
+        const key = [r.kind, r.complexityClass || "", r.bibkey || r.bound, r.inheritedFrom || ""].join("\u0001");
+        let g = byKey[key];
+        if (!g) { g = byKey[key] = { r: r, paths: [] }; groups.push(g); }
+        g.paths.push(r);
+      });
+      groups.forEach((g) => { g.term = szParamTerm(g.r); g.parts = pathParts(label, g); });
+      // One line per side. Hardness first, as in the classical section.
+      const sides = [
+        { kind: "lower", best: ["paraNP", "W2", "W1"].find((c) => rs.some((r) => r.complexityClass === c)) || null },
+        { kind: "upper", best: ["FPT", "XP"].find((c) => rs.some((r) => r.complexityClass === c)) || null },
+      ];
+      let badgeNo = 0;
+      const details = [];
+      const badge = (g) => {
+        badgeNo += 1;
+        const tip = g.term + " — " + szShortCite(g.r) + (g.parts.length ? " · " + g.parts.join(" · ") : "") +
+          (g.term !== g.r.bound ? " (cited as: " + g.r.bound + ")" : "");
+        const id = szParamAnchor(label) + "-c" + badgeNo;
+        details.push('<div class="sz-res-detail result-' + g.r.kind + '" id="' + id + '" hidden>' +
+          "[" + badgeNo + "] " + '<span class="sz-res-bound">' + escapeHtml(g.term) + '</span> <span class="sz-res-cite">— ' + szCiteLink(g.r) + "</span>" +
+          (g.parts.length ? '<div class="sz-res-path">' + escapeHtml(g.parts.join(" · ")) + "</div>" : "") + "</div>");
+        return '<button type="button" class="sz-cite-badge" data-sz-badge="' + id + '" title="' + escapeHtml(tip) + '">[' + badgeNo + "]</button>";
+      };
+      const lines = sides.map((side) => {
+        const mine_ = groups.filter((g) => g.r.kind === side.kind);
+        if (!mine_.length) return "";
+        const top = mine_.filter((g) => g.r.complexityClass === side.best).sort((a, b) => originRank(a) - originRank(b));
+        const primary = top[0] || mine_[0];
+        const rest = mine_.filter((g) => g !== primary);
+        return '<div class="sz-res-line result-' + side.kind + '">' +
+          '<span class="sz-res-bound">' + escapeHtml(primary.term) + "</span>" +
+          ' <span class="sz-res-cite">— ' + szCiteLink(primary.r) + "</span>" +
+          (primary.parts.length ? ' <span class="sz-res-path">' + escapeHtml(primary.parts.join(" · ")) + "</span>" : "") +
+          (rest.length ? ' <span class="sz-badges">' + rest.map(badge).join("") + "</span>" : "") + "</div>";
+      }).join("");
+      const why = inP ? "in P" : whyText(groups, best);
+      const head =
+        '<summary class="sz-param-head"><span class="sz-param-name">' + escapeHtml(label) + "</span>" +
+        (bestCls
+          ? '<span class="class-pill" style="' + classPillStyle(bestCls, alsoXp ? { xpBound: true } : null) + '">' +
+            escapeHtml(bestCls.label) + (alsoXp ? " and in XP" : "") + "</span>"
+          : '<span class="sz-param-why">recorded, not classified</span>') +
         (mine
-          ? '<div class="detail-class-row"><span class="detail-class-label">' +
-            (mine.direct ? "your classification" : "follows from your classification") + "</span>" +
-            '<span class="class-pill" style="' + classPillStyle(mineCls) + '">' +
-            escapeHtml(mineCls ? mineCls.label : mine.classId) + "</span>" +
-            '<span class="detail-class-aside">' +
-            (mine.direct
-              ? "unverified" + (mine.source ? " &middot; " + escapeHtml(mine.source) : "")
-              : mine.viaParam
-              ? "of " + escapeHtml(mine.viaParam) + " on this problem, which bounds " +
-                (PARAM_UPPER_BOUNDS.includes(mine.classId) ? "less" : "more")
-              : "of " + escapeHtml((szNodeIndex()[mine.from] || {}).notation || mine.from) +
-                ", carried along arrows that keep " + escapeHtml(label) + " bounded") +
-            (pl.length || pu.length ? " &middot; the citations below are unchanged" : "") + "</span></div>"
+          ? '<span class="sz-param-yours" title="' + (mine.direct ? "your classification" : "follows from your classification") + '">you: ' +
+            '<span class="class-pill" style="' + classPillStyle(mineCls) + '">' + escapeHtml(mineCls ? mineCls.label : mine.classId) + "</span></span>"
           : "") +
-        (pl.length ? '<ul class="result-list">' + pl.map(resultLi).join("") + "</ul>" : "") +
-        (pu.length ? '<ul class="result-list">' + pu.map(resultLi).join("") + "</ul>" : "") +
-        kids.map((k) => renderLabel(k, depth + 1)).join("") +
-        "</div>";
+        (why ? '<span class="sz-param-why">' + escapeHtml(why) + "</span>" : "") +
+        '<span class="sz-param-count">' + groups.length + "</span></summary>";
+      const claim = mine
+        ? '<div class="detail-class-row"><span class="detail-class-label">' +
+          (mine.direct ? "your classification" : "follows from your classification") + "</span>" +
+          '<span class="class-pill" style="' + classPillStyle(mineCls) + '">' + escapeHtml(mineCls ? mineCls.label : mine.classId) + "</span>" +
+          '<span class="detail-class-aside">' +
+          (mine.direct
+            ? "unverified" + (mine.source ? " &middot; " + escapeHtml(mine.source) : "")
+            : mine.viaParam
+            ? "of " + escapeHtml(mine.viaParam) + " on this problem, which bounds " + (PARAM_UPPER_BOUNDS.includes(mine.classId) ? "less" : "more")
+            : "of " + escapeHtml((szNodeIndex()[mine.from] || {}).notation || mine.from) + ", carried along arrows that keep " + escapeHtml(label) + " bounded") +
+          "</span></div>"
+        : "";
+      return '<details class="sz-param-card" id="' + szParamAnchor(label) + '" style="margin-left:' + Math.min(depth, 3) * 0.5 + 'rem">' +
+        head + '<div class="sz-param-body">' + claim + lines + details.join("") + "</div></details>" +
+        kids.map((k) => renderLabel(k, depth + 1)).join("");
     }
     return forest.roots.map((r) => renderLabel(r, 0)).join("");
   }
@@ -5964,15 +6240,19 @@
   // labels here are free text ("m" vs "#p+#d+#r"), not fixed short symbols.
   const SZ_PT_NODE_H = 26, SZ_PT_ROW_H = 48, SZ_PT_MARGIN = 10, SZ_PT_COL_GAP = 14, SZ_PT_FONT_PX = 11;
   const SZ_PT_MIN_W = 40, SZ_PT_MAX_W = 130;
+  const SZ_PT_RING = 5; // the band of background inside an "inset" box (see classBg): the box's 6px side padding, less the stroke
+  // The diagram wraps rather than grow past this: the panel's default
+  // width (see .detail-panel) less its paddings (setPanelMinWidth).
+  const SZ_PT_MAX_DIAGRAM_W = 260, SZ_PT_LINE_GAP = 10, SZ_PT_MAX_PER_LINE = 3;
 
-  // A param label can carry several citations (different papers). Hardness
-  // always wins when both a hardness and a positive result are recorded
-  // for the same label (same "we know at least this much" convention used
-  // everywhere else on this site), and among hardness/positive results the
-  // strongest-known one wins. A citation this site's classifier couldn't
-  // confidently place (approximation ratios, ad-hoc ETH runtimes, ...)
-  // contributes nothing here -- shown in the text list below regardless.
-  const SZ_PARAM_CLASS_RANK = { paraNP: 5, W2: 4, W1: 3, FPT: 2, XP: 1 };
+  // A param label can carry several citations (different papers). Green
+  // wins: an FPT result settles the parameter, whatever else is recorded
+  // for it. Otherwise hardness outranks XP (which then fills the box, see
+  // szParamAlsoXp), and among hardness results the strongest wins. A
+  // citation this site's classifier couldn't confidently place
+  // (approximation ratios, ad-hoc ETH runtimes, ...) contributes nothing
+  // here -- shown in the text list below regardless.
+  const SZ_PARAM_CLASS_RANK = { FPT: 5, paraNP: 4, W2: 3, W1: 2, XP: 1 };
   function bestParamComplexityClass(rs) {
     let best = null;
     rs.forEach((r) => {
@@ -5994,7 +6274,7 @@
     return (best === "W1" || best === "W2") && rs.some((r) => r.complexityClass === "XP");
   }
 
-  function buildParamDiagramHtml(forest, nodeId) {
+  function buildParamDiagramHtml(forest, nodeId, inP) {
     const ids = forest.labels;
     if (!ids.length) return null;
     const edgeList = ids.flatMap((id) => forest.parentsOf[id].map((p) => ({ from: p, to: id })));
@@ -6010,12 +6290,53 @@
     const colX = { 1: 0 };
     for (let c = 2; c <= maxCol; c++) colX[c] = colX[c - 1] + colWidth[c - 1] + SZ_PT_COL_GAP;
     const pos = {};
-    ids.forEach((id) => {
-      const w = widthOf[id];
-      pos[id] = { left: SZ_PT_MARGIN + colX[col[id]] + (colWidth[col[id]] - w) / 2, top: SZ_PT_MARGIN + row[id] * SZ_PT_ROW_H, w, h: SZ_PT_NODE_H };
-    });
-    const width = SZ_PT_MARGIN * 2 + (maxCol ? colX[maxCol] + colWidth[maxCol] : 0);
-    const height = SZ_PT_MARGIN * 2 + maxRow * SZ_PT_ROW_H + SZ_PT_NODE_H;
+    let width = SZ_PT_MARGIN * 2 + (maxCol ? colX[maxCol] + colWidth[maxCol] : 0);
+    let height = SZ_PT_MARGIN * 2 + maxRow * SZ_PT_ROW_H + SZ_PT_NODE_H;
+    const rowSizes = {};
+    ids.forEach((id) => { rowSizes[row[id]] = (rowSizes[row[id]] || 0) + 1; });
+    if (width <= SZ_PT_MAX_DIAGRAM_W && Math.max(...Object.values(rowSizes)) <= SZ_PT_MAX_PER_LINE) {
+      // Columns: a child sits under its parent, arrows run straight.
+      ids.forEach((id) => {
+        const w = widthOf[id];
+        pos[id] = { left: SZ_PT_MARGIN + colX[col[id]] + (colWidth[col[id]] - w) / 2, top: SZ_PT_MARGIN + row[id] * SZ_PT_ROW_H, w, h: SZ_PT_NODE_H };
+      });
+    } else {
+      // Too wide for the panel, or too many in a row (five unrelated
+      // parameters side by side): each row wraps into lines of at most
+      // SZ_PT_MAX_PER_LINE, every line centred, lines of one row set closer
+      // than the rows themselves. The hard parameters go first, so they
+      // land on the upper line.
+      const inner = SZ_PT_MAX_DIAGRAM_W - 2 * SZ_PT_MARGIN;
+      const hardness = { paraNP: 0, W2: 1, W1: 2, XP: 3, FPT: 4 };
+      const rankOf = (id) => {
+        const own = nodeId ? userParamClass(nodeId, id) : null;
+        const c = own ? own.classId : inP ? "FPT" : bestParamComplexityClass(forest.byLabel[id]);
+        return c in hardness ? hardness[c] : 5;
+      };
+      const lines = [];
+      for (let r = 0; r <= maxRow; r++) {
+        const members = ids.filter((id) => row[id] === r).sort((a, b) => rankOf(a) - rankOf(b) || col[a] - col[b]);
+        if (!members.length) continue;
+        let line = [], lw = 0;
+        members.forEach((id) => {
+          const add = (line.length ? SZ_PT_COL_GAP : 0) + widthOf[id];
+          if (line.length && (lw + add > inner || line.length >= SZ_PT_MAX_PER_LINE)) { lines.push({ ids: line, last: false }); line = []; lw = 0; }
+          line.push(id);
+          lw += (line.length > 1 ? SZ_PT_COL_GAP : 0) + widthOf[id];
+        });
+        lines.push({ ids: line, last: true });
+      }
+      const lineW = (l) => l.ids.reduce((sum, id) => sum + widthOf[id], 0) + SZ_PT_COL_GAP * (l.ids.length - 1);
+      const maxLine = Math.max(...lines.map(lineW));
+      let y = SZ_PT_MARGIN;
+      lines.forEach((l, i) => {
+        let x = SZ_PT_MARGIN + (maxLine - lineW(l)) / 2;
+        l.ids.forEach((id) => { pos[id] = { left: x, top: y, w: widthOf[id], h: SZ_PT_NODE_H }; x += widthOf[id] + SZ_PT_COL_GAP; });
+        if (i < lines.length - 1) y += l.last ? SZ_PT_ROW_H : SZ_PT_NODE_H + SZ_PT_LINE_GAP;
+      });
+      width = SZ_PT_MARGIN * 2 + maxLine;
+      height = y + SZ_PT_NODE_H + SZ_PT_MARGIN;
+    }
 
     const arrowId = "sz-param-tree-arrow";
     const claimArrowId = "sz-param-tree-arrow-claim";
@@ -6063,21 +6384,26 @@
       // The reader's own classification wins in their own browser, and is
       // drawn with a dashed outline so it never passes for a cited result.
       const ownClaim = nodeId ? userParamClass(nodeId, id) : null;
-      const classId = ownClaim ? ownClaim.classId : bestParamComplexityClass(rs);
+      const classId = ownClaim ? ownClaim.classId : inP ? "FPT" : bestParamComplexityClass(rs);
       const cls = classId ? classById(classId) : null;
       // W[1]/W[2]-hard with a cited XP result fills solid: the outline says
       // hard, the fill says also in XP -- the same encoding Problem Maps
       // uses for a result with an xpBound. Plain outline would read as
       // "hard, no known n^f(k) algorithm", which is not what is known here.
-      const alsoXp = !ownClaim && szParamAlsoXp(rs);
+      const alsoXp = !ownClaim && !inP && szParamAlsoXp(rs);
       const filled = cls && (cls.fill || alsoXp);
-      const bg = cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
+      // An upper bound on its own (at most XP): the colour in the middle
+      // inside a band of background -- see classBg. With W-hardness too the
+      // box is solid.
+      const inset = cls && cls.fill === "inset" && !alsoXp;
+      const bg = inset ? "var(--panel-bg)" : cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
       const border = cls ? cls.color : "#868e96";
       const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
       const textColor = filled && !cls.opacity ? fillTextColor(cls) : cls && (filled || cls.opacity) ? "#111" : "var(--fg)";
       const p = pos[id];
       const title = id + (cls ? " — " + cls.label : rs.some((r) => r.kind === "lower") || rs.some((r) => r.kind === "upper") ? " — result recorded, not classified into FPT/XP/W-hierarchy (see list below)" : "") +
         (alsoXp ? " — and in XP: polynomial for each fixed value" : "") +
+        (inP && !ownClaim ? " — trivially: the problem is in P" : "") +
         (ownClaim
           ? ownClaim.direct
             ? " (yours, unverified" + (ownClaim.source ? ": " + ownClaim.source : "") + ")"
@@ -6094,6 +6420,7 @@
             USER_CLASS_RING + '" stroke-width="3"' + (ownClaim.direct ? "" : ' stroke-opacity="0.45"') + " />"
           : "") +
         '<rect width="' + p.w + '" height="' + p.h + '" rx="5" style="fill:' + bg + ";stroke:" + border + '"' + dash + ' stroke-width="1.5" />' +
+        (inset ? '<rect x="' + SZ_PT_RING + '" y="' + SZ_PT_RING + '" width="' + (p.w - 2 * SZ_PT_RING) + '" height="' + (p.h - 2 * SZ_PT_RING) + '" rx="2" style="fill:' + cls.color + '" />' : "") +
         '<text x="' + p.w / 2 + '" y="' + (p.h / 2 + 4) + '" text-anchor="middle" font-size="' + SZ_PT_FONT_PX + '" font-weight="600" style="fill:' + textColor + '">' +
         escapeHtml(id) + "</text></g>";
     }).join("");
@@ -6532,7 +6859,7 @@
   function sandboxNodeStyle(exact, classicalBest) {
     const classId = exact ? effectiveClassForProblem(exact.id) : classicalBest;
     const cc = classId ? classicalClassById(classId) : null;
-    const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+    const bg = classBg(cc, "var(--panel-bg)");
     const border = cc ? cc.color : "#868e96";
     const color = cc && cc.fill ? fillTextColor(cc) : null;
     return { cc, style: "background:" + bg + ";border-color:" + border + (color ? ";color:" + color : "") };
@@ -7056,7 +7383,7 @@
       return { general: a, specific: b, generalClass: ca, specificClass: cb,
         why: "an algorithm for " + a.notation + " would then solve the NP-hard " + b.notation + " in polynomial time" };
     }
-    if (ca === "weakly-NP-hard" && cb === "strongly-NP-hard" && edge.numbers !== "blowup") {
+    if ((ca === "weakly-NP-hard" || ca === "pseudo-open") && cb === "strongly-NP-hard" && edge.numbers !== "blowup") {
       return { general: a, specific: b, generalClass: ca, specificClass: cb,
         why: "the pseudo-polynomial algorithm for " + a.notation + " would then solve the strongly NP-hard " + b.notation + " in pseudo-polynomial time" };
     }
@@ -7214,22 +7541,29 @@
     return implied;
   }
 
-  // What the cited results carry along the reader's parameter arrows, and
-  // ONLY along those: the containment the diagram draws asserts nothing
-  // about how cited results relate (see buildParamForest), but an arrow of
-  // the reader's is their claim that they do. Hardness (W[1], W[2],
-  // para-NP) travels from the bounding end to the bounded one; FPT and XP
-  // the other way. Each carried line keeps its citation and says which
-  // arrow brought it.
+  // What a problem's results imply for its other parameters, to a fixpoint,
+  // along two relations between labels. Containment: a label that bounds
+  // MORE measures (#d+#p+#w) is bounded by one that bounds fewer (#d+#p),
+  // so an algorithm for the smaller label holds for the larger one, and
+  // hardness for the larger holds for the smaller. The reader's parameter
+  // arrows (`from` is bounded by a function of `to`) work the same way. So:
+  // FPT and XP travel down, W[1], W[2] and para-NP up. Each carried line
+  // keeps its citation and says what brought it. Containment only fills in
+  // labels the problem already has results for; an arrow may add one.
   const PARAM_HARDNESS = ["W1", "W2", "paraNP"];
-  function szParamArrowResults(params) {
-    const edges = loadSzParamEdges();
-    if (!edges.length) return [];
+  function szParamDerivedResults(params) {
+    const labels = new Set(params.map((r) => canonicalParamLabel(r.param)));
+    const relations = loadSzParamEdges().map((e) => ({ from: canonicalParamLabel(e.from), to: canonicalParamLabel(e.to), arrow: e }));
+    const list = Array.from(labels);
+    list.forEach((a) => list.forEach((b) => {
+      if (a !== b && paramSubsetOf(paramParts(a), paramParts(b))) relations.push({ from: a, to: b, arrow: null });
+    }));
+    if (!relations.length) return [];
+    const keyOf = (r, label) => label + "\u0001" + (r.bibkey || r.bound) + "\u0001" + (r.inheritedFrom || "") + "\u0001" + (r.derivedFrom || r.param);
     const have = {};
-    const keyOf = (r, label) => label + "\u0001" + (r.bibkey || r.bound) + "\u0001" + (r.inheritedFrom || "") + "\u0001" + (r.arrowSource || r.param);
+    params.forEach((r) => { have[keyOf(r, canonicalParamLabel(r.param))] = true; });
     const out = [];
     const all = params.slice();
-    params.forEach((r) => { have[keyOf(r, canonicalParamLabel(r.param))] = true; });
     let added = true;
     while (added) {
       added = false;
@@ -7237,13 +7571,16 @@
         const label = canonicalParamLabel(r.param);
         const cls = r.complexityClass;
         if (!cls) return;
-        edges.forEach((e) => {
-          const target = PARAM_HARDNESS.includes(cls) && canonicalParamLabel(e.to) === label ? canonicalParamLabel(e.from)
-            : PARAM_UPPER_BOUNDS.includes(cls) && cls !== "P" && canonicalParamLabel(e.from) === label ? canonicalParamLabel(e.to)
+        relations.forEach((e) => {
+          const target = PARAM_HARDNESS.includes(cls) && e.to === label ? e.from
+            : PARAM_UPPER_BOUNDS.includes(cls) && cls !== "P" && e.from === label ? e.to
             : null;
-          if (!target) return;
-          const copy = Object.assign({}, r, { param: target, viaParamArrow: r.viaParamArrow || { from: e.from, to: e.to },
-            arrowSource: r.arrowSource || r.param });
+          if (!target || (!e.arrow && !labels.has(target))) return;
+          const copy = Object.assign({}, r, {
+            param: target,
+            derivedFrom: r.derivedFrom || r.param,
+            carriedBy: r.carriedBy || (e.arrow ? { kind: "arrow", from: e.arrow.from, to: e.arrow.to } : { kind: "containment", from: e.from, to: e.to }),
+          });
           const k = keyOf(copy, target);
           if (have[k]) return;
           have[k] = true;
@@ -7962,7 +8299,7 @@
       const p = storyNodeById(id);
       const cc = classicalClassById(designerClassOf(id));
       const pos = positions[id];
-      const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+      const bg = classBg(cc, "var(--panel-bg)", MAP_NODE_RING);
       const text = cc && cc.fill ? fillTextColor(cc) : null;
       return '<a class="map-node' + (cc && !cc.fill ? " outline" : "") + (userClassification(id, null) ? " user-classified" : "") + (DESIGNER_USER_AFFECTED.has(id) ? " user-affected" : "") + (designerArrowMode ? (designerArrowMode.from === id ? " arrow-origin" : "") : (id === designerSelectedId ? " designer-selected" : "")) + '" data-problem-id="' + escapeHtml(id) + '" href="javascript:void(0)" style="left:' + pos.left + 'px;top:' + pos.top + 'px;width:' + nodeW + 'px;height:' + nodeH + 'px;background:' + bg + ';border-color:' + (cc ? cc.color : "#868e96") + ';border-style:' + (cc ? (cc.border || "solid") : "solid") + (text ? ';color:' + text : "") + ';font-size:' + MAP_NODE_FONT_SIZE_REM + 'rem">' + escapeHtml(p.notation) + '</a>';
     }).join("");
@@ -8229,7 +8566,7 @@
     const exactId = draft && draft.existing ? draft.existing.id : null;
     const nodes = shown.map((p) => {
       const cc = classicalClassById(SZ_EFFECTIVE[p.id] || p.classicalClass);
-      const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+      const bg = classBg(cc, "var(--panel-bg)");
       const already = selected.has(p.id);
       const pos = positions[p.id];
       return '<button type="button" class="designer-mini-node' + (already ? " added" : "") +
@@ -8808,7 +9145,7 @@
     const cc = classicalClassById(classId);
     if (!cc) return "";
     return (
-      '<span class="class-pill" style="background:' + (cc.fill ? cc.color : "var(--panel-bg)") +
+      '<span class="class-pill" style="background:' + classBg(cc, "var(--panel-bg)") +
       ";border:2px " + (cc.border || "solid") + " " + cc.color + ";color:" + (cc.fill ? fillTextColor(cc) : "var(--fg)") +
       '">' + escapeHtml(cc.label) + "</span> "
     );
@@ -8959,7 +9296,8 @@
         // too -- plain outline would look identical to a W-hard result with
         // no known n^f(k) algorithm highlighted, losing real information.
         const filled = cls && (cls.fill || (r && r.xpBound));
-        const bg = cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
+        const inset = cls && cls.fill === "inset" && !(r && r.xpBound);
+        const bg = inset ? "var(--panel-bg)" : cls && cls.opacity ? mixWithPanelBg(cls.color, cls.opacity) : filled ? cls.color : "var(--panel-bg)";
         const border = cls ? cls.color : "#5c5f66";
         const dash = cls && cls.border === "dashed" ? ' stroke-dasharray="3,2"' : "";
         const textColor = filled && !cls.opacity ? fillTextColor(cls) : cls && (filled || cls.opacity) ? "#111" : "var(--fg)";
@@ -8971,6 +9309,7 @@
           '<title>' + escapeHtml(title) + "</title>" +
           '<rect width="' + PARAM_TREE_NODE_W + '" height="' + PARAM_TREE_NODE_H +
           '" rx="5" style="fill:' + bg + ";stroke:" + border + '"' + dash + ' stroke-width="1.5" />' +
+          (inset ? '<rect x="' + SZ_PT_RING + '" y="' + SZ_PT_RING + '" width="' + (PARAM_TREE_NODE_W - 2 * SZ_PT_RING) + '" height="' + (PARAM_TREE_NODE_H - 2 * SZ_PT_RING) + '" rx="2" style="fill:' + cls.color + '" />' : "") +
           '<text x="' + PARAM_TREE_NODE_W / 2 + '" y="' + (PARAM_TREE_NODE_H / 2 + 4) + '" text-anchor="middle" font-size="13" font-weight="600" style="fill:' + textColor + '">' +
           escapeHtml(param ? param.symbol : id) + "</text>" +
           "</g>"
@@ -9133,7 +9472,8 @@
     "—": "---", "–": "--", "‘": "`", "’": "'", "“": "``", "”": "''",
   };
   function latexEscapeText(s) {
-    return String(s).replace(/[Σ≤≥−σλαβγ∞∈≠_%&#$^—–‘’“”]/g, (c) => LATEX_CHAR_MAP[c] || c);
+    // "|" too: bare, it is an em dash in text mode (OT1), so P|Mj|Cmax printed as P—Mj—Cmax.
+    return String(s).replace(/[Σ≤≥−σλαβγ∞∈≠_%&#$^—–‘’“”|]/g, (c) => c === "|" ? "\\textbar{}" : (LATEX_CHAR_MAP[c] || c));
   }
   function tikzSanitizeId(id) {
     return "n" + String(id).replace(/[^a-zA-Z0-9]/g, "");
@@ -9189,7 +9529,7 @@
         return (
           styleName(classId) + "/.style={pnode, draw=" + borderName +
           (cc && cc.border === "dashed" ? ", dashed" : "") +
-          (fillName ? ", fill=" + fillName : ", fill=white") + "}"
+          (cc && cc.fill === "inset" ? ", fill=white, path picture={\\fill[" + colorName(cc.color) + "] ([shift={(0.12cm,0.12cm)}]path picture bounding box.south west) rectangle ([shift={(-0.12cm,-0.12cm)}]path picture bounding box.north east);}" : fillName ? ", fill=" + fillName : ", fill=white") + "}"
         );
       });
 
@@ -9229,12 +9569,12 @@
     // under ITS fill too, since the target is drawn after this edge.
     const edges = mapEdges(map).filter((e) => positions[e.from] && positions[e.to]);
     const halfW = nodeW / 2, halfH = nodeH / 2;
+    // Routed like the live view, with the same ports (edgeRoute / edgePorts).
+    const boxOf = (id) => positions[id] && { cx: positions[id].cx, cy: positions[id].cy, halfW: halfW, halfH: halfH };
+    const portOf = edgePorts(edges, boxOf);
     const edgeLines = edges.map((e) => {
-      const a = positions[e.from], b = positions[e.to];
-      const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, halfW, halfH, 6);
-      const ax = (a.cx / SCALE).toFixed(2), ay = (-a.cy / SCALE).toFixed(2);
-      const bx = (tip.x / SCALE).toFixed(2), by = (-tip.y / SCALE).toFixed(2);
-      return "\\draw[sedge] (" + ax + "," + ay + ") -- (" + bx + "," + by + ");";
+      const port = portOf(e);
+      return edgeTikz(boxOf(e.from), boxOf(e.to), 6, port.pa, port.pb, SCALE);
     });
 
     const colorDefs = Array.from(usedColors.entries()).map(
@@ -9245,7 +9585,7 @@
       "\\tikzset{\n" +
       "  pnode/.style={rounded corners=2pt, minimum width=" + (nodeW / SCALE).toFixed(2) + "cm" +
       ", minimum height=" + (nodeH / SCALE).toFixed(2) + "cm, align=center, font=\\large, text=black, line width=0.1cm},\n" +
-      "  sedge/.style={->, gray!70, line width=0.1cm, shorten <=3pt, shorten >=3pt},\n" +
+      "  sedge/.style={->, gray!70, line width=0.1cm, shorten >=3pt},\n" +
       classStyleDefs.map((l) => "  " + l).join(",\n") + "\n" +
       "}\n";
 
@@ -9305,7 +9645,7 @@
       return (
         styleName(classId) + "/.style={pnode, draw=" + borderName +
         (cc && cc.border === "dashed" ? ", dashed" : "") +
-        (fillName ? ", fill=" + fillName : ", fill=white") + "}"
+        (cc && cc.fill === "inset" ? ", fill=white, path picture={\\fill[" + colorName(cc.color) + "] ([shift={(0.12cm,0.12cm)}]path picture bounding box.south west) rectangle ([shift={(-0.12cm,-0.12cm)}]path picture bounding box.north east);}" : fillName ? ", fill=" + fillName : ", fill=white") + "}"
       );
     });
 
@@ -9334,14 +9674,15 @@
     // node's own w/h, since unlike mapToTikzCode every node here has its
     // own size -- otherwise the arrowHEAD itself would land inside the
     // target's box and be hidden under its fill too.
+    // Routed like the live view, with the same ports (edgeRoute / edgePorts).
+    const boxOf = (id) => positions[id] && { cx: positions[id].cx, cy: positions[id].cy, halfW: positions[id].w / 2, halfH: positions[id].h / 2 };
+    const portOf = edgePorts(edgesList.filter((e) => boxOf(e.from) && boxOf(e.to)), boxOf);
     const edgeLines = edgesList
       .map((e) => {
-        const a = positions[e.from], b = positions[e.to];
+        const a = boxOf(e.from), b = boxOf(e.to);
         if (!a || !b) return "";
-        const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.w / 2, b.h / 2, 6);
-        const ax = (a.cx / SCALE).toFixed(2), ay = (-a.cy / SCALE).toFixed(2);
-        const bx = (tip.x / SCALE).toFixed(2), by = (-tip.y / SCALE).toFixed(2);
-        return "\\draw[sedge] (" + ax + "," + ay + ") -- (" + bx + "," + by + ");";
+        const port = portOf(e);
+        return edgeTikz(a, b, 6, port.pa, port.pb, SCALE);
       })
       .filter(Boolean);
 
@@ -9352,7 +9693,7 @@
     const tikzsetLines =
       "\\tikzset{\n" +
       "  pnode/.style={rounded corners=2pt, align=center, font=\\small, text=black, line width=0.1cm},\n" +
-      "  sedge/.style={->, gray!70, line width=0.1cm, shorten <=3pt, shorten >=3pt},\n" +
+      "  sedge/.style={->, gray!70, line width=0.1cm, shorten >=3pt},\n" +
       classStyleDefs.map((l) => "  " + l).join(",\n") + "\n" +
       "}\n";
 
@@ -9471,7 +9812,7 @@
         if (!p) return "";
         const pos = positions[n.problemId];
         const cc = classicalClassById(effective[n.problemId]);
-        const bg = cc && cc.fill ? cc.color : "var(--panel-bg)";
+        const bg = classBg(cc, "var(--panel-bg)", MAP_NODE_RING);
         const border = cc ? cc.color : "#868e96";
         const borderStyle = cc ? cc.border || "solid" : "solid";
         const textColor = cc && cc.fill ? fillTextColor(cc) : null;
@@ -9493,7 +9834,7 @@
       .map(
         (c) =>
           '<div class="legend-item"><span class="legend-swatch" style="background:' +
-          (c.fill ? c.color : "transparent") + ";border:2px " + (c.border || "solid") + " " + c.color +
+          (classBg(c, "transparent", 2)) + ";border:2px " + (c.border || "solid") + " " + c.color +
           '"></span><span>' + c.label + "</span></div>"
       )
       .join("");
@@ -10069,8 +10410,10 @@
   // a, b: { cx, cy, halfW, halfH }. gap: how far short of b's edge the
   // head stops (the number the old pullBackToRect call used). pa, pb: port
   // offsets along the edge the arrow leaves and enters by (edgePorts).
-  function edgePathD(a, b, gap, pa, pb) {
-    const r1 = (v) => Math.round(v * 10) / 10;
+  // The waypoints of an arrow: four when routed (box edge, end of the stub,
+  // start of the other stub, box edge), two for the straight line. `bend`
+  // is the corner radius to round the two middle points with.
+  function edgeRoute(a, b, gap, pa, pb) {
     pa = pa || 0; pb = pb || 0;
     if (ROUTED_ARROWS && a && b) {
       const s = b.cy >= a.cy ? 1 : -1;
@@ -10083,20 +10426,38 @@
       const y1 = y0 + s * stub, y2 = y3 - s * stub;
       if (stub >= 3) {
         const dx = x3 - x0, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
-        if (Math.abs(dx) < 0.5 || len < 1) return "M" + r1(x0) + "," + r1(y0) + " L" + r1(x3) + "," + r1(y3);
+        if (Math.abs(dx) < 0.5 || len < 1) return { points: [{ x: x0, y: y0 }, { x: x3, y: y3 }], bend: 0 };
         // The bend is rounded off the stub, and never more than half of it,
         // so a straight piece of stub always shows.
-        const r = Math.min(ARROW_BEND, len / 2, stub / 2);
-        const ux = dx / len, uy = dy / len;
-        return "M" + r1(x0) + "," + r1(y0) + " L" + r1(x0) + "," + r1(y1 - s * r) +
-          " Q" + r1(x0) + "," + r1(y1) + " " + r1(x0 + ux * r) + "," + r1(y1 + uy * r) +
-          " L" + r1(x3 - ux * r) + "," + r1(y2 - uy * r) +
-          " Q" + r1(x3) + "," + r1(y2) + " " + r1(x3) + "," + r1(y2 + s * r) +
-          " L" + r1(x3) + "," + r1(y3);
+        return { points: [{ x: x0, y: y0 }, { x: x0, y: y1 }, { x: x3, y: y2 }, { x: x3, y: y3 }],
+          bend: Math.min(ARROW_BEND, len / 2, stub / 2) };
       }
     }
     const tip = pullBackToRect(a.cx, a.cy, b.cx, b.cy, b.halfW, b.halfH, gap);
-    return "M" + r1(a.cx) + "," + r1(a.cy) + " L" + r1(tip.x) + "," + r1(tip.y);
+    return { points: [{ x: a.cx, y: a.cy }, { x: tip.x, y: tip.y }], bend: 0 };
+  }
+  function edgePathD(a, b, gap, pa, pb) {
+    const r1 = (v) => Math.round(v * 10) / 10;
+    const route = edgeRoute(a, b, gap, pa, pb);
+    const P = route.points;
+    if (P.length < 4) return "M" + r1(P[0].x) + "," + r1(P[0].y) + " L" + r1(P[1].x) + "," + r1(P[1].y);
+    const r = route.bend;
+    const s = P[1].y >= P[0].y ? 1 : -1;
+    const dx = P[2].x - P[1].x, dy = P[2].y - P[1].y, len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len, uy = dy / len;
+    return "M" + r1(P[0].x) + "," + r1(P[0].y) + " L" + r1(P[1].x) + "," + r1(P[1].y - s * r) +
+      " Q" + r1(P[1].x) + "," + r1(P[1].y) + " " + r1(P[1].x + ux * r) + "," + r1(P[1].y + uy * r) +
+      " L" + r1(P[2].x - ux * r) + "," + r1(P[2].y - uy * r) +
+      " Q" + r1(P[2].x) + "," + r1(P[2].y) + " " + r1(P[2].x) + "," + r1(P[2].y + s * r) +
+      " L" + r1(P[3].x) + "," + r1(P[3].y);
+  }
+  // The same arrow for a TikZ figure: the waypoints as a polyline, the
+  // bends rounded by TikZ itself. `scale` is the export's px-per-cm.
+  function edgeTikz(a, b, gap, pa, pb, scale) {
+    const route = edgeRoute(a, b, gap, pa, pb);
+    const pt = (q) => "(" + (q.x / scale).toFixed(2) + "," + (-q.y / scale).toFixed(2) + ")";
+    const opts = route.bend ? "sedge, rounded corners=" + (route.bend / scale).toFixed(2) + "cm" : "sedge";
+    return "\\draw[" + opts + "] " + route.points.map(pt).join(" -- ") + ";";
   }
   // A port for every arrow: the arrows leaving a box are spread along its
   // edge in the order of where they go, those entering it in the order of

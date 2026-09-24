@@ -1,0 +1,1189 @@
+{
+ "::see:-Assignment": {
+  "doi": null
+ },
+ "::see:-Earliest": {
+  "doi": null
+ },
+ "::see:-Network": {
+  "doi": null
+ },
+ "::see:-Parallel": {
+  "doi": null
+ },
+ "::see:-Single": {
+  "doi": null
+ },
+ "AM09": {
+  "doi": "10.1007/s00453-008-9251-6",
+  "title": "Single Machine Precedence Constrained Scheduling Is a Vertex Cover Problem",
+  "year": 2008
+ },
+ "AMMS11": {
+  "doi": "10.1287/moor.1110.0512",
+  "title": "On the Approximability of Single-Machine Scheduling with Precedence Constraints",
+  "year": 2011
+ },
+ "AchugbueChin:82:Scheduling-the-open": {
+  "doi": "10.1137/0211058",
+  "title": "Scheduling the Open Shop to Minimize Mean Flow Time",
+  "year": 1982
+ },
+ "AfratiBampis:99:Approximation-schemes": {
+  "doi": "10.1109/sffcs.1999.814574",
+  "title": "Approximation schemes for minimizing average weighted completion time with release dates",
+  "year": null
+ },
+ "AlbersBrucker:93:The-complexity-of-one-machine": {
+  "doi": "10.1016/0166-218x(93)90085-3",
+  "title": "The complexity of one-machine batching problems",
+  "year": 1993
+ },
+ "AnandBringmann:13:Minimizing-maximum": {
+  "doi": "10.1007/978-3-642-39206-1_2",
+  "title": "Minimizing Maximum (Weighted) Flow-Time on Related and Unrelated Machines",
+  "year": 2013
+ },
+ "AndelmanMansour:03:Competitive-queueing": {
+  "doi": null
+ },
+ "AverbakhBerman:05:The-m-machine-flowshop": {
+  "doi": null
+ },
+ "Baker:74:Introduction-to-Sequencing": {
+  "doi": null
+ },
+ "BakerLawler:83:Preemptive-scheduling": {
+  "doi": "10.1287/opre.31.2.381",
+  "title": "Preemptive Scheduling of a Single Machine to Minimize Maximum Cost Subject to Release Dates and Precedence Constraints",
+  "year": 1983
+ },
+ "BansalCloostermans:15:Minimizing-maximum": {
+  "doi": null
+ },
+ "BansalKhot:09:Optimal-long": {
+  "doi": "10.1109/focs.2009.23",
+  "title": "Optimal Long Code Test with One Free Bit",
+  "year": 2009
+ },
+ "Baptiste:00:Batching-identical": {
+  "doi": "10.1007/s001860000088",
+  "title": "Batching identical jobs",
+  "year": 2000
+ },
+ "Baptiste:00:Preemptive-scheduling": {
+  "doi": null
+ },
+ "Baptiste:00:Scheduling-equal-length": {
+  "doi": "10.1016/s0166-218x(99)00238-3",
+  "title": "Scheduling equal-length jobs on identical parallel machines",
+  "year": 2000
+ },
+ "Baptiste:02:On-preemption-redundancy": {
+  "doi": "10.1109/ipdps.2001.925215",
+  "title": "On preemption redundancy in scheduling unit processing time jobs on two parallel machines",
+  "year": null
+ },
+ "Baptiste:03:A-note-on-scheduling": {
+  "doi": "10.1016/s0305-0548(02)00116-8",
+  "title": "A note on scheduling multiprocessor tasks with identical processing times",
+  "year": 2003
+ },
+ "Baptiste:03:On-minimizing-the-weighted": {
+  "doi": "10.1016/s0377-2217(02)00759-2",
+  "title": "On minimizing the weighted number of late jobs in unit execution time open-shops",
+  "year": 2003
+ },
+ "Baptiste:99:Polynomial-time": {
+  "doi": "10.1002/(sici)1099-1425(199911/12)2:6<245::aid-jos28>3.0.co;2-5",
+  "title": "Polynomial time algorithms for minimizing the weighted number of late jobs on a single machine with equal processing times",
+  "year": 1999
+ },
+ "BaptisteBrucker:04:Ten-notes-on-equal-execution-time": {
+  "doi": null
+ },
+ "BaptisteBrucker:15:The-Complexity-of-Mean": {
+  "doi": "10.1007/s10951-006-0006-4",
+  "title": "The complexity of mean flow time scheduling problems with release times",
+  "year": 2007
+ },
+ "BaptisteChrobak:04:Preemptive-scheduling": {
+  "doi": "10.1016/j.orl.2003.09.004",
+  "title": "Preemptive scheduling of equal-length jobs to maximize weighted throughput",
+  "year": 2004
+ },
+ "BaptisteJouglet:01:On-minimizing-total": {
+  "doi": "10.1051/ro:2001105",
+  "title": "On Minimizing Total Tardiness in a Serial Batching Problem",
+  "year": 2001
+ },
+ "BaptisteSchieber:03:A-note-on-scheduling": {
+  "doi": "10.1023/a:1024012811536",
+  "title": "A Note on Scheduling Tall/Small Multiprocessor Tasks with Unit Processing Time to Minimize Maximum Tardiness",
+  "year": 2003
+ },
+ "BaptisteTimkovsky:01:On-preemption-redundancy": {
+  "doi": "10.1109/ipdps.2001.925215",
+  "title": "On preemption redundancy in scheduling unit processing time jobs on two parallel machines",
+  "year": null
+ },
+ "BaptisteTimkovsky:04:Shortest-path": {
+  "doi": "10.1007/s001860300336",
+  "title": "Shortest path to nonpreemptive schedules of unit-time jobs on two identical parallel machines with minimum total completion time",
+  "year": 2004
+ },
+ "Bazewicz:76:Scheduling-dependent": {
+  "doi": null
+ },
+ "BazewiczDell-Olmo:92:Scheduling-multiprocessor": {
+  "doi": "10.1016/0020-0190(92)90172-r",
+  "title": "Scheduling multiprocessor tasks on three dedicated processors",
+  "year": 1992
+ },
+ "BazewiczDell-Olmo:94:Corrigendum-to:-Scheduling": {
+  "doi": null
+ },
+ "BazewiczDrabowski:86:Scheduling-multiprocessor": {
+  "doi": "10.1109/tc.1986.1676781",
+  "title": "Scheduling Multiprocessor Tasks to Minimize Schedule Length",
+  "year": 1986
+ },
+ "BazewiczDrozdowski:96:Deadline-scheduling": {
+  "doi": "10.1016/0166-218x(95)00020-r",
+  "title": "Deadline scheduling of multiprocessor tasks",
+  "year": 1996
+ },
+ "BazewiczLenstra:83:Scheduling-subject": {
+  "doi": "10.1016/0166-218x(83)90012-4",
+  "title": "Scheduling subject to resource constraints: classification and complexity",
+  "year": 1983
+ },
+ "BazewiczLiu:96:Scheduling-multiprocessor": {
+  "doi": "10.1016/0377-2217(96)00126-9",
+  "title": "Scheduling multiprocessor tasks with chain constraints",
+  "year": 1996
+ },
+ "Bellenguez.ea:15:A-Note-on-NP-Hardness": {
+  "doi": "10.1007/s10951-014-0380-2",
+  "title": "A note on $${\\mathbb {NP}}$$ NP -hardness of preemptive mean flow-time scheduling for parallel machines",
+  "year": 2014
+ },
+ "Belouadah:92:Scheduling-with": {
+  "doi": null
+ },
+ "BevernBredereck:16:Precedence-constrained-scheduling": {
+  "doi": "10.1007/978-3-319-44914-2_9",
+  "title": "Precedence-Constrained Scheduling Problems Parameterized by Partial Order Width",
+  "year": 2016
+ },
+ "BiancoBlazewicz:97:Preemptive-multiprocessor": {
+  "doi": "10.1023/a:1018994726051",
+  "title": "Preemptive multiprocessor task scheduling with release times and time windows",
+  "year": 1997
+ },
+ "BillautCroce:17:When-Shop": {
+  "doi": null
+ },
+ "BodlaenderFellows:95:W2-hardness-of-precedence": {
+  "doi": "10.1016/0167-6377(95)00031-9",
+  "title": "W[2]-hardness of precedence constrained K-processor scheduling",
+  "year": 1995
+ },
+ "BohmChrobak:17:Online-Packet": {
+  "doi": null
+ },
+ "BraselKluge:94:A-polynomial-algorithm": {
+  "doi": null
+ },
+ "BraselKluge:95:A-polynomial-algorithm": {
+  "doi": "10.1016/0166-218x(93)e0156-s",
+  "title": "A polynomial algorithm for an open shop problem with unit processing times and tree constraints",
+  "year": 1995
+ },
+ "Brucker:95:Scheduling-algorithms": {
+  "doi": null
+ },
+ "BruckerCheng:04:Complexity-results": {
+  "doi": "10.1023/b:anor.0000030683.64615.c8",
+  "title": "Complexity Results for Flow-Shop and Open-Shop Scheduling Problems with Transportation Delays",
+  "year": 2004
+ },
+ "BruckerDhaenens-Flipo:02:Complexity-results": {
+  "doi": "10.1002/jos.120",
+  "title": "Complexity results for parallel machine problems with a single server",
+  "year": 2002
+ },
+ "BruckerGarey:77:Scheduling-equal-length": {
+  "doi": "10.1287/moor.2.3.275",
+  "title": "Scheduling Equal-Length Tasks Under Treelike Precedence Constraints to Minimize Maximum Lateness",
+  "year": 1977
+ },
+ "BruckerGladky:98:Scheduling-a-batching": {
+  "doi": "10.1002/(sici)1099-1425(199806)1:1<31::aid-jos4>3.0.co;2-r",
+  "title": "Scheduling a batching machine",
+  "year": 1998
+ },
+ "BruckerHeitmann:03:How-useful-are-preemptive": {
+  "doi": "10.1016/s0167-6377(02)00220-1",
+  "title": "How useful are preemptive schedules?",
+  "year": 2003
+ },
+ "BruckerHurink:02:A-polynomial-algorithm": {
+  "doi": null
+ },
+ "BruckerHurink:99:Scheduling-identical": {
+  "doi": "10.1007/pl00020913",
+  "title": "Scheduling identical jobs with chain precedence constraints on two uniform machines",
+  "year": 1999
+ },
+ "BruckerJurisch:93:Open-shop": {
+  "doi": "10.1007/bf01415528",
+  "title": "Open shop problems with unit time operations",
+  "year": 1993
+ },
+ "BruckerJurisch:97:Complexity-of-scheduling": {
+  "doi": "10.1023/a:1018950911030",
+  "title": "Complexity of scheduling problems with multi-purpose machines",
+  "year": 1997
+ },
+ "BruckerKnust:00:Scheduling-UET-task": {
+  "doi": "10.1007/s001860000089",
+  "title": "Scheduling UET task systems with concurrency on two parallel identical processors",
+  "year": 2000
+ },
+ "BruckerKnust:05:Complexity-results": {
+  "doi": "10.1016/j.ejor.2004.04.010",
+  "title": "Complexity results for flow-shop problems with a single server",
+  "year": 2005
+ },
+ "BruckerKnust:06:Scheduling-chains": {
+  "doi": "10.1007/s00186-005-0014-8",
+  "title": "Scheduling chains with identical jobs and constant delays on a single machine",
+  "year": 2005
+ },
+ "BruckerKnust:99:Complexity-results": {
+  "doi": "10.1007/s006070050036",
+  "title": "Complexity Results for Single-Machine Problems with Positive Finish-Start Time-Lags",
+  "year": 1999
+ },
+ "BruckerKovalyov:96:Single-machine": {
+  "doi": "10.1007/bf01303431",
+  "title": "Single machine batch scheduling to minimize the weighted number of late jobs",
+  "year": 1996
+ },
+ "BruckerKramer:95:Shop-scheduling": {
+  "doi": "10.1007/bf02099688",
+  "title": "Shop scheduling problems with multiprocessor tasks on dedicated processors",
+  "year": 1995
+ },
+ "BruckerKramer:96:Polynomial-Algorithms": {
+  "doi": "10.1016/0377-2217(95)00350-9",
+  "title": "Polynomial algorithms for resource-constrained and multiprocessor task scheduling problems",
+  "year": 1996
+ },
+ "BruckerKravchenko:04:Complexity-of-mean": {
+  "doi": null
+ },
+ "BruckerKravchenko:05:Scheduling-jobs": {
+  "doi": null
+ },
+ "BruckerKravchenko:08:Scheduling-jobs": {
+  "doi": "10.1007/s10951-008-0063-y",
+  "title": "Scheduling jobs with equal processing times and time windows on identical parallel machines",
+  "year": 2008
+ },
+ "BruckerKravchenko:97:On-the-complexity-of-two-machine": {
+  "doi": "10.1007/s002910050013",
+  "title": "On the complexity of two machine job-shop scheduling with regular objective functions",
+  "year": 1997
+ },
+ "BruckerKravchenko:99:Preemption-can-make": {
+  "doi": null
+ },
+ "BruckerKravchenko:99:Preemptive-job-shop": {
+  "doi": "10.1007/pl00020906",
+  "title": "Preemptive job-shop scheduling problems with a fixed number of jobs",
+  "year": 1999
+ },
+ "BrunoCoffman:74:Scheduling-independent": {
+  "doi": "10.1145/361011.361064",
+  "title": "Scheduling independent tasks to reduce mean finishing time",
+  "year": 1974
+ },
+ "BrunoJones:80:Deterministic-scheduling": {
+  "doi": "10.1109/tc.1980.1675569",
+  "title": "Deterministic Scheduling with Pipelined Processors",
+  "year": 1980
+ },
+ "CM05": {
+  "doi": "10.1137/s0895480101394999",
+  "title": "The Coffman--Graham Algorithm Optimally Solves UET Task Systems with Overinterval Orders",
+  "year": 2005
+ },
+ "CaiLee:98:Minimizing-total": {
+  "doi": "10.1002/(sici)1520-6750(199803)45:2<231::aid-nav7>3.3.co;2-0",
+  "title": "Minimizing total completion time in two‐processor task systems with prespecified processor allocations",
+  "year": 1998
+ },
+ "ChekuriMotwani:01:Approximation-techniques": {
+  "doi": "10.1137/s0097539797327180",
+  "title": "Approximation Techniques for Average Completion Time Scheduling",
+  "year": 2001
+ },
+ "ChekuriMotwani:99:Precedence-constrained": {
+  "doi": "10.1016/s0166-218x(98)00143-7",
+  "title": "Precedence constrained scheduling to minimize sum of weighted completion times on a single machine",
+  "year": 1999
+ },
+ "ChenJansen:14:On-the-optimality-of-approximation": {
+  "doi": "10.1137/1.9781611973402.50",
+  "title": "On the optimality of approximation schemes for the classical scheduling problem",
+  "year": 2013
+ },
+ "ChinFung:03:Online-scheduling": {
+  "doi": "10.1007/s00453-003-1025-6",
+  "title": "Online Scheduling with Partial Job Values: Does Timesharing or Randomization Help?",
+  "year": 2003
+ },
+ "ChoSahni:81:Preemptive-scheduling": {
+  "doi": "10.1287/opre.29.3.511",
+  "title": "Preemptive Scheduling of Independent Jobs with Release and Due Times on Open, Flow and Job Shops",
+  "year": 1981
+ },
+ "ChrobakDurr:06:A-Note-on-Scheduling": {
+  "doi": "10.1007/s10951-006-5595-4",
+  "title": "A Note on Scheduling Equal-Length Jobs to Maximize Throughput",
+  "year": 2006
+ },
+ "CoffmanGraham:71:Optimal-scheduling": {
+  "doi": "10.1007/bf00288685",
+  "title": "Optimal scheduling for two-processor systems",
+  "year": 1972
+ },
+ "CoffmanSethuraman:03:Ideal-preemptive": {
+  "doi": "10.1007/s00236-003-0119-6",
+  "title": "Ideal preemptive schedules on two processors",
+  "year": 2003
+ },
+ "CoffmanYannakakis:90:Batch-sizing": {
+  "doi": "10.1007/bf02248589",
+  "title": "Batch sizing and job sequencing on a single machine",
+  "year": 1990
+ },
+ "D99": {
+  "doi": "10.1016/s0377-2217(98)00234-3",
+  "title": "Scheduling preemptive jobs with precedence constraints on parallel machines",
+  "year": 1999
+ },
+ "DW84": {
+  "doi": "10.1016/0196-6774(84)90039-7",
+  "title": "Scheduling precedence graphs of bounded height",
+  "year": 1984
+ },
+ "DW85": {
+  "doi": "10.1137/0606066",
+  "title": "Profile Scheduling of Opposing Forests and Level Orders",
+  "year": 1985
+ },
+ "DavidaLinton:76:A-new-algorithm-for-the-scheduling": {
+  "doi": null
+ },
+ "DessoukyLageweg:90:Scheduling-identical": {
+  "doi": "10.1111/j.1467-9574.1990.tb01276.x",
+  "title": "Scheduling identical jobs on uniform parallel machines",
+  "year": 1990
+ },
+ "DrorKubiak:98:Strong-weak-chain": {
+  "doi": null
+ },
+ "Drozdowski:92:Problems-and-algorithms": {
+  "doi": null
+ },
+ "DrozdowskiDell-Olmo:00:Scheduling-multiprocessor": {
+  "doi": "10.1016/s0305-0548(99)00048-9",
+  "title": "Scheduling multiprocessor tasks for mean flow time criterion",
+  "year": 2000
+ },
+ "DuLeung:89:Complexity-of-scheduling": {
+  "doi": "10.1137/0402042",
+  "title": "Complexity of Scheduling Parallel Task Systems",
+  "year": 1989
+ },
+ "DuLeung:90:Minimizing-mean": {
+  "doi": "10.1016/0304-3975(90)90100-v",
+  "title": "Minimizing mean flow time with release time constraint",
+  "year": 1990
+ },
+ "DuLeung:90:Minimizing-total": {
+  "doi": "10.1287/moor.15.3.483",
+  "title": "Minimizing Total Tardiness on One Machine is NP-Hard",
+  "year": 1990
+ },
+ "DuLeung:91:Minimizing-the-number": {
+  "doi": "10.1016/0167-6377(91)90032-k",
+  "title": "Minimizing the number of late jobs on unrelated machines",
+  "year": 1991
+ },
+ "DuLeung:91:Scheduling-chain-structured": {
+  "doi": "10.1016/0890-5401(91)90009-q",
+  "title": "Scheduling chain-structured tasks to minimize makespan and mean flow time",
+  "year": 1991
+ },
+ "DuLeung:92:Minimizing-the-number": {
+  "doi": null
+ },
+ "DuLeung:93:Minimizing-mean": {
+  "doi": "10.1006/jagm.1993.1002",
+  "title": "Minimizing Mean Flow Time in Two-Machine Open Shops and Flow Shops",
+  "year": 1993
+ },
+ "DurrHurand:06:Finding-total": {
+  "doi": "10.1007/11841036_30",
+  "title": "Finding Total Unimodularity in Optimization Problems Solved by Linear Programs",
+  "year": 2006
+ },
+ "EnglertWestermann:07:Considering-suppressed": {
+  "doi": null
+ },
+ "FintaLiu:96:Single-machine": {
+  "doi": "10.1016/0166-218x(96)00110-2",
+  "title": "Single machine scheduling subject to precedence delays",
+  "year": 1996
+ },
+ "GJTY83": {
+  "doi": "10.1137/0604011",
+  "title": "Scheduling Opposing Forests",
+  "year": 1983
+ },
+ "Gabow:82:An-almost-linear-algorithm": {
+  "doi": "10.1145/322326.322335",
+  "title": "An Almost-Linear Algorithm for Two-Processor Scheduling",
+  "year": 1982
+ },
+ "GareyJohnson:76:Scheduling-tasks": {
+  "doi": "10.1145/321958.321967",
+  "title": "Scheduling Tasks with Nonuniform Deadlines on Two Processors",
+  "year": 1976
+ },
+ "GareyJohnson:76:The-complexity-of-flowshop": {
+  "doi": "10.1287/moor.1.2.117",
+  "title": "The Complexity of Flowshop and Jobshop Scheduling",
+  "year": 1976
+ },
+ "GareyJohnson:77:Two-processor-scheduling": {
+  "doi": "10.1137/0206029",
+  "title": "Two-Processor Scheduling with Start-Times and Deadlines",
+  "year": 1977
+ },
+ "GareyJohnson:78:Strong-NP-completeness": {
+  "doi": "10.1145/322077.322090",
+  "title": "`` Strong '' NP-Completeness Results",
+  "year": 1978
+ },
+ "GilmoreGomory:64:Sequencing-a-one-state-variable": {
+  "doi": "10.1287/opre.12.5.655",
+  "title": "Sequencing a One State-Variable Machine: A Solvable Case of the Traveling Salesman Problem",
+  "year": 1964
+ },
+ "Goemans:97:Improved-approximation": {
+  "doi": null
+ },
+ "GonzalezJohnson:80:A-new-algorithm-for-preemptive": {
+  "doi": "10.1145/322186.322194",
+  "title": "A New Algorithm for Preemptive Scheduling of Trees",
+  "year": 1980
+ },
+ "GonzalezSahni:76:Open-shop": {
+  "doi": "10.1145/321978.321985",
+  "title": "Open Shop Scheduling to Minimize Finish Time",
+  "year": 1976
+ },
+ "GonzalezSahni:78:Flowshop-and-jobshop": {
+  "doi": "10.1287/opre.26.1.36",
+  "title": "Flowshop and Jobshop Schedules: Complexity and Approximation",
+  "year": 1978
+ },
+ "Hajek:01:On-the-competitiveness-of-on-line": {
+  "doi": null
+ },
+ "HallPotts:00:Parallel-machine": {
+  "doi": "10.1016/s0166-218x(99)00206-1",
+  "title": "Parallel machine scheduling with a common server",
+  "year": 2000
+ },
+ "HerrbachLeung:90:Preemptive-scheduling": {
+  "doi": "10.1287/opre.38.3.487",
+  "title": "Preemptive Scheduling of Equal Length Jobs on Two Machines to Minimize Mean Flow Time",
+  "year": 1990
+ },
+ "HochbaumLandy:94:Scheduling-with": {
+  "doi": "10.1016/0167-6377(94)90063-9",
+  "title": "Scheduling with batching: minimizing the weighted number of tardy jobs",
+  "year": 1994
+ },
+ "HoogeveenLenstra:94:Three-four": {
+  "doi": "10.1016/0167-6377(94)90024-8",
+  "title": "Three, four, five, six, or the complexity of scheduling with communication delays",
+  "year": 1994
+ },
+ "HoogeveenSchuurman:01:Non-approximability-results": {
+  "doi": "10.1287/ijoc.13.2.157.10520",
+  "title": "Non-Approximability Results for Scheduling Problems with Minsum Criteria",
+  "year": 2001
+ },
+ "HoogeveenVelde:94:Complexity-of-scheduling": {
+  "doi": "10.1016/0166-218x(94)90012-4",
+  "title": "Complexity of scheduling multiprocessor tasks with prespecified processor allocations",
+  "year": 1994
+ },
+ "HoogeveenVestjens:96:Optimal-On-Line": {
+  "doi": "10.1007/3-540-61310-2_30",
+  "title": "Optimal on-line algorithms for single-machine scheduling",
+  "year": 1996
+ },
+ "Horn:73:Minimizing-average": {
+  "doi": "10.1287/opre.21.3.846",
+  "title": "Technical Note—Minimizing Average Flow Time with Parallel Machines",
+  "year": 1973
+ },
+ "HorvathLam:77:A-level-algorithm": {
+  "doi": "10.1145/321992.321995",
+  "title": "A Level Algorithm for Preemptive Scheduling",
+  "year": 1977
+ },
+ "Hu:61:Parallel-sequencing": {
+  "doi": "10.1287/opre.9.6.841",
+  "title": "Parallel Sequencing and Assembly Line Problems",
+  "year": 1961
+ },
+ "HuoLeung:05:Minimizing-total": {
+  "doi": "10.1007/s00186-005-0009-5",
+  "title": "Minimizing total completion time for UET tasks with release time and outtree precedence constraints",
+  "year": 2005
+ },
+ "HurinkKnust:01:Flow-shop-problems": {
+  "doi": "10.1016/s0166-218x(00)00316-4",
+  "title": "Makespan minimization for flow-shop problems with transportation times and a single robot",
+  "year": 2001
+ },
+ "ImLi:17:Better-Unrelated": {
+  "doi": "10.1109/focs.2016.23",
+  "title": "Better Unrelated Machine Scheduling for Weighted Completion Time via Random Offsets from Non-uniform Distributions",
+  "year": 2016
+ },
+ "ImMoseley:17:Minimizing-Maximum": {
+  "doi": null
+ },
+ "Jansen:10:An-EPTAS-for-scheduling": {
+  "doi": "10.1137/090749451",
+  "title": "An EPTAS for Scheduling Jobs on Uniform Processors: Using an MILP Relaxation with a Constant Number of Integral Variables",
+  "year": 2010
+ },
+ "JansenKlein:16:Closing-the-gap-for-makespan": {
+  "doi": null
+ },
+ "Jinjiang:92:The-NP-hardness-of-the-single": {
+  "doi": null
+ },
+ "Johnson:54:Optimal-Two-and-Three-Stage": {
+  "doi": null
+ },
+ "Jurisch:95:Lower-bounds": {
+  "doi": "10.1016/0166-218x(93)e0124-h",
+  "title": "Lower bounds for the job-shop scheduling problem on multi-purpose machines",
+  "year": 1995
+ },
+ "KRP09": {
+  "doi": "10.1016/j.disopt.2008.09.001",
+  "title": "Optimality of HLF for scheduling divide-and-conquer UET task graphs on identical parallel processors",
+  "year": 2009
+ },
+ "Karp:72:Reducibility-among": {
+  "doi": "10.1007/978-1-4684-2001-2_9",
+  "title": "Reducibility among Combinatorial Problems",
+  "year": 1972
+ },
+ "KellererStrusevich:06:A-fully-polynomial": {
+  "doi": "10.1016/j.tcs.2006.08.030",
+  "title": "A fully polynomial approximation scheme for the single machine weighted total tardiness problem with a common due date",
+  "year": 2006
+ },
+ "KesselmanLotker:04:Buffer-overflow": {
+  "doi": "10.1137/s0097539701399666",
+  "title": "Buffer Overflow Management in QoS Switches",
+  "year": 2004
+ },
+ "Kise:91:On-an-automated-two-machine": {
+  "doi": "10.15807/jorsj.34.354",
+  "title": "ON AN AUTOMATED TWO-MACHINE FLOWSHOP SCHEDULING PROBLEM WITH INFINITE BUFFER",
+  "year": 1991
+ },
+ "Knust:99:Shop-scheduling-problems": {
+  "doi": null
+ },
+ "Kramer:95:Scheduling-multiprocessortasks": {
+  "doi": null
+ },
+ "Kravchenko:98:A-polynomial-algorithm": {
+  "doi": "10.1016/s0377-2217(97)00102-1",
+  "title": "A polynomial algorithm for a two-machine no-wait job-shop scheduling problem",
+  "year": 1998
+ },
+ "Kravchenko:99:Minimizing-the-number": {
+  "doi": "10.1016/s0166-218x(99)00165-1",
+  "title": "Minimizing the number of late jobs for the two-machine unit-time job-shop scheduling problem",
+  "year": 2000
+ },
+ "Kravchenko:99:On-the-complexity-of-minimizing": {
+  "doi": "10.1016/s0166-218x(99)00202-4",
+  "title": "On the complexity of minimizing the number of late jobs in unit time open shop",
+  "year": 2000
+ },
+ "KravchenkoWerner:09:Preemptive-scheduling": {
+  "doi": "10.1016/j.cor.2008.12.010",
+  "title": "Preemptive scheduling on uniform machines to minimize mean flow time",
+  "year": 2009
+ },
+ "KravchenkoWerner:97:Parallel-machine": {
+  "doi": "10.1016/s0895-7177(97)00236-7",
+  "title": "Parallel machine scheduling problems with a single server",
+  "year": 1997
+ },
+ "Kubale:87:The-complexity-of-scheduling": {
+  "doi": "10.1016/0020-0190(87)90176-1",
+  "title": "The complexity of scheduling independent two-processor tasks on dedicated processors",
+  "year": 1987
+ },
+ "Kubale:90:Preemptive-scheduling": {
+  "doi": null
+ },
+ "Kubiak:88:Exact-and-approximate": {
+  "doi": null
+ },
+ "Kubiak:89:A-pseudo-polynomial-algorithm": {
+  "doi": "10.1016/0377-2217(89)90225-7",
+  "title": "A pseudo-polynomial algorithm for a two-machine no-wait job-shop scheduling problem",
+  "year": 1989
+ },
+ "KubiakSriskandarajah:91:A-note-on-the-complexity": {
+  "doi": "10.1080/03155986.1991.11732176",
+  "title": "A Note On The Complexity Of Openshop Scheduling Problems",
+  "year": 1991
+ },
+ "KubiakTimkovsky:96:A-polynomial-time-algorithm": {
+  "doi": null
+ },
+ "LabetoulleLawler:84:Preemptive-scheduling": {
+  "doi": "10.1016/b978-0-12-566780-7.50020-9",
+  "title": "Preemptive Scheduling of Uniform Machines Subject to Release Dates",
+  "year": 1984
+ },
+ "Lawler:73:Optimal-sequencing": {
+  "doi": "10.1287/mnsc.19.5.544",
+  "title": "Optimal Sequencing of a Single Machine Subject to Precedence Constraints",
+  "year": 1973
+ },
+ "Lawler:77:A-pseudopolynomial-algorithm": {
+  "doi": "10.1016/s0167-5060(08)70742-8",
+  "title": "A “Pseudopolynomial” Algorithm for Sequencing Jobs to Minimize Total Tardiness",
+  "year": 1977
+ },
+ "Lawler:78:Sequencing-jobs": {
+  "doi": "10.1016/s0167-5060(08)70323-6",
+  "title": "Sequencing Jobs to Minimize Total Weighted Completion Time Subject to Precedence Constraints",
+  "year": 1978
+ },
+ "Lawler:79:Preemptive-scheduling": {
+  "doi": null
+ },
+ "Lawler:82:Preemptive-scheduling": {
+  "doi": "10.1007/978-94-009-7801-0_6",
+  "title": "Preemptive Scheduling of. Precedence-Constrained Jobs on Parallel Machines",
+  "year": 1982
+ },
+ "Lawler:83:Recent-results": {
+  "doi": "10.1007/978-3-642-68874-4_9",
+  "title": "Recent Results in the Theory of Machine Scheduling",
+  "year": 1983
+ },
+ "Lawler:90:A-dynamic-programming": {
+  "doi": "10.1007/bf02248588",
+  "title": "A dynamic programming algorithm for preemptive scheduling of a single machine to minimize the number of late jobs",
+  "year": 1990
+ },
+ "LawlerLabetoulle:78:On-preemptive-scheduling": {
+  "doi": "10.1145/322092.322101",
+  "title": "On Preemptive Scheduling of Unrelated Parallel Processors by Linear Programming",
+  "year": 1978
+ },
+ "LawlerLenstra:81:Minimizing-maximum": {
+  "doi": "10.1287/moor.6.1.153",
+  "title": "Minimizing Maximum Lateness in a Two-Machine Open Shop",
+  "year": 1981
+ },
+ "LawlerLenstra:82:Erratum:-Minimizing": {
+  "doi": "10.1287/moor.6.1.153",
+  "title": "Minimizing Maximum Lateness in a Two-Machine Open Shop",
+  "year": 1981
+ },
+ "LawlerLenstra:89:Sequencing-and-Scheduling:": {
+  "doi": null
+ },
+ "LawlerMartel:89:Preemptive-scheduling": {
+  "doi": "10.1287/opre.37.2.314",
+  "title": "Preemptive Scheduling of Two Uniform Machines to Minimize the Number of Late Jobs",
+  "year": 1989
+ },
+ "LawlerMoore:69:A-functional-equation": {
+  "doi": "10.1287/mnsc.16.1.77",
+  "title": "A Functional Equation and its Application to Resource Allocation and Sequencing Problems",
+  "year": 1969
+ },
+ "LeeCai:99:Scheduling-one-and-two-processor": {
+  "doi": "10.1080/07408179908969847",
+  "title": "Scheduling one and two-processor tasks on two parallel processors",
+  "year": 1999
+ },
+ "Lenstra::": {
+  "doi": null
+ },
+ "LenstraRinnooy-Kan:77:Complexity-of-machine": {
+  "doi": "10.1016/s0167-5060(08)70743-x",
+  "title": "Complexity of Machine Scheduling Problems",
+  "year": 1977
+ },
+ "LenstraRinnooy-Kan:78:Complexity-of-scheduling": {
+  "doi": "10.1287/opre.26.1.22",
+  "title": "Complexity of Scheduling under Precedence Constraints",
+  "year": 1978
+ },
+ "LenstraRinnooy-Kan:79:Computational-complexity": {
+  "doi": "10.1016/s0167-5060(08)70821-5",
+  "title": "Computational Complexity of Discrete Optimization Problems",
+  "year": 1979
+ },
+ "LenstraRinnooy-Kan:80:Complexity-results": {
+  "doi": "10.1016/0377-2217(80)90111-3",
+  "title": "Complexity results for scheduling chains on a single machine",
+  "year": 1980
+ },
+ "LenstraShmoys:90:Approximation-algorithms": {
+  "doi": "10.1007/bf01585745",
+  "title": "Approximation algorithms for scheduling unrelated parallel machines",
+  "year": 1990
+ },
+ "LenstraTardos:90:Approximation-algorithms": {
+  "doi": "10.1007/bf01585745",
+  "title": "Approximation algorithms for scheduling unrelated parallel machines",
+  "year": 1990
+ },
+ "LeungVornberger:84:On-some-variants": {
+  "doi": "10.1137/0213040",
+  "title": "On Some Variants of the Bandwidth Minimization Problem",
+  "year": 1984
+ },
+ "LeungYoung:90:Minimizing-total": {
+  "doi": "10.1287/ijoc.2.4.346",
+  "title": "Minimizing Total Tardiness on a Single Machine with Precedence Constraints",
+  "year": 1990
+ },
+ "LeungYoung:90:Preemptive-scheduling": {
+  "doi": "10.1016/0020-0190(90)90229-q",
+  "title": "Preemptive scheduling to minimize mean weighted flow time",
+  "year": 1990
+ },
+ "LiuBulfin:85:On-the-complexity-of-preemptive": {
+  "doi": "10.1016/0167-6377(85)90035-5",
+  "title": "On the complexity of preemptive open-shop scheduling problems",
+  "year": 1985
+ },
+ "LiuBulfin:88:Scheduling-open": {
+  "doi": "10.1287/opre.36.4.553",
+  "title": "Scheduling Open Shops with Unit Execution Times to Minimize Functions of Due Dates",
+  "year": 1988
+ },
+ "Lloyd:81:Concurrent-task": {
+  "doi": "10.1287/opre.29.1.189",
+  "title": "Concurrent Task Systems",
+  "year": 1981
+ },
+ "Lushchakova:06:Two-machine-preemptive": {
+  "doi": "10.1016/j.ejor.2004.08.037",
+  "title": "Two machine preemptive scheduling problem with release dates, equal processing times and precedence constraints",
+  "year": 2006
+ },
+ "M89": {
+  "doi": "10.1007/978-94-009-2639-4_4",
+  "title": "Computationally Tractable Classes of Ordered Sets",
+  "year": 1989
+ },
+ "M99": {
+  "doi": "10.1016/s0167-6377(99)00003-6",
+  "title": "Optimal scheduling on parallel machines for a new order class",
+  "year": 1999
+ },
+ "MQ05": {
+  "doi": "10.1016/j.orl.2004.06.002",
+  "title": "Optimal preemptive scheduling on a fixed number of identical parallel machines",
+  "year": 2005
+ },
+ "ManaaHanen:10:On-scheduling-with": {
+  "doi": null
+ },
+ "MarinakisMarinaki:17:Hybrid-Adaptive": {
+  "doi": null
+ },
+ "Maxwell:70:On-sequencing-n-jobs": {
+  "doi": "10.1287/mnsc.16.5.295",
+  "title": "On Sequencing <i>n</i> Jobs on One Machine to Minimize the Number of Late Jobs",
+  "year": 1970
+ },
+ "McNaughton:59:Scheduling-with": {
+  "doi": "10.1287/mnsc.6.1.1",
+  "title": "Scheduling with Deadlines and Loss Functions",
+  "year": 1959
+ },
+ "Meyer:92:Geometrische-Methoden": {
+  "doi": null
+ },
+ "MiddendorfTimkovsky:99:Transversal-graphs": {
+  "doi": "10.1023/a:1009827520712",
+  "title": "Transversal Graphs for Partially Ordered Sets: Sequencing, Merging and Scheduling Problems",
+  "year": 1999
+ },
+ "MkademMoukrim:17:An-Exact-Method": {
+  "doi": "10.1007/s10479-018-3082-x",
+  "title": "Exact method for the two-machine flow-shop problem with time delays",
+  "year": 2018
+ },
+ "MnichWiese:15:Scheduling-and-fixed-parameter": {
+  "doi": "10.1007/s10107-014-0830-9",
+  "title": "Scheduling and fixed-parameter tractability",
+  "year": 2014
+ },
+ "Monma:82:Linear-time-algorithms": {
+  "doi": "10.1287/opre.30.1.116",
+  "title": "Linear-Time Algorithms for Scheduling on Parallel Processors",
+  "year": 1982
+ },
+ "Moore:68:An-n-job-one-machine-sequencing": {
+  "doi": "10.1287/mnsc.15.1.102",
+  "title": "An <i>n</i> Job, One Machine Sequencing Algorithm for Minimizing the Number of Late Jobs",
+  "year": 1968
+ },
+ "MoukrimRebaine:14:A-branch-and-bound": {
+  "doi": "10.1051/ro/2014004",
+  "title": "A branch and bound algorithm for the two-machine flowshop problem with unit-time operations and time delays",
+  "year": 2014
+ },
+ "MunierSourd:03:Scheduling-chains": {
+  "doi": "10.1007/s001860200242",
+  "title": "Scheduling chains on a single machine with non-negative time lags",
+  "year": 2003
+ },
+ "MuntzCoffman:70:Preemptive-scheduling": {
+  "doi": "10.1145/321574.321586",
+  "title": "Preemptive Scheduling of Real-Time Tasks on Multiprocessor Systems",
+  "year": 1970
+ },
+ "NgCheng:02:A-note-on-the-single": {
+  "doi": "10.1016/s0167-6377(01)00105-5",
+  "title": "A note on the single machine serial batching scheduling problem to minimize maximum lateness with precedence constraints",
+  "year": 2002
+ },
+ "OguzQi:06:Preemptive-scheduling": {
+  "doi": null
+ },
+ "PY79": {
+  "doi": "10.1137/0208031",
+  "title": "Scheduling Interval-Ordered Tasks",
+  "year": 1979
+ },
+ "ProtBellenguez-Morineau:12:": {
+  "doi": null
+ },
+ "Rayward-SmithRebaine:92:Open-shop": {
+  "doi": "10.1051/ita/1992260504391",
+  "title": "Open shop scheduling with delays",
+  "year": 1992
+ },
+ "ReddiRamamoorthy:72:On-the-flow-shop-sequencing": {
+  "doi": "10.2307/3007887",
+  "title": "On the Flow-Shop Sequencing Problem with No Wait in Process",
+  "year": 1972
+ },
+ "Rock:84:Some-new-results": {
+  "doi": "10.1007/bf01919082",
+  "title": "Some new results in flow shop scheduling",
+  "year": 1984
+ },
+ "Rock:84:The-three-machine-no-wait": {
+  "doi": "10.1145/62.65",
+  "title": "The Three-Machine No-Wait Flow Shop is NP-Complete",
+  "year": 1984
+ },
+ "SahniCho:79:Complexity-of-scheduling": {
+  "doi": "10.1287/moor.4.4.448",
+  "title": "Complexity of Scheduling Shops with No Wait in Process",
+  "year": 1979
+ },
+ "SavelsberghUma:05:An-experimental-study": {
+  "doi": "10.1287/ijoc.1030.0055",
+  "title": "An Experimental Study of LP-Based Approximation Algorithms for Scheduling Problems",
+  "year": 2005
+ },
+ "Schulz:96:Scheduling-to-minimize": {
+  "doi": "10.1007/3-540-61310-2_23",
+  "title": "Scheduling to minimize total weighted completion time: Performance guarantees of LP-based heuristics and lower bounds",
+  "year": 1996
+ },
+ "SchulzSkutella:02:The-power-of-alpha-points": {
+  "doi": "10.1002/jos.93",
+  "title": "The power of?-points in preemptive single machine scheduling",
+  "year": 2002
+ },
+ "SchulzSkutella:97:Scheduling-LPs-bear": {
+  "doi": "10.1007/3-540-63397-9_32",
+  "title": "Scheduling-LPs bear probabilities randomized approximations for min-sum criteria",
+  "year": 1997
+ },
+ "Sethi:76:Scheduling-graphs": {
+  "doi": "10.1137/0205005",
+  "title": "Scheduling Graphs on Two Processors",
+  "year": 1976
+ },
+ "Shahkooh_Bohm_Jez_Bareley_2022": {
+  "doi": null
+ },
+ "Sidney:73:An-extension-of-Moores": {
+  "doi": null
+ },
+ "Simons:78:A-fast-algorithm": {
+  "doi": "10.1109/sfcs.1978.4",
+  "title": "A fast algorithm for single processor scheduling",
+  "year": 1978
+ },
+ "Simons:83:Multiprocessor-scheduling": {
+  "doi": "10.1137/0212018",
+  "title": "Multiprocessor Scheduling of Unit-Time Jobs with Arbitrary Release Times and Deadlines",
+  "year": 1983
+ },
+ "Sitters:01:Two-NP-hardness-results": {
+  "doi": "10.1007/3-540-45535-3_31",
+  "title": "Two NP-hardness Results for Preemptive Minsum Scheduling of Unrelated Parallel Machines",
+  "year": 2001
+ },
+ "Skutella:06:List-scheduling": {
+  "doi": "10.1007/11671541_9",
+  "title": "List Scheduling in Order of α-Points on a Single Machine",
+  "year": 2006
+ },
+ "Skutella:17:A-2.542-Approximation-for-Precedence": {
+  "doi": "10.1016/j.orl.2016.07.016",
+  "title": "A 2.542-approximation for precedence constrained single machine scheduling with release dates and total weighted completion time objective",
+  "year": 2016
+ },
+ "Sotskov:91:The-complexity-of-shop-scheduling": {
+  "doi": "10.1016/0377-2217(91)90066-5",
+  "title": "The complexity of shop-scheduling problems with two or three jobs",
+  "year": 1991
+ },
+ "SotskovShakhlevich:95:NP-hardness-of-shop-scheduling": {
+  "doi": "10.1016/0166-218x(95)80004-n",
+  "title": "NP-hardness of shop-scheduling problems with three jobs",
+  "year": 1995
+ },
+ "SriskandarajahLadet:86:Some-no-wait": {
+  "doi": "10.1016/0377-2217(86)90036-6",
+  "title": "Some no-wait shops scheduling problems: Complexity aspect",
+  "year": 1986
+ },
+ "SriskandarajahWagneur:94:On-the-complexity-of-preemptive": {
+  "doi": "10.1016/0377-2217(94)90406-5",
+  "title": "On the complexity of preemptive openshop scheduling problems",
+  "year": 1994
+ },
+ "TanaevSotskov:94:Scheduling-theory.": {
+  "doi": "10.1007/978-94-011-1192-8",
+  "title": "Scheduling Theory. Multi-Stage Systems",
+  "year": 1994
+ },
+ "TautenhahnWoeginger:97:Minimizing-the-total": {
+  "doi": "10.1016/s0167-6377(97)00015-1",
+  "title": "Minimizing the total completion time in a unit-time open shop with release times",
+  "year": 1997
+ },
+ "TianNg:06:An-On2-algorithm-for-scheduling": {
+  "doi": "10.1007/s10951-006-7039-6",
+  "title": "An O(n2) algorithm for scheduling equal-length preemptive jobs on a single machine to minimize total tardiness",
+  "year": 2006
+ },
+ "Timkovsky:03:Identical-parallel": {
+  "doi": "10.1016/s0377-2217(02)00767-1",
+  "title": "Identical parallel machines vs. unit-time shops and preemptions vs. chains in scheduling complexity",
+  "year": 2003
+ },
+ "Timkovsky:85:On-the-complexity-of-scheduling": {
+  "doi": null
+ },
+ "Timkovsky:97:A-polynomial-time-algorithm": {
+  "doi": "10.1016/s0166-218x(96)00106-0",
+  "title": "A polynomial-time algorithm for the two-machine unit-time release-date job-shop schedule-length problem",
+  "year": 1997
+ },
+ "Timkovsky:98:Is-a-unit-time-job-shop": {
+  "doi": "10.1016/s0166-218x(98)00032-8",
+  "title": "Is a unit-time job shop not easier than identical parallel machines?",
+  "year": 1998
+ },
+ "Ullman:75:NP-complete-scheduling": {
+  "doi": "10.1016/s0022-0000(75)80008-0",
+  "title": "NP-complete scheduling problems",
+  "year": 1975
+ },
+ "Ullman:76:Complexity-of-sequencing": {
+  "doi": null
+ },
+ "WikumLlewellyn:94:One-machine-generalized": {
+  "doi": "10.1016/0167-6377(94)90064-7",
+  "title": "One-machine generalized precedence constrained scheduling problems",
+  "year": 1994
+ },
+ "WilliamsonHall:97:Short-shop": {
+  "doi": "10.1287/opre.45.2.288",
+  "title": "Short Shop Schedules",
+  "year": 1997
+ },
+ "Yu:96:The-two-machine-flow": {
+  "doi": null
+ },
+ "YuHoogeveen:04:Minimizing-makespan": {
+  "doi": "10.1023/b:josh.0000036858.59787.c2",
+  "title": "Minimizing Makespan in a Two-Machine Flow Shop with Delays and Unit-Time Operations is NP-Hard",
+  "year": 2004
+ },
+ "ZinderDo:05:Computational-complexity": {
+  "doi": "10.1016/j.disopt.2005.08.001",
+  "title": "Computational complexity of some scheduling problems with multiprocessor tasks",
+  "year": 2005
+ },
+ "ZinderDo:05:Scheduling-UET-tasks": {
+  "doi": null
+ },
+ "alfieri2021column": {
+  "doi": "10.1007/s10951-021-00703-9",
+  "title": "Column generation for minimizing total completion time in a parallel-batching environment",
+  "year": 2021
+ },
+ "azizoglu2000scheduling": {
+  "doi": "10.1080/00207540050028034",
+  "title": "Scheduling a batch processing machine with non-identical job sizes",
+  "year": 2000
+ },
+ "bampis1996complexity": {
+  "doi": "10.1016/0377-2217(96)00124-5",
+  "title": "On the complexity of scheduling with large communication delays",
+  "year": 1996
+ },
+ "baruah1994line": {
+  "doi": "10.1109/real.1994.342713",
+  "title": "On-line scheduling to maximize task completions",
+  "year": 1994
+ },
+ "berndt2022load": {
+  "doi": "10.1137/1.9781611977042.9",
+  "title": "Load Balancing: The Long Road from Theory to Practice",
+  "year": 2022
+ },
+ "buchem2021additive": {
+  "doi": null
+ },
+ "chen2014optimality": {
+  "doi": "10.1137/1.9781611973402.50",
+  "title": "On the optimality of approximation schemes for the classical scheduling problem",
+  "year": 2013
+ },
+ "chen2018optimality": {
+  "doi": "10.1016/j.jcss.2018.03.005",
+  "title": "On the optimality of exact and approximation algorithms for scheduling problems",
+  "year": 2018
+ },
+ "chrobak2007online": {
+  "doi": "10.1137/s0097539704446608",
+  "title": "Online Scheduling of Equal‐Length Jobs: Randomization and Restarts Help",
+  "year": 2007
+ },
+ "davies_scheduling_2021": {
+  "doi": "10.1137/1.9781611976465.176",
+  "title": "Scheduling with Communication Delays via LP Hierarchies and Clustering II: Weighted Completion Times on Related Machines",
+  "year": 2021
+ },
+ "druetto2022column": {
+  "doi": "10.1016/j.cor.2021.105639",
+  "title": "Column generation and rounding heuristics for minimizing the total weighted completion time on a single batching machine",
+  "year": 2022
+ },
+ "giroudeau2008complexity": {
+  "doi": "10.1016/j.tcs.2008.03.027",
+  "title": "Complexity and approximation for precedence constrained scheduling problems with large communication delays",
+  "year": 2008
+ },
+ "hoogeveen1994three": {
+  "doi": "10.1016/0167-6377(94)90024-8",
+  "title": "Three, four, five, six, or the complexity of scheduling with communication delays",
+  "year": 1994
+ },
+ "jansen2022integer": {
+  "doi": "10.1287/moor.2022.1308",
+  "title": "On Integer Programming, Discrepancy, and Convolution",
+  "year": 2023
+ },
+ "kalyanasundaram1998maximizing": {
+  "doi": "10.1007/3-540-68530-8_20",
+  "title": "Maximizing Job Completions Online",
+  "year": 1998
+ },
+ "kalyanasundaram2000speed": {
+  "doi": "10.1109/sfcs.1995.492478",
+  "title": "Speed is as powerful as clairvoyance [scheduling problems]",
+  "year": null
+ },
+ "koutecky2025complexity": {
+  "doi": "10.1007/s10951-024-00827-8",
+  "title": "Complexity of scheduling few types of jobs on related and unrelated machines",
+  "year": 2025
+ },
+ "lucier2013efficient": {
+  "doi": "10.1145/2486159.2486187",
+  "title": "Efficient online scheduling for deadline-sensitive jobs",
+  "year": 2013
+ },
+ "moseley2022competitive": {
+  "doi": "10.1007/978-3-031-06901-7_30",
+  "title": "A Competitive Algorithm for Throughput Maximization on Identical Machines",
+  "year": 2022
+ },
+ "parsa2016minimizing": {
+  "doi": "10.1016/j.cie.2016.06.008",
+  "title": "Minimizing total flow time on a batch processing machine using a hybrid max–min ant system",
+  "year": 2016
+ },
+ "rayward1987uet": {
+  "doi": "10.1016/0166-218x(87)90042-4",
+  "title": "UET scheduling with unit interprocessor communication delays",
+  "year": 1987
+ },
+ "rohwedder-fpt-uniform-2025": {
+  "doi": null
+ },
+ "trindade2021arc": {
+  "doi": "10.1016/j.cor.2021.105394",
+  "title": "Arc-flow approach for single batch-processing machine scheduling",
+  "year": 2021
+ },
+ "uzsoy1994scheduling": {
+  "doi": "10.1080/00207549408957026",
+  "title": "Scheduling a single batch processing machine with non-identical job sizes",
+  "year": 1994
+ }
+}

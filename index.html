@@ -9,7 +9,7 @@
 <body>
 <header class="site-header">
   <h1><a href="#/">The Parameterized Scheduling Zoo</a></h1>
-  <p class="tagline">A faceted browser for the parameterized complexity of machine scheduling problems.</p>
+  <p class="tagline">A visual browser for <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">The Scheduling Zoo</a>.</p>
   <nav class="site-nav">
     <a href="#/schedulingzoo" data-route="/schedulingzoo">Scheduling Zoo</a>
     <!-- The designer has no nav item of its own: it is how a problem map is
@@ -49,13 +49,18 @@
 </main>
 
 <aside id="detail-panel" class="detail-panel" hidden>
+  <button id="detail-minimize" class="detail-minimize" aria-label="Minimize" title="Minimize: keep this problem at hand while you use the map">&#8211;</button>
   <button id="detail-close" class="detail-close" aria-label="Close">&times;</button>
   <div id="detail-content"></div>
 </aside>
 <div id="detail-overlay" class="detail-overlay" hidden></div>
+<div id="detail-dock" class="detail-dock" hidden>
+  <button id="detail-dock-restore" class="detail-dock-restore" title="Reopen the panel"></button>
+  <button id="detail-dock-close" class="detail-dock-close" aria-label="Close">&times;</button>
+</div>
 
 <footer class="site-footer">
-  <p>Inspired by <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">The Scheduling Zoo</a> (Christoph Dürr, LIP6) and of course by the <a href="https://complexityzoo.net/" target="_blank" rel="noopener">Complexity Zoo</a> (Aaronson et al.) </p>
+  <p>Data: <a href="https://schedulingzoo.lip6.fr/" target="_blank" rel="noopener">The Scheduling Zoo</a> (Christoph Dürr, LIP6). The name follows the <a href="https://complexityzoo.net/" target="_blank" rel="noopener">Complexity Zoo</a> (Aaronson et al.).</p>
 </footer>
 
 <script src="js/app.js"></script>

@@ -23,12 +23,20 @@
    "description": "NP-hard, but admits a pseudo-polynomial-time algorithm (i.e. weakly NP-hard)."
   },
   {
+   "id": "pseudo-open",
+   "label": "at most pseudo-polynomial",
+   "color": "#f29a1f",
+   "fill": "inset",
+   "order": 2,
+   "description": "A pseudo-polynomial algorithm is cited and nothing else: solvable in time polynomial in the input size and the largest number, with NP-hardness neither proven nor ruled out. Drawn as a filled centre inside a band of background: the algorithm in the middle, the open question around it."
+  },
+  {
    "id": "NP-hard-unresolved",
-   "label": "at least weakly NP-hard",
+   "label": "NP-hard, pseudo-poly open",
    "color": "#f29a1f",
    "fill": false,
    "border": "solid",
-   "order": 2,
+   "order": 3,
    "description": "Known NP-hard, but whether it is strongly NP-hard or admits a pseudo-polynomial algorithm is open."
   },
   {
@@ -37,7 +45,7 @@
    "color": "#cf4444",
    "fill": true,
    "border": "solid",
-   "order": 3,
+   "order": 4,
    "description": "NP-hard even when all numeric input is given in unary; no pseudo-polynomial algorithm unless P=NP."
   },
   {
@@ -46,7 +54,7 @@
    "color": "#6fa1ab",
    "fill": true,
    "border": "solid",
-   "order": 4,
+   "order": 5,
    "description": "An online problem: jobs are revealed at their release times, so the limit on any algorithm is what it does not yet know, not how long it may compute. Measured by competitive ratio -- how far from the optimal offline schedule it must be -- and those bounds hold unconditionally, not under P != NP. Neither 'in P' nor 'NP-hard' is the question being asked here."
   },
   {
@@ -55,7 +63,7 @@
    "color": "#868e96",
    "fill": false,
    "border": "solid",
-   "order": 5,
+   "order": 6,
    "description": "Not even known to be NP-hard, or an explicitly unresolved question; complexity status unsettled."
   },
   {
@@ -64,7 +72,7 @@
    "color": "#868e96",
    "fill": false,
    "border": "solid",
-   "order": 6,
+   "order": 7,
    "description": "No citation classifies this exact problem's classical (unparameterized) complexity; its status is only bounded indirectly via problems it generalizes or specializes. May still have parameterized results — see the problem's wiki page."
   }
  ],
@@ -87,13 +95,11 @@
   },
   {
    "id": "XP",
-   "label": "XP",
+   "label": "at most XP",
    "color": "#f29a1f",
-   "fill": true,
-   "border": "dashed",
-   "opacity": 0.5,
+   "fill": "inset",
    "order": 2,
-   "description": "Solvable in n^f(k) time; not known to be FPT, and not known to be W-hard either — a positive result that doesn't rule out hardness. Dashed + translucent to distinguish it from a settled result."
+   "description": "In XP: solvable in n^f(k) time. An upper bound only — the problem may still be FPT, and W-hardness is not ruled out either. Drawn as a filled centre inside a band of background, like a pseudo-polynomial-only classical result; a W-hard result that also cites an XP algorithm is drawn solid instead."
   },
   {
    "id": "W1",

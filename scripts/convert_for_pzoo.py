@@ -79,6 +79,12 @@ def latex_to_plain(s):
 DOI_PREFIX = re.compile(r"^\s*(?:https?://)?(?:dx\.)?doi\.org/", re.I)
 
 
+# DOIs found by scripts/resolve_dois.py for the papers the .bib files give
+# no URL or DOI for (most of them); see that script.
+_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "doi_cache.json")
+DOI_CACHE = json.load(open(_CACHE_PATH)) if os.path.exists(_CACHE_PATH) else {}
+
+
 def doi_url(doi):
     """A resolvable link from a bibtex DOI field.
 
@@ -158,6 +164,37 @@ for section in tree[1]:
         }
 
 
+
+# ---- LaTeX accents in bib fields -> Unicode -----------------------------
+# Authors' names in the bibliography are TeX ("D{\'a}niel", "F{\u{a}}nic{\u{a}}",
+# "B{\l}a{\.z}ewicz"); the site shows them as text, so they are decoded here.
+# Combining marks + NFC give the precomposed letter where one exists.
+_TEX_COMBINING = {"'": "\u0301", '"': "\u0308", "`": "\u0300", "^": "\u0302", "~": "\u0303",
+                  "v": "\u030c", "u": "\u0306", "c": "\u0327", ".": "\u0307", "H": "\u030b", "=": "\u0304",
+                  "r": "\u030a", "k": "\u0328"}
+_TEX_LETTERS = {"\\i": "\u0131", "\\j": "\u0237", "\\l": "\u0142", "\\L": "\u0141", "\\ss": "\u00df",
+                "\\o": "\u00f8", "\\O": "\u00d8", "\\aa": "\u00e5", "\\AA": "\u00c5", "\\ae": "\u00e6",
+                "\\AE": "\u00c6", "\\oe": "\u0153", "\\OE": "\u0152"}
+_TEX_ACCENT_RE = re.compile(r"\\([\'\"`^~=.]|[vucHrk](?![a-zA-Z]))\s*(?:\{\s*(\\i|\\j|[a-zA-Z])\s*\}|(\\i|\\j|[a-zA-Z]))")
+def detex(s):
+    """Decode the TeX accents and special letters a bib field may carry."""
+    if not s:
+        return s
+    import unicodedata
+    def acc(m):
+        base = m.group(2) or m.group(3)
+        # \'\i is an i whose dot the accent replaces: the plain letter composes.
+        base = {"\\i": "i", "\\j": "j"}.get(base, _TEX_LETTERS.get(base, base))
+        return base + _TEX_COMBINING[m.group(1)]
+    prev = None
+    while prev != s:
+        prev = s
+        s = _TEX_ACCENT_RE.sub(acc, s)
+    for cmd, ch in _TEX_LETTERS.items():
+        s = re.sub(re.escape(cmd) + r"(?![a-zA-Z])\s*(\{\})?", ch, s)
+    s = s.replace("{", "").replace("}", "")
+    return unicodedata.normalize("NFC", s)
+
 def reduces(src, dst):
     """Is src problem a particular case of dst problem? (ported from search.py)"""
     failed = []
@@ -201,10 +238,10 @@ for (problem_vec, css_class, problem_name, bound, key) in extract.results:
         "kind": css_class,
         "bound": bound_to_plain(bound),
         "bibkey": key,
-        "author": tools.getattr(bib, "author"),
+        "author": detex(tools.getattr(bib, "author")),
         "title": tools.clean_bib(tools.getattr(bib, "title")),
         "year": tools.getattr(bib, "year"),
-        "url": bib.get("URL") or doi_url(bib.get("DOI")),
+        "url": bib.get("URL") or doi_url(bib.get("DOI")) or doi_url((DOI_CACHE.get(key) or {}).get("doi")),
     }
     if param_label:
         citation["param"] = param_label
@@ -467,6 +504,10 @@ def classify_classical(classical):
         return "NP-hard-unresolved"
     if has_p:
         return "P"
+    # A pseudo-polynomial algorithm and nothing else: an upper bound, the
+    # hardness question open -- its own class, not "unclaimed".
+    if has_pseudo:
+        return "pseudo-open"
     return "unclaimed"
 
 

@@ -1,10 +1,9 @@
 # The Parameterized Scheduling Zoo
 
-A faceted browser for the *parameterized* complexity of machine scheduling
-problems — inspired by [The Scheduling Zoo](https://schedulingzoo.lip6.fr/)
-(Christoph Dürr, LIP6), adapted for problems that are classified per
-*parameter* (FPT, W[1]-hard, XP, para-NP-hard, open, ...) rather than with a
-single verdict.
+A visual browser for the data of [The Scheduling Zoo](https://schedulingzoo.lip6.fr/)
+(Christoph Dürr, LIP6): every problem in its bibliography with its classical,
+approximation and parameterized results, on generalization maps you can
+draw on, classify and export.
 
 ## Structure
 
