@@ -53,6 +53,11 @@
    the docs deep links, and the scroll-to-top on every route change. An
    animation is not worth navigation. */
 
+/* Every link in the accent colour, visited or not: the browser's default
+   dark blue vanishes on the dark theme. */
+a { color: var(--accent); }
+a:visited { color: var(--accent); }
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;

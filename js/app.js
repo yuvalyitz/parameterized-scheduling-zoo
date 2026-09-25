@@ -3862,7 +3862,7 @@
     // structure to draw, so they are not packed among the components as
     // one-node boxes -- that is what scattered them through the mosaic.
     // They go in one block underneath, in rows ordered hardest first.
-    const CLASS_TOP_DOWN = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard", "P", "online", "unclaimed"];
+    const CLASS_TOP_DOWN = ["strongly-NP-hard", "NP-hard-unresolved", "weakly-NP-hard", "pseudo-open", "P", "online", "unclaimed"];
     const lone = [];
     const boxes = [];
     const edgesWithin = (group) => {
@@ -4208,7 +4208,13 @@
       // of boxes.
       const GUTTER_EVERY = 6;
       const groupsOfLone = [];
-      const keyOf = (id) => szEffective[id] || byId[id].classicalClass || "unclaimed";
+      // A class the list above does not know goes with the open ones: a
+      // problem must never be left without a position (the render reads
+      // every position below), whatever class a future data file gives it.
+      const keyOf = (id) => {
+        const k = szEffective[id] || byId[id].classicalClass || "unclaimed";
+        return CLASS_TOP_DOWN.includes(k) ? k : "unclaimed";
+      };
       CLASS_TOP_DOWN.forEach((key) => {
         const members = lone.filter((id) => !isOnline(id) && keyOf(id) === key)
           .sort((a, b) => widthOf[a] - widthOf[b] || a.localeCompare(b));
@@ -4629,7 +4635,7 @@
       els.viewSchedulingZoo.querySelectorAll(".sz-node").forEach((el) => {
         el.classList.toggle("sz-node-dim", !matched.has(el.dataset.szId));
       });
-      els.viewSchedulingZoo.querySelectorAll(".map-edge-svg line[data-sz-from]").forEach((line) => {
+      els.viewSchedulingZoo.querySelectorAll(".map-edge-svg path[data-sz-from], .map-edge-svg line[data-sz-from]").forEach((line) => {
         const active = matched.has(line.dataset.szFrom) && matched.has(line.dataset.szTo);
         line.classList.toggle("sz-edge-dim", !active);
       });
@@ -6167,6 +6173,12 @@
         { kind: "lower", best: ["paraNP", "W2", "W1"].find((c) => rs.some((r) => r.complexityClass === c)) || null },
         { kind: "upper", best: ["FPT", "XP"].find((c) => rs.some((r) => r.complexityClass === c)) || null },
       ];
+      // The line's edge takes the class's own colour (XP is orange, not
+      // the algorithm side's green); a line with no class keeps the side's.
+      const edgeStyle = (r) => {
+        const c = r.complexityClass && classById(r.complexityClass);
+        return c ? ' style="border-left-color:' + c.color + '"' : "";
+      };
       let badgeNo = 0;
       const details = [];
       const badge = (g) => {
@@ -6174,7 +6186,7 @@
         const tip = g.term + " — " + szShortCite(g.r) + (g.parts.length ? " · " + g.parts.join(" · ") : "") +
           (g.term !== g.r.bound ? " (cited as: " + g.r.bound + ")" : "");
         const id = szParamAnchor(label) + "-c" + badgeNo;
-        details.push('<div class="sz-res-detail result-' + g.r.kind + '" id="' + id + '" hidden>' +
+        details.push('<div class="sz-res-detail result-' + g.r.kind + '" id="' + id + '"' + edgeStyle(g.r) + " hidden>" +
           "[" + badgeNo + "] " + '<span class="sz-res-bound">' + escapeHtml(g.term) + '</span> <span class="sz-res-cite">— ' + szCiteLink(g.r) + "</span>" +
           (g.parts.length ? '<div class="sz-res-path">' + escapeHtml(g.parts.join(" · ")) + "</div>" : "") + "</div>");
         return '<button type="button" class="sz-cite-badge" data-sz-badge="' + id + '" title="' + escapeHtml(tip) + '">[' + badgeNo + "]</button>";
@@ -6185,7 +6197,7 @@
         const top = mine_.filter((g) => g.r.complexityClass === side.best).sort((a, b) => originRank(a) - originRank(b));
         const primary = top[0] || mine_[0];
         const rest = mine_.filter((g) => g !== primary);
-        return '<div class="sz-res-line result-' + side.kind + '">' +
+        return '<div class="sz-res-line result-' + side.kind + '"' + edgeStyle(primary.r) + ">" +
           '<span class="sz-res-bound">' + escapeHtml(primary.term) + "</span>" +
           ' <span class="sz-res-cite">— ' + szCiteLink(primary.r) + "</span>" +
           (primary.parts.length ? ' <span class="sz-res-path">' + escapeHtml(primary.parts.join(" · ")) + "</span>" : "") +
